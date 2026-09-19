@@ -1,0 +1,9 @@
+# 无关目录
+TempStore/
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 敏感信息
+*.env

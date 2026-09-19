@@ -1,0 +1,1161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EduDocAssistant · 桌面端原型</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+
+  <!-- ============================== 原型屏幕清单 ============================== -->
+  <aside class="panel">
+    <div class="panel-head">
+      <p class="panel-title">校园智能文档助手</p>
+      <p class="panel-sub">桌面端原型 · 1440×900 · 15 个页面</p>
+    </div>
+    <div class="panel-body">
+      <div class="nav-group">文档接入</div>
+      <button class="nav-item" data-screen="doc-list"><span class="idx">01</span>我的文档</button>
+      <button class="nav-item" data-screen="doc-preview"><span class="idx">02</span>文档预览</button>
+
+      <div class="nav-group">智能处理</div>
+      <button class="nav-item" data-screen="ai-summary"><span class="idx">03</span>文本摘要</button>
+      <button class="nav-item" data-screen="ai-points"><span class="idx">04</span>要点提取</button>
+      <button class="nav-item" data-screen="ai-qa"><span class="idx">05</span>文档问答</button>
+      <button class="nav-item" data-screen="ai-polish"><span class="idx">06</span>文本润色</button>
+
+      <div class="nav-group">格式与模板</div>
+      <button class="nav-item" data-screen="templates"><span class="idx">07</span>课程模板库</button>
+      <button class="nav-item" data-screen="format-check"><span class="idx">08</span>格式规范校验</button>
+      <button class="nav-item" data-screen="convert"><span class="idx">09</span>格式转换</button>
+
+      <div class="nav-group">协作与版本</div>
+      <button class="nav-item" data-screen="collab"><span class="idx">10</span>协作与版本</button>
+
+      <div class="nav-group">权限与审计</div>
+      <button class="nav-item" data-screen="share"><span class="idx">11</span>共享与权限设置</button>
+      <button class="nav-item" data-screen="roles"><span class="idx">12</span>角色与权限管理</button>
+      <button class="nav-item" data-screen="audit"><span class="idx">13</span>操作日志</button>
+
+      <div class="nav-group">导出与统计</div>
+      <button class="nav-item" data-screen="export"><span class="idx">14</span>导出文档</button>
+      <button class="nav-item" data-screen="assignments"><span class="idx">15</span>提交与统计</button>
+    </div>
+  </aside>
+
+  <!-- =================================== 舞台 =================================== -->
+  <div class="stage-wrap">
+    <div class="stage-bar">
+      <span class="stage-name">我的文档</span>
+      <span class="stage-desc"></span>
+      <div class="stage-actions">
+        <button class="btn btn-sm btn-primary" data-zoom="fit">适应窗口</button>
+        <button class="btn btn-sm" data-zoom="100">100%</button>
+      </div>
+    </div>
+
+    <div class="stage-scroll">
+      <div class="stage-fit">
+        <div class="scale-box">
+          <div class="app">
+
+            <!-- ------------------------------ 应用导航 ------------------------------ -->
+            <nav class="app-nav">
+              <div class="brand">
+                <div class="brand-mark">E</div>
+                <div class="brand-text"><b>校园智能文档助手</b><span>EduDocAssistant</span></div>
+              </div>
+
+              <div class="nav-group">我的工作</div>
+              <button class="nav-item" data-nav="workbench"><span class="idx">·</span>工作台</button>
+              <button class="nav-item" data-nav="docs"><span class="idx">·</span>我的文档</button>
+              <button class="nav-item" data-nav="ai"><span class="idx">·</span>智能处理</button>
+              <button class="nav-item" data-nav="format"><span class="idx">·</span>格式与模板</button>
+              <button class="nav-item" data-nav="collab"><span class="idx">·</span>协作与版本</button>
+
+              <div class="nav-group">教学</div>
+              <button class="nav-item" data-nav="teaching"><span class="idx">·</span>作业与统计</button>
+
+              <div class="nav-group">管理</div>
+              <button class="nav-item" data-nav="security"><span class="idx">·</span>权限与审计</button>
+
+              <div class="app-nav-foot">v1.0 · 原型第 1 版</div>
+            </nav>
+
+            <!-- ------------------------------ 应用主体 ------------------------------ -->
+            <div class="app-main">
+              <header class="app-top">
+                <div class="search"><span>搜索文档、课程或模板</span></div>
+<div class="top-right">
+  <div class="user">
+                    <div class="avatar">张</div>
+                    <div><b>张同学</b><small>学生 · 计算机学院</small></div>
+                  </div>
+                </div>
+              </header>
+
+              <div class="app-body">
+
+<!-- ============================ 01 我的文档 ============================ -->
+<section class="screen" data-screen="doc-list" data-nav="docs"
+         data-title="我的文档" data-desc="文档接入 · 上传、检索与历史记录（需求规格说明书 5.1.1 / 5.1.3）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">文档接入 / 我的文档</div>
+      <h1>我的文档</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn">新建空白文档</button>
+    <button class="btn btn-primary" data-goto="doc-preview">上传文档</button>
+  </div>
+
+  <div class="stats mb">
+    <div class="stat"><div class="k">文档总数</div><div class="v">18</div><div class="d">本学期累计</div></div>
+    <div class="stat"><div class="k">本周新增</div><div class="v">3</div><div class="d">较上周 +1</div></div>
+    <div class="stat"><div class="k">格式未通过</div><div class="v">2</div><div class="d">需提交前处理</div></div>
+    <div class="stat"><div class="k">存储占用</div><div class="v">126 MB</div><div class="d">上限 2 GB</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-body tight row wrap">
+      <div class="field" style="width:170px"><label>课程</label>
+        <select class="select"><option>全部课程</option><option>Web开发技术</option><option>JavaEE 程序设计</option><option>Oracle 数据库应用</option><option>C 语言程序设计</option></select>
+      </div>
+      <div class="field" style="width:140px"><label>文档类型</label>
+        <select class="select"><option>全部类型</option><option>课程报告</option><option>课件</option><option>作业</option><option>论文</option></select>
+      </div>
+      <div class="field" style="width:140px"><label>处理状态</label>
+        <select class="select"><option>全部状态</option><option>解析完成</option><option>解析中</option><option>格式未通过</option></select>
+      </div>
+      <div class="field grow" style="min-width:220px"><label>关键词</label><div class="search">搜索文档标题</div></div>
+      <button class="btn btn-primary">查询</button>
+      <button class="btn">重置</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:300px">文档名称</th><th>所属课程</th><th>类型</th><th>状态</th>
+            <th class="num">大小</th><th>更新时间</th><th style="width:190px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="strong">Web开发课程设计报告_张同学_v3.docx</td>
+            <td>Web开发技术</td><td>课程报告</td>
+            <td><span class="tag tag-ok">解析完成</span></td>
+            <td class="num">2.4 MB</td><td>今天 21:10</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost" data-goto="doc-preview">预览</button><button class="btn btn-sm btn-ghost" data-goto="ai-summary">处理</button><button class="btn btn-sm btn-ghost" data-goto="export">导出</button></div></td>
+          </tr>
+          <tr>
+            <td class="strong">Oracle课程设计_张同学_v2.docx</td>
+            <td>Oracle 数据库应用</td><td>课程报告</td>
+            <td><span class="tag tag-warn">格式未通过</span></td>
+            <td class="num">2.1 MB</td><td>今天 18:42</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost" data-goto="doc-preview">预览</button><button class="btn btn-sm btn-ghost" data-goto="format-check">校验</button><button class="btn btn-sm btn-ghost" data-goto="export">导出</button></div></td>
+          </tr>
+          <tr>
+            <td class="strong">JavaEE课程作业_小组版.docx</td>
+            <td>JavaEE 程序设计</td><td>小组作业</td>
+            <td><span class="tag tag-purple">协作中 · 3 人</span></td>
+            <td class="num">3.2 MB</td><td>昨天 22:05</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost" data-goto="collab">打开</button><button class="btn btn-sm btn-ghost" data-goto="collab">版本</button><button class="btn btn-sm btn-ghost" data-goto="share">共享</button></div></td>
+          </tr>
+          <tr>
+            <td class="strong">数据库原理复习提纲.pdf</td>
+            <td>Oracle 数据库应用</td><td>课件</td>
+            <td><span class="tag tag-ok">解析完成</span></td>
+            <td class="num">5.1 MB</td><td>昨天 09:12</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost" data-goto="doc-preview">预览</button><button class="btn btn-sm btn-ghost" data-goto="ai-summary">摘要</button><button class="btn btn-sm btn-ghost" data-goto="export">导出</button></div></td>
+          </tr>
+          <tr>
+            <td class="strong">C语言课程设计报告_初稿.docx</td>
+            <td>C 语言程序设计</td><td>课程报告</td>
+            <td><span class="tag tag-info">解析中 42%</span></td>
+            <td class="num">1.8 MB</td><td>09-16 20:31</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost" disabled>预览</button><button class="btn btn-sm btn-ghost" data-goto="convert">转换</button></div></td>
+          </tr>
+          <tr>
+            <td class="strong">毕业论文_第二章_初稿.docx</td>
+            <td>毕业设计</td><td>论文</td>
+            <td><span class="tag tag-ok">解析完成</span></td>
+            <td class="num">1.1 MB</td><td>09-15 15:08</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost" data-goto="doc-preview">预览</button><button class="btn btn-sm btn-ghost" data-goto="ai-qa">问答</button><button class="btn btn-sm btn-ghost" data-goto="export">导出</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span>共 18 条 · 每页 10 条</span>
+      <div class="grow"></div>
+      <button class="pg is-active">1</button><button class="pg">2</button><button class="pg">下一页</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 02 文档预览 ============================ -->
+<section class="screen" data-screen="doc-preview" data-nav="docs"
+         data-title="文档预览" data-desc="文档接入 · 解析结果预览与结构导航（5.1.2）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">文档接入 / 我的文档 / Web开发课程设计报告_张同学_v3.docx</div>
+      <h1>文档预览</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn" data-goto="format-check">格式校验</button>
+    <button class="btn" data-goto="export">导出</button>
+    <button class="btn btn-primary" data-goto="ai-summary">生成摘要</button>
+  </div>
+
+  <div class="viewer">
+    <div class="outline card">
+      <div class="card-head">
+        <h2 class="outline-title">章节结构</h2>
+        <div class="grow"></div>
+        <button class="icon-btn icon-btn-sm" data-outline-toggle aria-label="收起目录" title="收起目录">‹</button>
+      </div>
+      <div class="card-body tight">
+        <ol>
+          <li class="is-active">封面与目录</li>
+          <li>一、项目背景</li>
+          <li>二、需求分析</li>
+          <li>三、系统设计</li>
+          <li>四、系统实现</li>
+          <li>五、系统测试</li>
+          <li>六、总结</li>
+          <li>参考文献</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="paper-wrap">
+      <article class="paper">
+        <h3>面向师生的校园智能文档辅助系统</h3>
+        <div class="paper-meta">课程：Web开发技术　学生：张同学　学号：2023001　日期：2026-09-17</div>
+
+        <h4>二、需求分析</h4>
+        <p>调研显示，学生约有 30% 的报告写作时间用于格式调整与代码、图表处理，<span class="cursor-flag">其中代码粘贴后的格式丢失最为集中</span>。系统需要在文档接入环节完成格式识别与保留。</p>
+
+        <p>系统的核心处理链路为：文档上传、文本解析、向量化索引、智能处理、格式校验与导出归档。</p>
+
+        <p>文档上传接口的核心逻辑如下：</p>
+        <pre class="code-block"><span class="k">@PostMapping</span>("/documents")
+<span class="k">public</span> Result&lt;DocumentId&gt; upload(<span class="k">@RequestPart</span>("file") MultipartFile file) {
+    <span class="k">if</span> (file.getSize() &gt; <span class="s">20</span> * <span class="s">1024</span> * <span class="s">1024</span>) {
+        <span class="k">throw new</span> BizException(<span class="s">"文件大小超过 20MB"</span>);
+    }
+    <span class="k">return</span> Result.ok(documentService.save(file));
+}</pre>
+
+        <div class="figure-ph">图 2-1 系统总体架构（示意图）</div>
+        <div class="figure-cap">图 2-1 系统总体架构</div>
+
+        <p>系统采用分层结构：接入层负责展示与交互，应用服务层负责业务编排，智能处理层提供摘要、要点、问答与润色，数据存储层负责持久化。</p>
+      </article>
+    </div>
+
+    <div class="side stack">
+      <div class="card">
+        <div class="card-head"><h2>解析信息</h2></div>
+        <div class="card-body stack" style="gap:8px">
+          <div class="row-between small"><span class="muted">页数</span><span>32 页</span></div>
+          <div class="row-between small"><span class="muted">字数</span><span>12,480</span></div>
+          <div class="row-between small"><span class="muted">解析耗时</span><span>18 秒</span></div>
+          <div class="row-between small"><span class="muted">识别图表</span><span>6 个</span></div>
+          <div class="row-between small"><span class="muted">状态</span><span class="tag tag-ok">解析完成</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>智能处理与操作</h2></div>
+        <div class="card-body stack" style="gap:8px">
+          <button class="btn" data-goto="ai-summary">生成摘要</button>
+          <button class="btn" data-goto="ai-points">提取要点</button>
+          <button class="btn" data-goto="ai-qa">文档问答</button>
+          <button class="btn" data-goto="ai-polish">文本润色</button>
+          <button class="btn" data-goto="format-check">格式规范校验</button>
+          <button class="btn" data-goto="convert">格式转换</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 03 文本摘要 ============================ -->
+<section class="screen" data-screen="ai-summary" data-nav="ai"
+         data-title="文本摘要" data-desc="智能处理 · 生成摘要并定位原文（5.2.1）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">智能处理 / Web开发课程设计报告_张同学_v3.docx</div>
+      <h1>智能处理</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn" data-goto="doc-preview">返回预览</button>
+  </div>
+
+  <div class="tabs mb">
+    <button class="tab is-active" data-goto="ai-summary">文本摘要</button>
+    <button class="tab" data-goto="ai-points">要点提取</button>
+    <button class="tab" data-goto="ai-qa">文档问答</button>
+    <button class="tab" data-goto="ai-polish">文本润色</button>
+  </div>
+
+<div class="notice notice-info mb">30 页以内的文档在 60 秒内完成解析与摘要；本次处理耗时 18 秒，摘要内容可逐条定位到原文。</div>
+
+  <div class="cols">
+    <div class="main card">
+      <div class="card-head">
+        <h2>摘要结果</h2>
+        <span class="sub">生成于 今天 21:12 · 共 3 段</span>
+        <div class="grow"></div>
+        <button class="btn btn-sm">复制</button>
+        <button class="btn btn-sm">导出摘要</button>
+      </div>
+      <div class="card-body stack" style="gap:14px">
+        <div>
+          <p style="margin:0 0 6px">本文设计并实现了一套面向高校师生的校园智能文档辅助系统，针对课程报告与论文写作中格式调整耗时、代码与图表处理低效、协作版本混乱等问题，提出以模板驱动格式规范、以智能处理降低重复劳动的整体方案。</p>
+          <a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 1 页 摘要</a>
+        </div>
+        <hr style="border:0;border-top:1px solid var(--border);margin:0">
+        <div>
+          <p style="margin:0 0 6px">系统按文档接入、智能处理、格式与模板、协作与版本、权限与审计、导出与统计六类模块组织，采用前后端分离架构，前端使用 React 与 TypeScript，服务端使用 Spring Boot，数据存储使用 Oracle Database 26ai 与 Redis。</p>
+          <a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 4 页 三、系统设计</a>
+        </div>
+        <hr style="border:0;border-top:1px solid var(--border);margin:0">
+        <div>
+          <p style="margin:0 0 6px">测试结果表明，在 500 并发提交场景下上传成功率达到 99.92%，格式校验可在 8 秒内完成并定位 4 类常见格式问题，达到预期的验收标准。</p>
+          <a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 27 页 五、系统测试</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="side stack">
+      <div class="card">
+        <div class="card-head"><h2>摘要设置</h2></div>
+        <div class="card-body stack">
+          <div class="field"><label>摘要长度</label>
+            <select class="select"><option>标准（约 300 字）</option><option>简略（约 150 字）</option><option>详细（约 600 字）</option></select>
+          </div>
+          <div class="field"><label>输出语言</label><select class="select"><option>中文</option></select></div>
+          <label class="check"><input type="checkbox" checked>保留专业术语原文</label>
+          <button class="btn btn-primary">重新生成</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>处理记录</h2></div>
+        <div class="card-body stack" style="gap:8px">
+          <div class="row-between small"><span>生成摘要</span><span class="muted">今天 21:12</span></div>
+          <div class="row-between small"><span>提取要点</span><span class="muted">今天 21:13</span></div>
+          <div class="row-between small"><span>格式校验</span><span class="muted">今天 21:15</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 04 要点提取 ============================ -->
+<section class="screen" data-screen="ai-points" data-nav="ai"
+         data-title="要点提取" data-desc="智能处理 · 要点清单与原文定位（5.2.2）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">智能处理 / Web开发课程设计报告_张同学_v3.docx</div>
+      <h1>智能处理</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn" data-goto="doc-preview">返回预览</button>
+  </div>
+
+  <div class="tabs mb">
+    <button class="tab" data-goto="ai-summary">文本摘要</button>
+    <button class="tab is-active" data-goto="ai-points">要点提取</button>
+    <button class="tab" data-goto="ai-qa">文档问答</button>
+    <button class="tab" data-goto="ai-polish">文本润色</button>
+  </div>
+
+  <div class="cols">
+    <div class="main card">
+      <div class="card-head">
+        <h2>要点清单</h2>
+        <span class="sub">共 6 条 · 按文档顺序</span>
+        <div class="grow"></div>
+        <button class="btn btn-sm">全选</button>
+        <button class="btn btn-sm">复制选中</button>
+        <button class="btn btn-sm btn-primary">导出清单</button>
+      </div>
+      <div class="card-body stack" style="gap:12px">
+        <label class="check" style="align-items:flex-start">
+          <input type="checkbox" checked>
+          <span><b>1.</b> 系统面向高校师生的课程报告、论文与课件处理场景，解决格式返工与重复劳动问题。<br><a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 1 页</a></span>
+        </label>
+        <label class="check" style="align-items:flex-start">
+          <input type="checkbox" checked>
+          <span><b>2.</b> 调研显示排版与格式处理占报告写作时间约 30%，代码与图表处理是最集中的痛点。<br><a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 3 页</a></span>
+        </label>
+        <label class="check" style="align-items:flex-start">
+          <input type="checkbox" checked>
+          <span><b>3.</b> 系统分为六类功能模块，覆盖上传、智能处理、格式模板、协作版本、权限审计与导出统计。<br><a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 5 页</a></span>
+        </label>
+        <label class="check" style="align-items:flex-start">
+          <input type="checkbox" checked>
+          <span><b>4.</b> 技术选型为 React + TypeScript + Tailwind CSS，Spring Boot 3.x + MyBatis-Plus，Oracle Database 26ai 与 Redis。<br><a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 7 页</a></span>
+        </label>
+        <label class="check" style="align-items:flex-start">
+          <input type="checkbox" checked>
+          <span><b>5.</b> 格式校验对照课程模板检查字体、行距、页边距、页眉页脚、图表编号与参考文献格式。<br><a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 12 页</a></span>
+        </label>
+        <label class="check" style="align-items:flex-start">
+          <input type="checkbox" checked>
+          <span><b>6.</b> 测试覆盖并发上传、格式校验与智能处理响应时间，均达到性能指标要求。<br><a href="#" class="small" data-goto="doc-preview" style="color:var(--brand);text-decoration:none">定位原文：第 27 页</a></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="side stack">
+      <div class="card">
+        <div class="card-head"><h2>导出清单</h2></div>
+        <div class="card-body stack">
+          <div class="field"><label>导出格式</label><select class="select"><option>.docx 文档</option><option>.txt 文本</option></select></div>
+          <label class="check"><input type="checkbox" checked>包含原文页码</label>
+          <button class="btn btn-primary">导出</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>说明</h2></div>
+        <div class="card-body small muted">
+          要点提取的结果不少于 5 条，每条要点均可定位到原文位置；生成结果与文档版本绑定，文档更新后需重新提取。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 05 文档问答 ============================ -->
+<section class="screen" data-screen="ai-qa" data-nav="ai"
+         data-title="文档问答" data-desc="智能处理 · 基于文档提问并给出原文出处（5.2.3）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">智能处理 / 毕业论文_第二章_初稿.docx</div>
+      <h1>智能处理</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn" data-goto="doc-preview">返回预览</button>
+  </div>
+
+  <div class="tabs mb">
+    <button class="tab" data-goto="ai-summary">文本摘要</button>
+    <button class="tab" data-goto="ai-points">要点提取</button>
+    <button class="tab is-active" data-goto="ai-qa">文档问答</button>
+    <button class="tab" data-goto="ai-polish">文本润色</button>
+  </div>
+
+  <div class="cols">
+    <div class="main card">
+      <div class="card-head">
+        <h2>问答记录</h2>
+        <span class="sub">回答范围限定在当前文档内</span>
+        <div class="grow"></div>
+        <button class="btn btn-sm">清空</button>
+      </div>
+      <div class="card-body">
+        <div class="chat">
+          <div class="msg me">
+            <div class="bubble">第三章的实验步骤有哪些？需要说明每一步的输入与输出。</div>
+          </div>
+          <div class="msg">
+            <div class="avatar">AI</div>
+            <div class="bubble">
+              第三章的实验分为四步：一是准备实验环境与数据集；二是执行文档解析并校验切分结果；三是调用智能处理接口生成摘要与要点；四是导出结果并记录日志。每一步的输入与输出在原文中以下表形式给出。
+              <div class="cites">
+                <div class="t">引用出处</div>
+                <div class="stack" style="gap:6px">
+                  <a href="#" data-goto="doc-preview">第 18 页 · 3.2 实验步骤（第 2 段）</a>
+                  <a href="#" data-goto="doc-preview">第 19 页 · 表 3-2 实验步骤与输入输出</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="msg me">
+            <div class="bubble">系统的响应时间指标是多少？</div>
+          </div>
+          <div class="msg">
+            <div class="avatar">AI</div>
+            <div class="bubble">未在文档中找到依据。当前文档的测试章节未给出响应时间的具体数值，建议补充后再提问。</div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <textarea class="textarea" placeholder="输入问题，例如：这份报告的研究方法是什么？"></textarea>
+          <button class="btn btn-primary btn-lg">发送</button>
+        </div>
+        <div class="row wrap mt small">
+          <span class="muted">示例问题：</span>
+          <button class="btn btn-sm">第三章的实验步骤有哪些？</button>
+          <button class="btn btn-sm">这份报告的创新点是什么？</button>
+          <button class="btn btn-sm">参考文献采用了什么格式？</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="side stack">
+      <div class="card">
+        <div class="card-head"><h2>问答设置</h2></div>
+        <div class="card-body stack">
+          <label class="check"><input type="checkbox" checked>回答必须引用原文</label>
+          <label class="check"><input type="checkbox" checked>无依据时明确提示</label>
+          <div class="field"><label>回答条数上限</label><select class="select"><option>3 条引用</option><option>5 条引用</option></select></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>性能提示</h2></div>
+        <div class="card-body small muted">单次问答响应时间不超过 5 秒；本次提问响应 2.4 秒，命中 2 处原文。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 06 文本润色 ============================ -->
+<section class="screen" data-screen="ai-polish" data-nav="ai"
+         data-title="文本润色" data-desc="智能处理 · 段落润色与对比还原（5.2.4）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">智能处理 / Web开发课程设计报告_张同学_v3.docx</div>
+      <h1>智能处理</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn" data-goto="doc-preview">返回预览</button>
+  </div>
+
+  <div class="tabs mb">
+    <button class="tab" data-goto="ai-summary">文本摘要</button>
+    <button class="tab" data-goto="ai-points">要点提取</button>
+    <button class="tab" data-goto="ai-qa">文档问答</button>
+    <button class="tab is-active" data-goto="ai-polish">文本润色</button>
+  </div>
+
+<div class="notice notice-info mb">润色保持原意，采纳后可一键还原；本次选中 1 个段落（86 字）。</div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>原文与润色结果</h2>
+      <div class="grow"></div>
+      <button class="btn btn-sm">一键还原</button>
+      <button class="btn btn-sm">放弃</button>
+      <button class="btn btn-sm btn-primary">采纳</button>
+    </div>
+    <div class="card-body">
+      <div class="diff">
+        <div class="pane">
+          <header>原文（第 6 页 二、需求分析）</header>
+          <div class="body">
+            我们<del>搞</del>这个系统主要是<del>想要</del>把同学们写报告时候的格式问题解决一下，因为大家每次都要花很多时间去调格式，<del>很烦</del>，所以<del>就</del>做了这个东西。
+          </div>
+        </div>
+        <div class="pane">
+          <header>润色结果</header>
+          <div class="body">
+            本系统的目标是解决学生在撰写课程报告时的格式问题。<ins>由于格式调整占用了较多时间，</ins>系统通过模板与自动校验减少重复的格式调整工作。
+          </div>
+        </div>
+      </div>
+
+      <div class="row mt">
+        <label class="check"><input type="checkbox">同时应用到全文相似段落</label>
+        <div class="grow"></div>
+        <button class="btn btn-sm">部分采纳</button>
+        <button class="btn btn-sm">重新润色</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 07 课程模板库 ============================ -->
+<section class="screen" data-screen="templates" data-nav="format"
+         data-title="课程模板库" data-desc="格式与模板 · 模板维护与发布（5.3.1，教师视角）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">格式与模板 / 课程模板库</div>
+      <h1>课程模板库</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn">导入 Word 模板</button>
+    <button class="btn btn-primary">新建模板</button>
+  </div>
+
+<div class="notice notice-info mb">模板变更后生成新版本并同步到学生端；学生新建文档时按所选课程自动应用模板的章节结构与页面设置。</div>
+
+  <div class="card">
+    <div class="card-body tight row wrap">
+      <div class="field" style="width:200px"><label>课程</label>
+        <select class="select"><option>全部课程</option><option>Web开发技术</option><option>JavaEE 程序设计</option><option>Oracle 数据库应用</option><option>C 语言程序设计</option></select>
+      </div>
+      <div class="field" style="width:150px"><label>状态</label><select class="select"><option>全部状态</option><option>已发布</option><option>草稿</option><option>已停用</option></select></div>
+      <div class="field grow"><label>模板名称</label><div class="search">搜索模板名称</div></div>
+      <button class="btn btn-primary">查询</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th style="width:260px">模板名称</th><th>适用课程</th><th>版本</th><th>主要格式项</th><th>更新时间</th><th>状态</th><th style="width:190px">操作</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="strong">Web开发课程设计报告模板</td><td>Web开发技术</td><td>v2.1</td>
+            <td class="small">宋体小四 · 1.5 倍行距 · 上下 2.54cm / 左右 3.17cm · 页眉含课程与学号</td>
+            <td>2026-09-16</td><td><span class="tag tag-ok">已发布</span></td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost">查看</button><button class="btn btn-sm btn-ghost">编辑</button><button class="btn btn-sm btn-ghost">停用</button></div></td>
+          </tr>
+          <tr>
+            <td class="strong">JavaEE 课程作业模板</td><td>JavaEE 程序设计</td><td>v1.3</td>
+            <td class="small">宋体小四 · 1.25 倍行距 · 图表自动编号 · 代码块保留缩进</td>
+            <td>2026-09-10</td><td><span class="tag tag-ok">已发布</span></td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost">查看</button><button class="btn btn-sm btn-ghost">编辑</button><button class="btn btn-sm btn-ghost">停用</button></div></td>
+          </tr>
+          <tr>
+            <td class="strong">Oracle 应用项目报告模板</td><td>Oracle 数据库应用</td><td>v1.0</td>
+            <td class="small">宋体五号 · 单倍行距 · E-R 图编号规则 · 附录代码清单</td>
+            <td>2026-09-05</td><td><span class="tag tag-ok">已发布</span></td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost">查看</button><button class="btn btn-sm btn-ghost">编辑</button><button class="btn btn-sm btn-ghost">停用</button></div></td>
+          </tr>
+          <tr>
+            <td class="strong">C 语言课程设计报告格式</td><td>C 语言程序设计</td><td>v1.2</td>
+            <td class="small">宋体小四 · 1.5 倍行距 · 流程图编号 · 测试用例表格</td>
+            <td>2026-08-28</td><td><span class="tag tag-muted">草稿</span></td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost">查看</button><button class="btn btn-sm btn-ghost">编辑</button><button class="btn btn-sm btn-primary">发布</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 08 格式规范校验 ============================ -->
+<section class="screen" data-screen="format-check" data-nav="format"
+         data-title="格式规范校验" data-desc="格式与模板 · 提交前格式自查与修复（5.3.2）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">格式与模板 / 格式规范校验 / Oracle课程设计_张同学_v2.docx</div>
+      <h1>格式规范校验</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn">导出校验报告</button>
+    <button class="btn btn-primary">重新校验</button>
+  </div>
+
+  <div class="stats mb">
+    <div class="stat"><div class="k">校验结果</div><div class="v" style="color:var(--err)">未通过</div><div class="d">共 4 项问题</div></div>
+    <div class="stat"><div class="k">可自动修复</div><div class="v">2</div><div class="d">剩余 2 项需人工修改</div></div>
+    <div class="stat"><div class="k">使用模板</div><div class="v" style="font-size:15px">Oracle 应用项目报告模板 v1.0</div><div class="d">课程：Oracle 数据库应用</div></div>
+    <div class="stat"><div class="k">校验耗时</div><div class="v">8 秒</div><div class="d">今天 21:15</div></div>
+  </div>
+
+  <div class="card mb">
+    <div class="card-head">
+      <h2>问题清单</h2>
+      <span class="sub">点击定位可跳转到文档对应位置</span>
+      <div class="grow"></div>
+      <button class="btn btn-sm">过滤：全部</button>
+      <button class="btn btn-sm btn-primary">一键修复全部（2）</button>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th style="width:130px">问题类型</th><th style="width:180px">所在位置</th><th>期望值</th><th>当前值</th><th style="width:160px">操作</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag tag-err">行距</span></td><td>第 3 页 · 正文</td>
+            <td>1.5 倍行距</td><td>1.25 倍行距</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost">定位</button><button class="btn btn-sm btn-primary">一键修复</button></div></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-err">页眉</span></td><td>全文（除封面）</td>
+            <td>包含课程名称与学号</td><td>缺失</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost">定位</button><button class="btn btn-sm btn-primary">一键修复</button></div></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-warn">图表编号</span></td><td>第 6 页 · 图 2</td>
+            <td>图 2-1</td><td>图 2</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost">定位</button><button class="btn btn-sm btn-ghost">修改指引</button></div></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-warn">参考文献</span></td><td>第 21 页 · [3]</td>
+            <td>GB/T 7714 格式（含出版地）</td><td>缺少出版地与出版年</td>
+            <td><div class="actions"><button class="btn btn-sm btn-ghost">定位</button><button class="btn btn-sm btn-ghost">修改指引</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+<div class="notice notice-ok">格式问题的定位准确率不低于 95%。修复后可再次校验，校验通过即可提交。</div>
+</section>
+
+<!-- ============================ 09 格式转换 ============================ -->
+<section class="screen" data-screen="convert" data-nav="format"
+         data-title="格式转换" data-desc="格式与模板 · Word 与 PDF 批量互转（5.3.3）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">格式与模板 / 格式转换</div>
+      <h1>格式转换</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn">清空队列</button>
+    <button class="btn btn-primary">开始转换</button>
+  </div>
+
+  <div class="cols">
+    <div class="main stack">
+      <div class="card">
+        <div class="card-head"><h2>选择文件</h2><span class="sub">单个文件不超过 20MB</span></div>
+        <div class="card-body stack" style="gap:10px">
+          <label class="check"><input type="checkbox" checked>Web开发课程设计报告_张同学_v3.docx<span class="muted small">· 2.4 MB · 目标格式 Word → PDF</span></label>
+          <label class="check"><input type="checkbox" checked>Oracle课程设计_张同学_v2.docx<span class="muted small">· 2.1 MB · 目标格式 Word → PDF</span></label>
+          <label class="check"><input type="checkbox">数据库原理复习提纲.pdf<span class="muted small">· 5.1 MB · 目标格式 PDF → Word</span></label>
+          <div class="row">
+            <div class="field" style="width:220px"><label>目标格式</label>
+              <select class="select"><option>Word → PDF</option><option>PDF → Word</option><option>Word → PDF + 合并</option></select>
+            </div>
+            <div class="field" style="width:220px"><label>页面设置</label>
+              <select class="select"><option>保持原文档设置</option><option>按课程模板设置</option></select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>转换队列</h2><div class="grow"></div><button class="btn btn-sm">批量下载</button></div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>文件</th><th style="width:130px">目标格式</th><th style="width:150px">状态</th><th class="num" style="width:90px">耗时</th><th style="width:120px">操作</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Web开发课程设计报告_张同学_v3.docx</td><td>PDF</td>
+                <td>
+                  <div class="bar" style="width:120px"><i style="width:68%"></i></div>
+                  <span class="small muted">转换中 68%</span>
+                </td>
+                <td class="num">—</td><td><button class="btn btn-sm btn-ghost">取消</button></td>
+              </tr>
+              <tr>
+                <td>数据库原理复习提纲.pdf</td><td>Word</td>
+                <td><span class="tag tag-ok">已完成</span></td><td class="num">12 秒</td>
+                <td><button class="btn btn-sm btn-primary">下载</button></td>
+              </tr>
+              <tr>
+                <td>需加密讲义.pdf</td><td>Word</td>
+                <td>
+                  <span class="tag tag-err">转换失败</span>
+                  <div class="small muted" style="margin-top:4px">失败原因：文件已加密</div>
+                </td>
+                <td class="num">3 秒</td>
+                <td><button class="btn btn-sm btn-ghost">查看原因</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="side stack">
+      <div class="card">
+        <div class="card-head"><h2>转换说明</h2></div>
+        <div class="card-body small muted">
+          20MB 以内单文件转换成功率不低于 99%；转换后的文件为独立副本，原文件保持不变；转换记录会写入历史记录，可重复下载。
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>最近转换</h2></div>
+        <div class="card-body stack" style="gap:8px">
+          <div class="row-between small"><span>JavaEE课程作业_小组版.docx</span><span class="muted">今天 20:04</span></div>
+          <div class="row-between small"><span>C语言课程设计报告_初稿.docx</span><span class="muted">昨天 21:33</span></div>
+          <div class="row-between small"><span>毕业设计任务书.pdf</span><span class="muted">09-14 10:12</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 10 协作与版本 ============================ -->
+<section class="screen" data-screen="collab" data-nav="collab"
+         data-title="协作与版本" data-desc="协作与版本 · 多人协作编辑与版本追溯（5.4.1 / 5.4.2）">
+  <div class="page-head">
+    <div>
+      <div class="crumb">协作与版本 / JavaEE课程作业_小组版.docx</div>
+      <h1>协作与版本</h1>
+    </div>
+    <div class="grow"></div>
+    <button class="btn" data-goto="share">共享设置</button>
+    <button class="btn">邀请成员</button>
+    <button class="btn btn-primary">保存</button>
+  </div>
+
+  <div class="card mb">
+    <div class="card-body tight row">
+      <div class="avatars">
+        <div class="avatar">张</div><div class="avatar a2">李</div><div class="avatar a3">王</div>
+      </div>
+      <div class="small muted">张同学（编辑中）· 李同学（编辑中）· 王同学（仅查看）· 自动保存于 21:10</div>
+      <div class="grow"></div>
+      <span class="tag tag-ok">已同步</span>
+      <span class="tag tag-muted">版本 v5</span>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="main">
+      <div class="paper-wrap">
+        <article class="paper">
+          <h3>JavaEE 课程设计作业</h3>
+          <div class="paper-meta">小组：第 3 组　成员：张同学、李同学、王同学　日期：2026-09-17</div>
+          <h4>2.1 系统功能设计</h4>
+          <p>系统需要支持课程作业的在线编写与提交，<span class="cursor-flag">并保留完整的修改记录</span>。教师可以查看提交统计并导出名单。</p>
+          <p>本模块的处理流程为：<span class="cursor-flag" style="background:#dcfce7;box-shadow:inset -2px 0 0 var(--ok)">文件上传后进行解析与切分</span>，随后进入智能处理与格式校验环节，最终导出为 PDF。</p>
+          <div class="figure-ph">图 2-1 模块处理流程（示意图）</div>
+          <div class="figure-cap">图 2-1 模块处理流程</div>
+        </article>
+      </div>
+    </div>
+
+    <div class="side stack">
+      <div class="card">
+        <div class="card-head"><h2>版本记录</h2><div class="grow"></div><button class="btn btn-sm">对比当前</button></div>
+        <div class="card-body stack" style="gap:10px">
+          <div class="row-between">
+            <div><b class="small">v5 · 今天 21:10</b><div class="small muted">张同学 · 补充第三章流程图</div></div>
+            <div class="actions"><button class="btn btn-sm btn-ghost">对比</button><button class="btn btn-sm btn-ghost">恢复</button></div>
+          </div>
+          <div class="row-between">
+            <div><b class="small">v4 · 今天 19:42</b><div class="small muted">李同学 · 修改需求分析表述</div></div>
+            <div class="actions"><button class="btn btn-sm btn-ghost">对比</button><button class="btn btn-sm btn-ghost">恢复</button></div>
+          </div>
+          <div class="row-between">
+            <div><b class="small">v3 · 昨天 22:05</b><div class="small muted">王同学 · 新增测试用例表</div></div>
+            <div class="actions"><button class="btn btn-sm btn-ghost">对比</button><button class="btn btn-sm btn-ghost">恢复</button></div>
+          </div>
+          <div class="row-between">
+            <div><b class="small">v2 · 昨天 20:18</b><div class="small muted">张同学 · 调整章节结构</div></div>
+            <div class="actions"><button class="btn btn-sm btn-ghost">对比</button><button class="btn btn-sm btn-ghost">恢复</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>成员权限</h2></div>
+        <div class="card-body stack" style="gap:8px">
+          <div class="row-between small"><span>张同学（创建者）</span><span class="tag tag-info">可编辑</span></div>
+          <div class="row-between small"><span>李同学</span><span class="tag tag-info">可编辑</span></div>
+          <div class="row-between small"><span>王同学</span><span class="tag tag-muted">仅查看</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 11 共享与权限设置 ============================ -->
+<section class="screen" data-screen="share" data-nav="docs"
+         data-title="共享与权限设置" data-desc="权限与审计 · 共享范围与权限级别（5.5.2）">
+  <div class="page-head">
+    <div><div class="crumb">文档接入 / 我的文档</div><h1>我的文档</h1></div>
+    <div class="grow"></div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th style="width:300px">文档名称</th><th>所属课程</th><th>状态</th><th>共享范围</th><th style="width:150px">操作</th></tr></thead>
+        <tbody>
+          <tr><td class="strong">Web开发课程设计报告_张同学_v3.docx</td><td>Web开发技术</td><td><span class="tag tag-ok">解析完成</span></td><td>课程范围 · 仅预览</td><td><button class="btn btn-sm btn-ghost">共享设置</button></td></tr>
+          <tr><td class="strong">Oracle课程设计_张同学_v2.docx</td><td>Oracle 数据库应用</td><td><span class="tag tag-warn">格式未通过</span></td><td>仅本人</td><td><button class="btn btn-sm btn-ghost">共享设置</button></td></tr>
+          <tr><td class="strong">毕业论文_第二章_初稿.docx</td><td>毕业设计</td><td><span class="tag tag-ok">解析完成</span></td><td>指定成员（2 人）</td><td><button class="btn btn-sm btn-ghost">共享设置</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="mask">
+    <div class="dialog">
+      <header><h2>共享设置 · Web开发课程设计报告_张同学_v3.docx</h2></header>
+      <div class="body">
+        <div>
+          <div class="small muted mb">共享范围</div>
+          <div class="radio-list">
+            <label><input type="radio" name="scope"><span>仅本人<div class="hint">除本人外任何人不可访问</div></span></label>
+            <label><input type="radio" name="scope"><span>指定成员<div class="hint">按账号或学号添加，最多 20 人</div></span></label>
+            <label><input type="radio" name="scope"><span>小组成员<div class="hint">按课程小组共享，成员变动自动同步</div></span></label>
+            <label class="is-on"><input type="radio" name="scope" checked><span>课程范围<div class="hint">教师可查看，学生仅可在提交后由教师查看</div></span></label>
+          </div>
+        </div>
+
+        <div>
+          <div class="small muted mb">权限级别</div>
+          <div class="row wrap">
+            <label class="check"><input type="checkbox" checked>仅预览</label>
+            <label class="check"><input type="checkbox">可编辑</label>
+            <label class="check"><input type="checkbox">可下载</label>
+            <span class="small muted">默认不允许下载</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>共享链接</label>
+          <div class="row">
+            <select class="select" style="width:140px"><option>有效期 7 天</option><option>有效期 1 天</option><option>有效期 30 天</option></select>
+            <input class="input grow" value="https://edudoc.campus.edu.cn/s/8F3KD9" readonly>
+            <button class="btn">复制</button>
+          </div>
+          <div class="small muted">链接到期后自动失效，访问者需通过学校统一身份认证。</div>
+        </div>
+
+<div class="notice notice-warn">越权访问会被拒绝并写入操作日志；日志记录访问者、时间、对象与结果。</div>
+      </div>
+      <footer>
+        <button class="btn">取消</button>
+        <button class="btn btn-primary">保存设置</button>
+      </footer>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 12 角色与权限管理 ============================ -->
+<section class="screen" data-screen="roles" data-nav="security"
+         data-title="角色与权限管理" data-desc="权限与审计 · 角色权限矩阵与账号授权（5.5.1，管理端）">
+  <div class="page-head">
+    <div><div class="crumb">权限与审计 / 角色与权限管理</div><h1>角色与权限管理</h1></div>
+    <div class="grow"></div>
+    <button class="btn">导入角色</button>
+    <button class="btn btn-primary">新增角色</button>
+  </div>
+
+<div class="notice notice-info mb">权限变更后立即生效，并写入操作日志；角色与权限点的对应关系与《需求规格说明书》表 3-2 一致。</div>
+
+  <div class="card mb">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th style="width:150px">角色</th><th>文档查看</th><th>文档编辑</th><th>文档删除</th><th>模板管理</th><th>权限设置</th><th>日志审计</th><th>提交统计</th><th style="width:120px">操作</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="strong">学生</td><td>本人及共享</td><td>本人及协作</td><td>本人</td><td>—</td><td>—</td><td>—</td><td>—</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+          <tr>
+            <td class="strong">教师</td><td>所授课程</td><td>所授课程</td><td>本人</td><td>✓</td><td>课程范围</td><td>所授课程</td><td>✓</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+          <tr>
+            <td class="strong">教学管理人员</td><td>授权范围</td><td>—</td><td>—</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+          <tr>
+            <td class="strong">系统运维人员</td><td>—</td><td>—</td><td>—</td><td>—</td><td>账号级</td><td>✓</td><td>—</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>账号管理</h2><span class="sub">最近 5 条授权记录</span><div class="grow"></div><button class="btn btn-sm">批量授权</button></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th style="width:140px">账号</th><th>姓名</th><th>角色</th><th>所属院系</th><th>最近登录</th><th style="width:170px">操作</th></tr></thead>
+        <tbody>
+          <tr><td>2023001</td><td>张同学</td><td>学生</td><td>计算机学院</td><td>今天 21:08</td><td><div class="actions"><button class="btn btn-sm btn-ghost">变更角色</button><button class="btn btn-sm btn-ghost">停用</button></div></td></tr>
+          <tr><td>T1002</td><td>孙老师</td><td>教师</td><td>课程组</td><td>今天 19:32</td><td><div class="actions"><button class="btn btn-sm btn-ghost">变更角色</button><button class="btn btn-sm btn-ghost">停用</button></div></td></tr>
+          <tr><td>A2001</td><td>刘老师</td><td>教学管理人员</td><td>教务处</td><td>今天 16:22</td><td><div class="actions"><button class="btn btn-sm btn-ghost">变更角色</button><button class="btn btn-sm btn-ghost">停用</button></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 13 操作日志 ============================ -->
+<section class="screen" data-screen="audit" data-nav="security"
+         data-title="操作日志" data-desc="权限与审计 · 文档操作留痕与异常标记（5.5.3）">
+  <div class="page-head">
+    <div><div class="crumb">权限与审计 / 操作日志</div><h1>操作日志</h1></div>
+    <div class="grow"></div>
+    <button class="btn">导出日志</button>
+    <button class="btn btn-primary">查询</button>
+  </div>
+
+  <div class="card mb">
+    <div class="card-body tight row wrap">
+      <div class="field" style="width:260px"><label>时间范围</label><input class="input" value="2026-09-11 至 2026-09-18"></div>
+      <div class="field" style="width:150px"><label>操作人</label><select class="select"><option>全部</option><option>张同学</option><option>李同学</option><option>孙老师</option><option>刘老师</option></select></div>
+      <div class="field" style="width:170px"><label>操作类型</label><select class="select"><option>全部类型</option><option>文档查看</option><option>文档编辑</option><option>文档下载</option><option>权限变更</option></select></div>
+      <div class="field grow"><label>文档或对象</label><div class="search">搜索文档名称或对象</div></div>
+      <button class="btn">重置</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>日志列表</h2><span class="sub">共 1,284 条 · 当前显示最近 7 条</span><div class="grow"></div><span class="tag tag-warn">2 条待复核</span></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th style="width:150px">时间</th><th style="width:110px">操作人</th><th style="width:130px">角色</th><th style="width:150px">操作类型</th><th>操作对象</th><th style="width:90px">结果</th><th style="width:120px">来源 IP</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>09-17 21:10:24</td><td>张同学</td><td>学生</td><td>文档编辑</td><td>Web开发课程设计报告_张同学_v3.docx</td><td><span class="tag tag-ok">成功</span></td><td>10.20.34.18</td></tr>
+          <tr><td>09-17 21:08:02</td><td>张同学</td><td>学生</td><td>智能处理 · 摘要</td><td>Web开发课程设计报告_张同学_v3.docx</td><td><span class="tag tag-ok">成功</span></td><td>10.20.34.18</td></tr>
+          <tr><td>09-17 20:55:41</td><td>李同学</td><td>学生</td><td>文档查看</td><td>JavaEE课程作业_小组版.docx</td><td><span class="tag tag-ok">成功</span></td><td>10.20.41.7</td></tr>
+          <tr><td>09-17 19:32:10</td><td>孙老师</td><td>教师</td><td>权限变更</td><td>课程范围共享 · Web开发技术</td><td><span class="tag tag-ok">成功</span></td><td>10.20.12.5</td></tr>
+          <tr class="is-flag"><td>09-17 18:40:55</td><td>张同学</td><td>学生</td><td>文档下载</td><td>已授权范围外文档</td><td><span class="tag tag-err">已拒绝</span></td><td>10.20.34.18</td></tr>
+          <tr><td>09-17 16:22:31</td><td>刘老师</td><td>系统运维人员</td><td>账号变更</td><td>2023001 · 角色调整为实习助教</td><td><span class="tag tag-ok">成功</span></td><td>10.20.8.2</td></tr>
+          <tr class="is-flag"><td>09-17 11:05:44</td><td>张同学</td><td>学生</td><td>批量下载（3 个文件）</td><td>我的文档</td><td><span class="tag tag-warn">已标记</span></td><td>10.20.34.18</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pager"><span>日志保留不少于 3 年，支持按时间、操作人、类型与文档筛选</span><div class="grow"></div><button class="pg is-active">1</button><button class="pg">2</button><button class="pg">下一页</button></div>
+  </div>
+</section>
+
+<!-- ============================ 14 导出文档 ============================ -->
+<section class="screen" data-screen="export" data-nav="docs"
+         data-title="导出文档" data-desc="导出与统计 · 导出内容与格式选择（5.6.1）">
+  <div class="page-head">
+    <div><div class="crumb">文档接入 / 我的文档 / Web开发课程设计报告_张同学_v3.docx</div><h1>文档预览</h1></div>
+    <div class="grow"></div>
+  </div>
+
+  <div class="viewer">
+    <div class="outline card">
+      <div class="card-head"><h2>章节结构</h2></div>
+      <div class="card-body tight">
+        <ol>
+          <li>封面与目录</li><li>一、项目背景</li><li>二、需求分析</li><li>三、系统设计</li><li>四、系统实现</li><li>五、系统测试</li><li>参考文献</li>
+        </ol>
+      </div>
+    </div>
+    <div class="paper-wrap">
+      <article class="paper">
+        <h3>面向师生的校园智能文档辅助系统</h3>
+        <div class="paper-meta">课程：Web开发技术　学生：张同学　日期：2026-09-17</div>
+        <h4>四、系统实现</h4>
+        <p>系统实现阶段完成了文档上传、解析、智能处理与格式校验等核心功能，并在测试环境完成并发验证。</p>
+        <div class="code-block"><span class="k">const</span> summary = <span class="k">await</span> ai.summarize(documentId, { length: <span class="s">'standard'</span> });</div>
+      </article>
+    </div>
+  </div>
+
+  <div class="mask">
+    <div class="dialog">
+      <header><h2>导出文档</h2></header>
+      <div class="body">
+        <div>
+          <div class="small muted mb">导出内容</div>
+          <div class="row wrap">
+            <label class="check"><input type="checkbox" checked>全文</label>
+            <label class="check"><input type="checkbox">摘要</label>
+            <label class="check"><input type="checkbox">要点清单</label>
+            <label class="check"><input type="checkbox">问答记录</label>
+          </div>
+        </div>
+
+        <div>
+          <div class="small muted mb">目标格式</div>
+          <div class="row wrap">
+            <label class="check"><input type="radio" name="fmt" checked>.docx 文档</label>
+            <label class="check"><input type="radio" name="fmt">.pdf 文档</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>文件名</label>
+          <input class="input" value="2026秋-Web开发技术-课程设计报告-张同学-v3">
+        </div>
+
+        <label class="check"><input type="checkbox" checked disabled>保留图表编号与代码块格式</label>
+        <div class="notice notice-info">导出结果保留图表编号、代码块格式与页眉设置；导出记录写入历史记录，可重复下载。</div>
+      </div>
+      <footer>
+        <button class="btn">取消</button>
+        <button class="btn btn-primary">开始导出</button>
+      </footer>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 15 提交与统计 ============================ -->
+<section class="screen" data-screen="assignments" data-nav="teaching"
+         data-title="提交与统计" data-desc="导出与统计 · 作业发布、提交与统计（5.6.2，教师视角）">
+  <div class="page-head">
+    <div><div class="crumb">教学 / 作业与统计</div><h1>作业与统计</h1></div>
+    <div class="grow"></div>
+    <button class="btn">导出统计表格</button>
+    <button class="btn btn-primary">发布作业</button>
+  </div>
+
+  <div class="card mb">
+    <div class="card-body row wrap">
+      <div>
+        <div class="strong">Web开发课程设计报告</div>
+        <div class="small muted">课程：Web开发技术 · 截止时间：2026-09-25 23:59 · 模板：Web开发课程设计报告模板 v2.1</div>
+      </div>
+      <div class="grow"></div>
+      <span class="tag tag-ok">已发布</span>
+      <button class="btn btn-sm">编辑</button>
+      <button class="btn btn-sm">关闭提交</button>
+    </div>
+  </div>
+
+  <div class="stats mb">
+    <div class="stat"><div class="k">应交人数</div><div class="v">48</div><div class="d">Web开发技术 · 2 个班</div></div>
+    <div class="stat"><div class="k">已提交</div><div class="v">42</div><div class="d">提交率 87.5%</div></div>
+    <div class="stat"><div class="k">未提交</div><div class="v">6</div><div class="d">可批量提醒</div></div>
+    <div class="stat"><div class="k">迟交</div><div class="v">3</div><div class="d">已标记</div></div>
+  </div>
+
+  <div class="card mb">
+    <div class="card-body">
+      <div class="row-between small mb"><span>提交进度</span><span class="muted">42 / 48</span></div>
+      <div class="bar"><i style="width:87.5%"></i></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>提交名单</h2>
+      <div class="grow"></div>
+      <button class="btn btn-sm">批量下载</button>
+      <button class="btn btn-sm">提醒未提交</button>
+      <button class="btn btn-sm btn-primary">导出统计表格</button>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th style="width:120px">学号</th><th style="width:120px">姓名</th><th style="width:170px">提交时间</th><th style="width:190px">格式校验</th><th style="width:110px">状态</th><th style="width:160px">操作</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>2023001</td><td>张同学</td><td>09-17 21:10</td><td><span class="tag tag-ok">通过</span></td><td><span class="tag tag-info">已提交</span></td><td><div class="actions"><button class="btn btn-sm btn-ghost">下载</button><button class="btn btn-sm btn-ghost">批注</button></div></td></tr>
+          <tr><td>2023002</td><td>李同学</td><td>09-17 20:12</td><td><span class="tag tag-err">未通过（4 项）</span></td><td><span class="tag tag-info">已提交</span></td><td><div class="actions"><button class="btn btn-sm btn-ghost">下载</button><button class="btn btn-sm btn-ghost">批注</button></div></td></tr>
+          <tr><td>2023004</td><td>赵同学</td><td>09-18 00:20</td><td><span class="tag tag-ok">通过</span></td><td><span class="tag tag-warn">迟交</span></td><td><div class="actions"><button class="btn btn-sm btn-ghost">下载</button><button class="btn btn-sm btn-ghost">批注</button></div></td></tr>
+          <tr><td>2023003</td><td>王同学</td><td>—</td><td>—</td><td><span class="tag tag-muted">未提交</span></td><td><button class="btn btn-sm btn-primary">提醒</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pager"><span>共 48 条 · 每页 20 条</span><div class="grow"></div><button class="pg is-active">1</button><button class="pg">2</button><button class="pg">3</button><button class="pg">下一页</button></div>
+  </div>
+</section>
+
+              </div><!-- /app-body -->
+            </div><!-- /app-main -->
+          </div><!-- /app -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

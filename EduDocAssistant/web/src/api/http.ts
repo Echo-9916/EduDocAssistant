@@ -1,6 +1,6 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 import type { ApiResponse } from './types'
-import { getToken } from './token'
+import { clearToken, getToken } from './token'
 
 /** 业务/协议错误：携带错误码与 traceId，供上层按码跳登录/无权限/字段提示。 */
 export class ApiError extends Error {
@@ -40,6 +40,12 @@ http.interceptors.response.use(
   (error: AxiosError<ApiResponse<unknown>>) => {
     const body = error.response?.data
     if (body && typeof body.code === 'number') {
+      if ((body.code === 40101 || body.code === 40102)
+          && !error.config?.url?.startsWith('/auth/login')) {
+        clearToken()
+        const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+        window.location.replace(`/login?redirect=${redirect}`)
+      }
       return Promise.reject(new ApiError(body.code, body.message, body.traceId))
     }
     if (error.code === 'ECONNABORTED') {

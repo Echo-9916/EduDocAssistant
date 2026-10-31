@@ -1,16 +1,26 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, homeOf, useAuth } from './auth/AuthContext'
 import RequireAuth from './auth/RequireAuth'
+import AppShell from './layouts/AppShell'
 import Login from './pages/Login'
 import Forbidden from './pages/Forbidden'
-import Workbench from './pages/Workbench'
+import SectionPlaceholder from './pages/SectionPlaceholder'
 import Demo from './pages/Demo'
+import { roleNav, rolePath } from './routes'
+import type { NavItem } from './routes'
+import type { RoleCodeValue } from './api/types'
 
 function Home() {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
   return <Navigate to={homeOf(user.roles)} replace />
 }
+
+const ROLES: { role: RoleCodeValue; nav: NavItem[] }[] = [
+  { role: 'STUDENT', nav: roleNav.STUDENT },
+  { role: 'TEACHER', nav: roleNav.TEACHER },
+  { role: 'OPS', nav: roleNav.OPS },
+]
 
 export default function App() {
   return (
@@ -21,9 +31,22 @@ export default function App() {
           <Route path="/403" element={<Forbidden />} />
           <Route path="/demo" element={<Demo />} />
           <Route path="/" element={<Home />} />
-          <Route path="/student/*" element={<RequireAuth roles={['STUDENT']}><Workbench /></RequireAuth>} />
-          <Route path="/teacher/*" element={<RequireAuth roles={['TEACHER']}><Workbench /></RequireAuth>} />
-          <Route path="/operations/*" element={<RequireAuth roles={['OPS']}><Workbench /></RequireAuth>} />
+          {ROLES.map(({ role, nav }) => (
+            <Route
+              key={role}
+              path={rolePath[role]}
+              element={
+                <RequireAuth roles={[role]}>
+                  <AppShell />
+                </RequireAuth>
+              }
+            >
+              <Route index element={<Navigate to={nav[0].key} replace />} />
+              {nav.map((item) => (
+                <Route key={item.key} path={item.key} element={<SectionPlaceholder title={item.label} />} />
+              ))}
+            </Route>
+          ))}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

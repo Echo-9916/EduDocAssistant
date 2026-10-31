@@ -19,7 +19,7 @@
 - **需求/设计/原型引用**：与 F-01 契约速查一一对应；错误码 §5.1、envelope §5.3；角色/权限编码见 `04_seed.sql`。
 - **验收标准**：`web/src/api/types.ts`（或 `types/`）定义 `ApiResponse<T>`、`ErrorCode`、`PageResult<T>`、`UserPrincipal`(userId/roles/courseScope)、账号状态/角色/权限编码常量；字段与后端 DTO 一致；`pnpm build` 通过。
 - **依赖**：F-01
-- **状态**：未开始
+- **状态**：已完成
 
 ## F-03 后端 · 认证与令牌签发
 

@@ -1,0 +1,438 @@
+{
+  "teacher": [
+    {
+      "index": 1,
+      "id": "workbench",
+      "title": "教学工作台",
+      "group": "教学总览",
+      "file": "01_workbench.png",
+      "bytes": 142522
+    },
+    {
+      "index": 2,
+      "id": "documents",
+      "title": "我的教学文档",
+      "group": "文档接入",
+      "file": "02_documents.png",
+      "bytes": 137467
+    },
+    {
+      "index": 3,
+      "id": "upload",
+      "title": "上传教学文档",
+      "group": "文档接入",
+      "file": "03_upload.png",
+      "bytes": 142937
+    },
+    {
+      "index": 4,
+      "id": "preview",
+      "title": "文档预览",
+      "group": "文档接入",
+      "file": "04_preview.png",
+      "bytes": 151264
+    },
+    {
+      "index": 5,
+      "id": "summary",
+      "title": "文本摘要",
+      "group": "智能处理",
+      "file": "05_summary.png",
+      "bytes": 134801
+    },
+    {
+      "index": 6,
+      "id": "keypoints",
+      "title": "要点提取",
+      "group": "智能处理",
+      "file": "06_keypoints.png",
+      "bytes": 130352
+    },
+    {
+      "index": 7,
+      "id": "qa",
+      "title": "文档问答",
+      "group": "智能处理",
+      "file": "07_qa.png",
+      "bytes": 139831
+    },
+    {
+      "index": 8,
+      "id": "polish",
+      "title": "文本润色",
+      "group": "智能处理",
+      "file": "08_polish.png",
+      "bytes": 119762
+    },
+    {
+      "index": 9,
+      "id": "templates",
+      "title": "课程模板库",
+      "group": "格式与模板",
+      "file": "09_templates.png",
+      "bytes": 115638
+    },
+    {
+      "index": 10,
+      "id": "template-editor",
+      "title": "编辑课程模板",
+      "group": "格式与模板",
+      "file": "10_template-editor.png",
+      "bytes": 138755
+    },
+    {
+      "index": 11,
+      "id": "template-publish",
+      "title": "发布模板确认",
+      "group": "格式与模板",
+      "file": "11_template-publish.png",
+      "bytes": 149718
+    },
+    {
+      "index": 12,
+      "id": "format-check",
+      "title": "格式规范校验",
+      "group": "格式与模板",
+      "file": "12_format-check.png",
+      "bytes": 129759
+    },
+    {
+      "index": 13,
+      "id": "autofix",
+      "title": "一键修复确认",
+      "group": "格式与模板",
+      "file": "13_autofix.png",
+      "bytes": 151775
+    },
+    {
+      "index": 14,
+      "id": "convert",
+      "title": "格式转换",
+      "group": "格式与模板",
+      "file": "14_convert.png",
+      "bytes": 132345
+    },
+    {
+      "index": 15,
+      "id": "collaborate",
+      "title": "协作编辑",
+      "group": "协作与版本",
+      "file": "15_collaborate.png",
+      "bytes": 143704
+    },
+    {
+      "index": 16,
+      "id": "versions",
+      "title": "版本记录",
+      "group": "协作与版本",
+      "file": "16_versions.png",
+      "bytes": 110877
+    },
+    {
+      "index": 17,
+      "id": "compare",
+      "title": "版本对比",
+      "group": "协作与版本",
+      "file": "17_compare.png",
+      "bytes": 114397
+    },
+    {
+      "index": 18,
+      "id": "restore",
+      "title": "恢复版本确认",
+      "group": "协作与版本",
+      "file": "18_restore.png",
+      "bytes": 154886
+    },
+    {
+      "index": 19,
+      "id": "share",
+      "title": "共享设置",
+      "group": "协作与版本",
+      "file": "19_share.png",
+      "bytes": 118239
+    },
+    {
+      "index": 20,
+      "id": "courses",
+      "title": "课程管理",
+      "group": "课程与作业",
+      "file": "20_courses.png",
+      "bytes": 121160
+    },
+    {
+      "index": 21,
+      "id": "create-course",
+      "title": "新建课程",
+      "group": "课程与作业",
+      "file": "21_create-course.png",
+      "bytes": 118585
+    },
+    {
+      "index": 22,
+      "id": "members",
+      "title": "课程成员导入",
+      "group": "课程与作业",
+      "file": "22_members.png",
+      "bytes": 125157
+    },
+    {
+      "index": 23,
+      "id": "assignments",
+      "title": "作业与提交统计",
+      "group": "课程与作业",
+      "file": "23_assignments.png",
+      "bytes": 139513
+    },
+    {
+      "index": 24,
+      "id": "publish-assignment",
+      "title": "发布作业",
+      "group": "课程与作业",
+      "file": "24_publish-assignment.png",
+      "bytes": 137551
+    },
+    {
+      "index": 25,
+      "id": "grade",
+      "title": "批改与反馈",
+      "group": "课程与作业",
+      "file": "25_grade.png",
+      "bytes": 159970
+    },
+    {
+      "index": 26,
+      "id": "messages",
+      "title": "消息中心",
+      "group": "消息与个人中心",
+      "file": "26_messages.png",
+      "bytes": 129246
+    },
+    {
+      "index": 27,
+      "id": "profile",
+      "title": "个人资料",
+      "group": "消息与个人中心",
+      "file": "27_profile.png",
+      "bytes": 129157
+    }
+  ],
+  "operations": [
+    {
+      "index": 1,
+      "id": "workbench",
+      "title": "运维工作台",
+      "group": "总览",
+      "file": "01_workbench.png",
+      "bytes": 142178
+    },
+    {
+      "index": 2,
+      "id": "courses",
+      "title": "课程治理",
+      "group": "教学治理",
+      "file": "02_courses.png",
+      "bytes": 128782
+    },
+    {
+      "index": 3,
+      "id": "course-detail",
+      "title": "课程详情",
+      "group": "教学治理",
+      "file": "03_course-detail.png",
+      "bytes": 145426
+    },
+    {
+      "index": 4,
+      "id": "create-course",
+      "title": "新建课程",
+      "group": "教学治理",
+      "file": "04_create-course.png",
+      "bytes": 125504
+    },
+    {
+      "index": 5,
+      "id": "members",
+      "title": "成员导入",
+      "group": "教学治理",
+      "file": "05_members.png",
+      "bytes": 125412
+    },
+    {
+      "index": 6,
+      "id": "archive-course",
+      "title": "归档课程确认",
+      "group": "教学治理",
+      "file": "06_archive-course.png",
+      "bytes": 149727
+    },
+    {
+      "index": 7,
+      "id": "users",
+      "title": "用户目录",
+      "group": "用户与权限",
+      "file": "07_users.png",
+      "bytes": 125959
+    },
+    {
+      "index": 8,
+      "id": "user-detail",
+      "title": "用户权限详情",
+      "group": "用户与权限",
+      "file": "08_user-detail.png",
+      "bytes": 131383
+    },
+    {
+      "index": 9,
+      "id": "add-user",
+      "title": "添加用户",
+      "group": "用户与权限",
+      "file": "09_add-user.png",
+      "bytes": 144785
+    },
+    {
+      "index": 10,
+      "id": "roles",
+      "title": "角色权限矩阵",
+      "group": "用户与权限",
+      "file": "10_roles.png",
+      "bytes": 112396
+    },
+    {
+      "index": 11,
+      "id": "create-role",
+      "title": "新增角色",
+      "group": "用户与权限",
+      "file": "11_create-role.png",
+      "bytes": 149718
+    },
+    {
+      "index": 12,
+      "id": "change-role",
+      "title": "变更用户角色",
+      "group": "用户与权限",
+      "file": "12_change-role.png",
+      "bytes": 146741
+    },
+    {
+      "index": 13,
+      "id": "access-policy",
+      "title": "访问策略",
+      "group": "审计与安全",
+      "file": "13_access-policy.png",
+      "bytes": 126770
+    },
+    {
+      "index": 14,
+      "id": "conflicts",
+      "title": "权限冲突复核",
+      "group": "审计与安全",
+      "file": "14_conflicts.png",
+      "bytes": 124860
+    },
+    {
+      "index": 15,
+      "id": "audit",
+      "title": "操作日志",
+      "group": "审计与安全",
+      "file": "15_audit.png",
+      "bytes": 120020
+    },
+    {
+      "index": 16,
+      "id": "audit-detail",
+      "title": "审计事件详情",
+      "group": "审计与安全",
+      "file": "16_audit-detail.png",
+      "bytes": 132194
+    },
+    {
+      "index": 17,
+      "id": "anomaly",
+      "title": "异常复核",
+      "group": "审计与安全",
+      "file": "17_anomaly.png",
+      "bytes": 135912
+    },
+    {
+      "index": 18,
+      "id": "security",
+      "title": "安全事件中心",
+      "group": "审计与安全",
+      "file": "18_security.png",
+      "bytes": 128900
+    },
+    {
+      "index": 19,
+      "id": "security-detail",
+      "title": "安全事件详情",
+      "group": "审计与安全",
+      "file": "19_security-detail.png",
+      "bytes": 130460
+    },
+    {
+      "index": 20,
+      "id": "freeze-account",
+      "title": "冻结账号确认",
+      "group": "审计与安全",
+      "file": "20_freeze-account.png",
+      "bytes": 146472
+    },
+    {
+      "index": 21,
+      "id": "storage",
+      "title": "存储与回收站",
+      "group": "存储与资源",
+      "file": "21_storage.png",
+      "bytes": 133470
+    },
+    {
+      "index": 22,
+      "id": "cleanup",
+      "title": "存储清理确认",
+      "group": "存储与资源",
+      "file": "22_cleanup.png",
+      "bytes": 147238
+    },
+    {
+      "index": 23,
+      "id": "services",
+      "title": "系统服务状态",
+      "group": "存储与资源",
+      "file": "23_services.png",
+      "bytes": 124693
+    },
+    {
+      "index": 24,
+      "id": "config-changes",
+      "title": "配置变更记录",
+      "group": "存储与资源",
+      "file": "24_config-changes.png",
+      "bytes": 122073
+    },
+    {
+      "index": 25,
+      "id": "messages",
+      "title": "消息与告警",
+      "group": "消息与个人中心",
+      "file": "25_messages.png",
+      "bytes": 124748
+    },
+    {
+      "index": 26,
+      "id": "profile",
+      "title": "个人资料",
+      "group": "消息与个人中心",
+      "file": "26_profile.png",
+      "bytes": 121187
+    },
+    {
+      "index": 27,
+      "id": "account",
+      "title": "账号与安全",
+      "group": "消息与个人中心",
+      "file": "27_account.png",
+      "bytes": 118412
+    }
+  ]
+}

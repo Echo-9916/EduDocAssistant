@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-10-29T12:03:28.727Z",
+  "figmaVersionId": "2415758529163756661",
+  "passed": true,
+  "roles": [
+    {
+      "key": "student",
+      "pageId": "0:1",
+      "pageName": "校园智能文档助手 · 全场景原型",
+      "frameCount": 39,
+      "overviewNodeId": "205:2",
+      "screenCount": 27,
+      "editableScreenCount": 27,
+      "screenshotFillFrames": 0,
+      "textLayers": 1518,
+      "rectangleLayers": 1469,
+      "vectorLayers": 1733,
+      "imageFills": 27,
+      "prototypeReactions": 0
+    },
+    {
+      "key": "teacher",
+      "pageId": "228:2",
+      "pageName": "[V3] 教师端路线",
+      "frameCount": 28,
+      "overviewNodeId": "228:3",
+      "screenCount": 27,
+      "editableScreenCount": 27,
+      "screenshotFillFrames": 0,
+      "textLayers": 1604,
+      "rectangleLayers": 1632,
+      "vectorLayers": 1595,
+      "imageFills": 27,
+      "prototypeReactions": 0
+    },
+    {
+      "key": "operations",
+      "pageId": "228:31",
+      "pageName": "[V3] 运维端路线",
+      "frameCount": 28,
+      "overviewNodeId": "228:32",
+      "screenCount": 27,
+      "editableScreenCount": 27,
+      "screenshotFillFrames": 0,
+      "textLayers": 1785,
+      "rectangleLayers": 2146,
+      "vectorLayers": 1576,
+      "imageFills": 27,
+      "prototypeReactions": 0
+    }
+  ],
+  "totals": {
+    "screens": 81,
+    "editableScreens": 81,
+    "screenshotFillFrames": 0,
+    "textLayers": 4907,
+    "rectangleLayers": 5247,
+    "vectorLayers": 4904,
+    "routeReactions": 0
+  }
+}

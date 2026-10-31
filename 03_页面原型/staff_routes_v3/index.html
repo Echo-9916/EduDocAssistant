@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>教师与运维路线 v3</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="route-index">
+      <section class="route-index-head">
+        <span class="badge info">STAFF ROUTES V3</span>
+        <h1>教师与运维端第三版原型</h1>
+        <p>两条独立角色路线，共 54 个静态画面。页面内交互保留，页面间不设置跳转。</p>
+      </section>
+      <section class="route-index-grid">
+        <a class="route-index-card teacher" href="./teacher.html#workbench">
+          <span class="row-icon"><i data-lucide="presentation" aria-hidden="true"></i></span>
+          <div>
+            <span class="route-index-kicker">TEACHER · 27 SCREENS</span>
+            <h2>教师端 v3</h2>
+            <p>课程模板、教学文档、格式校验、课程与作业、批改反馈。</p>
+          </div>
+          <strong>打开教师路线</strong>
+        </a>
+        <a class="route-index-card operations" href="./operations.html#workbench">
+          <span class="row-icon"><i data-lucide="shield-check" aria-hidden="true"></i></span>
+          <div>
+            <span class="route-index-kicker">OPERATIONS · 27 SCREENS</span>
+            <h2>运维端 v3</h2>
+            <p>教学治理、用户权限、审计安全、存储资源、告警与账号。</p>
+          </div>
+          <strong>打开运维路线</strong>
+        </a>
+      </section>
+    </main>
+    <script src="./lucide.min.js"></script>
+    <script>window.lucide?.createIcons({ attrs: { "stroke-width": 1.8 } });</script>
+  </body>
+</html>

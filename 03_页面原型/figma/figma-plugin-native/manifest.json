@@ -1,0 +1,13 @@
+{
+  "name": "Staff Routes Native Import V2",
+  "id": "staff-routes-native-import-local-v2",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["http://localhost:4180"],
+    "devAllowedDomains": ["http://localhost:4180"],
+    "reasoning": "Loads editable scene geometry and writes an import verification report to the local preview server."
+  }
+}

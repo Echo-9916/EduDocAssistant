@@ -7,9 +7,7 @@ VALUES ('STUDENT', '学生', 'Y', '本人及共享文档的查看、编辑、智
 INSERT INTO edudoc_role (role_code, role_name, is_builtin, description, status)
 VALUES ('TEACHER', '教师', 'Y', '所授课程模板、作业、提交统计与文档管理', 'A');
 INSERT INTO edudoc_role (role_code, role_name, is_builtin, description, status)
-VALUES ('ADMIN', '教学管理人员', 'Y', '授权范围内课程配置、模板、统计与审计', 'A');
-INSERT INTO edudoc_role (role_code, role_name, is_builtin, description, status)
-VALUES ('OPS', '系统运维人员', 'Y', '账号与角色维护、服务巡检和审计查询', 'A');
+VALUES ('OPS', '运维人员', 'Y', '授权范围内课程配置、模板、统计与审计；账号与角色维护、服务巡检与审计查询', 'A');
 
 INSERT INTO edudoc_permission (permission_code, permission_name, resource_type, action_code, description) VALUES ('DOCUMENT_READ', '查看文档', 'DOCUMENT', 'READ', '查看文档');
 INSERT INTO edudoc_permission (permission_code, permission_name, resource_type, action_code, description) VALUES ('DOCUMENT_CREATE', '创建文档', 'DOCUMENT', 'CREATE', '创建文档');
@@ -34,7 +32,6 @@ INSERT INTO edudoc_permission (permission_code, permission_name, resource_type, 
 
 INSERT INTO edudoc_role_permission (role_id, permission_id) SELECT r.id, p.id FROM edudoc_role r CROSS JOIN edudoc_permission p WHERE r.role_code = 'STUDENT' AND p.permission_code IN ('DOCUMENT_READ', 'DOCUMENT_CREATE', 'DOCUMENT_EDIT', 'DOCUMENT_DELETE', 'DOCUMENT_DOWNLOAD', 'DOCUMENT_SHARE', 'AI_SUMMARY', 'AI_KEYPOINT', 'AI_QA', 'AI_POLISH', 'TEMPLATE_READ', 'FORMAT_CHECK', 'FORMAT_CONVERT', 'COLLAB_EDIT', 'VERSION_RESTORE');
 INSERT INTO edudoc_role_permission (role_id, permission_id) SELECT r.id, p.id FROM edudoc_role r CROSS JOIN edudoc_permission p WHERE r.role_code = 'TEACHER' AND p.permission_code IN ('DOCUMENT_READ', 'DOCUMENT_CREATE', 'DOCUMENT_EDIT', 'DOCUMENT_DELETE', 'DOCUMENT_DOWNLOAD', 'DOCUMENT_SHARE', 'AI_SUMMARY', 'AI_KEYPOINT', 'AI_QA', 'AI_POLISH', 'TEMPLATE_READ', 'TEMPLATE_MANAGE', 'FORMAT_CHECK', 'FORMAT_CONVERT', 'COLLAB_EDIT', 'VERSION_RESTORE', 'AUDIT_READ', 'ASSIGNMENT_MANAGE', 'SUBMISSION_READ');
-INSERT INTO edudoc_role_permission (role_id, permission_id) SELECT r.id, p.id FROM edudoc_role r CROSS JOIN edudoc_permission p WHERE r.role_code = 'ADMIN' AND p.permission_code IN ('DOCUMENT_READ', 'DOCUMENT_DOWNLOAD', 'TEMPLATE_READ', 'TEMPLATE_MANAGE', 'FORMAT_CHECK', 'ROLE_MANAGE', 'AUDIT_READ', 'ASSIGNMENT_MANAGE', 'SUBMISSION_READ');
-INSERT INTO edudoc_role_permission (role_id, permission_id) SELECT r.id, p.id FROM edudoc_role r CROSS JOIN edudoc_permission p WHERE r.role_code = 'OPS' AND p.permission_code IN ('ROLE_MANAGE', 'AUDIT_READ');
+INSERT INTO edudoc_role_permission (role_id, permission_id) SELECT r.id, p.id FROM edudoc_role r CROSS JOIN edudoc_permission p WHERE r.role_code = 'OPS' AND p.permission_code IN ('DOCUMENT_READ', 'DOCUMENT_DOWNLOAD', 'TEMPLATE_READ', 'TEMPLATE_MANAGE', 'FORMAT_CHECK', 'ROLE_MANAGE', 'AUDIT_READ', 'ASSIGNMENT_MANAGE', 'SUBMISSION_READ');
 
 COMMIT;

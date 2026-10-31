@@ -39,7 +39,7 @@ COMMENT ON COLUMN edudoc_user.account_status IS '账号状态：A 正常、I 未
 COMMENT ON COLUMN edudoc_user.last_login_time IS '最近登录时间';
 COMMENT ON COLUMN edudoc_user.remark IS '管理备注';
 
--- 角色表: 保存学生、教师、教学管理人员、系统运维人员及自定义角色。
+-- 角色表: 保存学生、教师、运维人员及自定义角色。
 CREATE TABLE edudoc_role (
     id RAW(16) DEFAULT SYS_GUID() NOT NULL,
     create_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE edudoc_role (
     CONSTRAINT ck_role_flag CHECK (is_builtin IN ('Y','N') AND status IN ('A','D'))
 );
 
-COMMENT ON TABLE edudoc_role IS '保存学生、教师、教学管理人员、系统运维人员及自定义角色。';
+COMMENT ON TABLE edudoc_role IS '保存学生、教师、运维人员及自定义角色。';
 COMMENT ON COLUMN edudoc_role.id IS '主键，数据库自动生成 GUID';
 COMMENT ON COLUMN edudoc_role.create_time IS '创建时间，默认数据库当前时间';
 COMMENT ON COLUMN edudoc_role.update_time IS '最后更新时间，由触发器维护';

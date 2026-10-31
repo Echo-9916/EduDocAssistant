@@ -1,0 +1,15 @@
+{
+  "mode": "dump",
+  "prefix": "after",
+  "saveVersion": false,
+  "prefix": "after",
+  "versionTitle": "Normalize route screen structure",
+  "versionDescription": "Applied the login-screen grouping and naming conventions (总画布 / 侧边栏 / 内容区 / 顶部栏 / 搜索框 / 导航菜单) across all 81 route screens.",
+  "frames": [
+    { "page": "校园智能文档助手 · 登录及学生端路线", "frame": "学生路线 v3 / 01 学习工作台", "key": "student-01", "scale": 0.5 },
+    { "page": "校园智能文档助手 · 登录及学生端路线", "frame": "学生路线 v3 / 03 上传文档", "key": "student-03", "scale": 0.5 },
+    { "page": "校园智能文档助手 · 登录及学生端路线", "frame": "学生路线 v3 / 10 文本润色", "key": "student-10", "scale": 0.5 },
+    { "page": "[V3] 教师端路线", "frame": "教师端 v3 / 01 教学工作台", "key": "teacher-01", "scale": 0.5 },
+    { "page": "[V3] 运维端路线", "frame": "运维端 v3 / 02 课程治理", "key": "ops-02", "scale": 0.5 }
+  ]
+}

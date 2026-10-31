@@ -1,0 +1,17 @@
+{
+  "name": "CIDAS Normalize V1",
+  "id": "cidas-normalize-local-v1",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": [
+      "http://localhost:4181"
+    ],
+    "devAllowedDomains": [
+      "http://localhost:4181"
+    ],
+    "reasoning": "Loads normalization tasks from the local bridge and writes structure dumps, rename reports and verification exports back to it."
+  }
+}

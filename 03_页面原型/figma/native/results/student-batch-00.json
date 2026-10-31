@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-10-29T08:21:30.487Z",
+  "role": "student",
+  "pageId": "0:1",
+  "pageName": "校园智能文档助手 · 全场景原型",
+  "offset": 0,
+  "sceneCount": 1,
+  "overview": {
+    "id": "205:2"
+  },
+  "screens": [
+    {
+      "step": 1,
+      "id": "199:2",
+      "name": "学生路线 v3 / 01 学习工作台",
+      "layerCount": 149,
+      "rectCount": 45,
+      "textCount": 69,
+      "iconCount": 26,
+      "imageCount": 1,
+      "errors": []
+    }
+  ],
+  "snapshots": [],
+  "totals": {
+    "text": 69,
+    "rectangles": 45,
+    "icons": 26,
+    "images": 1,
+    "errors": 0
+  },
+  "version": {
+    "id": "2415703999172187540"
+  }
+}

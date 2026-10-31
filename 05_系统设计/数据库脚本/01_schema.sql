@@ -99,7 +99,6 @@ CREATE TABLE edudoc_user_role (
     effective_to TIMESTAMP(6) WITH TIME ZONE,
     granted_by RAW(16),
     CONSTRAINT pk_user_role PRIMARY KEY (id),
-    CONSTRAINT uk_user_role_1 UNIQUE (user_id, role_id, effective_from),
     CONSTRAINT fk_user_role_1 FOREIGN KEY (user_id) REFERENCES edudoc_user (id),
     CONSTRAINT fk_user_role_2 FOREIGN KEY (role_id) REFERENCES edudoc_role (id),
     CONSTRAINT fk_user_role_3 FOREIGN KEY (granted_by) REFERENCES edudoc_user (id)
@@ -114,6 +113,11 @@ COMMENT ON COLUMN edudoc_user_role.role_id IS '角色 ID';
 COMMENT ON COLUMN edudoc_user_role.effective_from IS '生效时间';
 COMMENT ON COLUMN edudoc_user_role.effective_to IS '失效时间，空表示长期有效';
 COMMENT ON COLUMN edudoc_user_role.granted_by IS '授权人 ID';
+
+-- Oracle disallows UNIQUE constraints on TIMESTAMP WITH TIME ZONE columns,
+-- so enforce the same rule on the UTC instant with a function-based index.
+CREATE UNIQUE INDEX uk_user_role_1
+ON edudoc_user_role (user_id, role_id, SYS_EXTRACT_UTC(effective_from));
 
 -- 角色权限关联表: 记录角色拥有的权限点。
 CREATE TABLE edudoc_role_permission (

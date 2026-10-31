@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.access.infrastructure.UserAccountMapper">
+
+    <select id="selectByUsername" resultType="com.cidas.edudoc.access.infrastructure.UserAccount">
+        SELECT RAWTOHEX(id) AS id, username, display_name AS displayName,
+               password_hash AS passwordHash, account_status AS accountStatus,
+               auth_source AS authSource
+        FROM edudoc_user
+        WHERE username = #{username}
+    </select>
+
+    <select id="selectAccountStatus" resultType="string">
+        SELECT account_status FROM edudoc_user WHERE id = HEXTORAW(#{userIdHex})
+    </select>
+
+    <select id="selectRoleCodes" resultType="string">
+        SELECT r.role_code
+        FROM edudoc_role r
+        JOIN edudoc_user_role ur ON r.id = ur.role_id
+        WHERE ur.user_id = HEXTORAW(#{userIdHex}) AND r.status = 'A'
+          AND (ur.effective_to IS NULL OR ur.effective_to &gt; SYSTIMESTAMP)
+    </select>
+
+    <select id="selectPermissionCodes" resultType="string">
+        SELECT DISTINCT p.permission_code
+        FROM edudoc_permission p
+        JOIN edudoc_role_permission rp ON p.id = rp.permission_id
+        JOIN edudoc_user_role ur ON rp.role_id = ur.role_id
+        WHERE ur.user_id = HEXTORAW(#{userIdHex})
+          AND (ur.effective_to IS NULL OR ur.effective_to &gt; SYSTIMESTAMP)
+    </select>
+
+</mapper>

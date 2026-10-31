@@ -1,5 +1,6 @@
 package com.cidas.edudoc.access.application;
 
+import com.cidas.edudoc.access.application.impl.LocalAuthProvider;
 import com.cidas.edudoc.access.infrastructure.UserAccount;
 import com.cidas.edudoc.access.infrastructure.UserAccountRepository;
 import com.cidas.edudoc.common.api.CidasBusinessException;

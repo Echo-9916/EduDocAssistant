@@ -6,6 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -15,15 +16,11 @@ import java.io.IOException;
 
 /** 从 Authorization: Bearer 头解析令牌，实时加载角色/权限并建立安全上下文。 */
 @Component
+@RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserAccountRepository userAccountRepository;
-
-    public JwtAuthenticationFilter(JwtService jwtService, UserAccountRepository userAccountRepository) {
-        this.jwtService = jwtService;
-        this.userAccountRepository = userAccountRepository;
-    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,

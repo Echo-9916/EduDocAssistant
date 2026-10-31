@@ -1,5 +1,6 @@
 package com.cidas.edudoc.access.application;
 
+import com.cidas.edudoc.access.application.impl.AuthServiceImpl;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.JwtService;
@@ -19,7 +20,7 @@ class AuthServiceTest {
 
     private final AuthProvider authProvider = mock(AuthProvider.class);
     private final JwtService jwtService = mock(JwtService.class);
-    private final AuthService authService = new AuthService(authProvider, jwtService);
+    private final AuthService authService = new AuthServiceImpl(authProvider, jwtService);
 
     @Test
     void loginSuccessIssuesToken() {

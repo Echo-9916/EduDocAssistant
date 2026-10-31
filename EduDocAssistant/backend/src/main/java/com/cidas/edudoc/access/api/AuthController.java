@@ -3,6 +3,7 @@ package com.cidas.edudoc.access.api;
 import com.cidas.edudoc.access.application.AuthService;
 import com.cidas.edudoc.common.api.ApiResponse;
 import com.cidas.edudoc.common.security.UserPrincipal;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,13 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
     private final AuthService authService;
-
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
 
     @PostMapping("/login")
     public ApiResponse<AuthService.LoginResult> login(@RequestBody LoginRequest request) {

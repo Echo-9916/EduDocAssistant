@@ -17,10 +17,12 @@ export interface PageResult<T> {
   pageSize: number
 }
 
-/** 当前登录用户上下文（对应后端请求上下文 §2.2 的 userId/roles/courseScope） */
+/** 当前登录用户上下文（与后端 common/security/UserPrincipal 字段一致） */
 export interface UserPrincipal {
   userId: string
+  username: string
   roles: string[]
+  permissions: string[]
   courseScope: string[]
 }
 

@@ -1,0 +1,19 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 2rem;
+}
+table {
+  border-collapse: collapse;
+}
+td {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ccc;
+}
+.green {
+  color: #0a7d32;
+  font-weight: 700;
+}
+.red {
+  color: #c00;
+  font-weight: 700;
+}

@@ -1,0 +1,9 @@
+[project]
+name = "edudoc-ai-service"
+version = "0.1.0"
+description = "CIDAS 智能处理服务：摘要、要点、问答、润色、向量化"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+]

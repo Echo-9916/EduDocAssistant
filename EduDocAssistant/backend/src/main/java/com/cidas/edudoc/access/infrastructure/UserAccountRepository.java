@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -34,10 +35,21 @@ public class UserAccountRepository {
     }
 
     public UserPrincipal loadPrincipal(String userIdHex, String username) {
+        // 鉴权顺序第 2 步：账号状态，非正常（锁定/未激活/注销）直接拒绝
+        if (!isActive(userIdHex)) {
+            return null;
+        }
         Set<String> roles = findRoleCodes(userIdHex);
         Set<String> permissions = findPermissionCodes(userIdHex);
         // ponytail: courseScope 待课程成员模块落地后填充
         return new UserPrincipal(userIdHex, username, roles, permissions, Set.of());
+    }
+
+    private boolean isActive(String userIdHex) {
+        List<String> statuses = jdbc.queryForList(
+                "SELECT account_status FROM edudoc_user WHERE id = HEXTORAW(?)",
+                String.class, userIdHex);
+        return !statuses.isEmpty() && "A".equals(statuses.get(0));
     }
 
     private Set<String> findRoleCodes(String userIdHex) {

@@ -33,7 +33,7 @@
 - **需求/设计/原型引用**：详细设计 §2.5 鉴权顺序、§3.5.1 鉴权算法、§3.5.2 角色/权限接口；DB `edudoc_role`/`edudoc_permission`/`edudoc_user_role`/`edudoc_role_permission`；`04_seed.sql`（3 内置角色 + 20 权限点）。
 - **验收标准**：Spring Security 过滤器链 + JWT 过滤器；`UserPrincipal`/`AuthContext` 建立请求上下文；`@RequirePermission("DOCUMENT_READ")` 注解 + `AccessGuard` 切面，鉴权顺序固定（认证→账号状态→角色→课程范围，ACL 留给文档模块）；预置角色/权限常量与 seed 一致；单元测试覆盖无令牌→40101、无权限→40301、账号锁定→拒绝。
 - **依赖**：F-03
-- **状态**：未开始
+- **状态**：已完成
 
 ## F-05 前端 · 认证流程与路由守卫
 

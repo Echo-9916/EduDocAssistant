@@ -4,13 +4,17 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.UUID;
 
-/** 从 X-Trace-Id 透传或生成 traceId，回写响应头，并在请求结束后清理线程本地。 */
+/** 从 X-Trace-Id 透传或生成 traceId，回写响应头，并在请求结束后清理线程本地。
+ *  以最高优先级先于 Spring Security 过滤链执行，保证 401 响应也带 traceId。 */
+@Order(Ordered.HIGHEST_PRECEDENCE)
 @Component
 public class TraceIdFilter extends OncePerRequestFilter {
 

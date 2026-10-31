@@ -26,7 +26,7 @@
 - **需求/设计/原型引用**：详细设计 §2.2 请求上下文、§2.5 安全上下文；概要 §5.2 I01（统一身份认证/本地兼容）、§7.1（令牌短期有效、支持撤销）；DB `edudoc_user`(username/password_hash/auth_source/account_status)；原型认证 5 屏与 `04_登录与认证页面设计规范.md`。
 - **验收标准**：`POST /api/v1/auth/login`（LOCAL：BCrypt 校验 password_hash、校验 account_status）、`GET /api/v1/auth/me`（返回用户/角色/权限点）、`POST /api/v1/auth/logout`；签发短期 JWT（claims 含 userId/roles），`AuthProvider` 抽象预留 SSO 扩展点；40101/40102 与账号状态错误码对齐。
 - **依赖**：F-01（错误码/envelope）、`01_schema.sql` 已执行
-- **状态**：未开始
+- **状态**：已完成
 
 ## F-04 后端 · RBAC 鉴权框架
 

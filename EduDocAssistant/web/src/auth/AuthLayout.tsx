@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import logoMark from '../assets/logo-mark.png'
+import AnimatedCharacters from './AnimatedCharacters'
 import './auth.css'
 
 const BRAND_800 = '#1F3864'
@@ -33,10 +34,8 @@ export default function AuthLayout({
             <span>EduDocAssistant</span>
           </span>
         </div>
-        <div className="auth-geometry">
-          <i style={{ width: 160, height: 160, top: '16%', left: '-40px' }} />
-          <i style={{ width: 96, height: 96, top: '42%', right: '12%' }} />
-          <i style={{ width: 220, height: 220, bottom: '8%', left: '18%' }} />
+        <div className="auth-characters">
+          <AnimatedCharacters />
         </div>
         <div className="auth-policy">
           <a onClick={(e) => e.preventDefault()}>隐私政策</a>

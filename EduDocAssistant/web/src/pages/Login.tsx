@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Alert, Button, Checkbox, Form, Input, message } from 'antd'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import AuthLayout from '../auth/AuthLayout'
+import { signalCharacters, triggerLoginError } from '../auth/AnimatedCharacters'
 import { homeOf, landingPath, useAuth } from '../auth/AuthContext'
 import { ApiError } from '../api/http'
 
@@ -11,6 +12,7 @@ export default function Login() {
   const location = useLocation()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [passwordVisible, setPasswordVisible] = useState(false)
 
   if (user) {
     return <Navigate to={homeOf(user.roles)} replace />
@@ -30,6 +32,7 @@ export default function Login() {
         return
       }
       setError(e instanceof ApiError ? e.message : '登录失败')
+      triggerLoginError()
     } finally {
       setSubmitting(false)
     }
@@ -44,10 +47,28 @@ export default function Login() {
           label="账号"
           rules={[{ required: true, whitespace: true, message: '请输入账号' }]}
         >
-          <Input placeholder="2023001 或教师工号" autoComplete="username" />
+          <Input
+            placeholder="2023001 或教师工号"
+            autoComplete="username"
+            onFocus={() => signalCharacters({ accountFocused: true })}
+            onBlur={() => signalCharacters({ accountFocused: false })}
+          />
         </Form.Item>
         <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-          <Input.Password placeholder="••••••••••" autoComplete="current-password" />
+          <Input.Password
+            placeholder="••••••••••"
+            autoComplete="current-password"
+            visibilityToggle={{
+              visible: passwordVisible,
+              onVisibleChange: (v) => {
+                setPasswordVisible(v)
+                signalCharacters({ passwordVisible: v })
+              },
+            }}
+            onFocus={() => signalCharacters({ passwordFocused: true })}
+            onBlur={() => signalCharacters({ passwordFocused: false })}
+            onChange={(e) => signalCharacters({ passwordLen: e.target.value.length })}
+          />
         </Form.Item>
         <div className="auth-helper" style={{ marginTop: -10, marginBottom: 12 }}>密码区分大小写</div>
         <div className="auth-row-between" style={{ marginBottom: 18 }}>

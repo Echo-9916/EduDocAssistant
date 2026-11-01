@@ -66,18 +66,15 @@
   font-size: 12px;
 }
 
-/* 趣味几何装饰 */
-.auth-geometry {
-  position: absolute;
-  inset: 0;
+/* 趣味几何：4 个动画角色（见 AnimatedCharacters） */
+.auth-characters {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 32px 0 24px;
   pointer-events: none;
-}
-
-.auth-geometry i {
-  position: absolute;
-  border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.04);
 }
 
 /* 政策链接 */

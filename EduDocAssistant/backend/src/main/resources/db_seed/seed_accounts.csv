@@ -1,0 +1,5 @@
+# username,displayName,roleCode,accountStatus,password
+student,学生测试,STUDENT,A,Cidas@123
+teacher,教师测试,TEACHER,A,Cidas@123
+ops,运维测试,OPS,A,Cidas@123
+locked,锁定测试,STUDENT,L,Cidas@123

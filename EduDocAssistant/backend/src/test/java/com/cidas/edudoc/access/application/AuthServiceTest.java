@@ -1,6 +1,8 @@
 package com.cidas.edudoc.access.application;
 
 import com.cidas.edudoc.access.application.impl.AuthServiceImpl;
+import com.cidas.edudoc.access.infrastructure.AuditLogRepository;
+import com.cidas.edudoc.access.infrastructure.UserAccountRepository;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.JwtService;
@@ -12,7 +14,10 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -20,10 +25,13 @@ class AuthServiceTest {
 
     private final AuthProvider authProvider = mock(AuthProvider.class);
     private final JwtService jwtService = mock(JwtService.class);
-    private final AuthService authService = new AuthServiceImpl(authProvider, jwtService);
+    private final UserAccountRepository userAccountRepository = mock(UserAccountRepository.class);
+    private final AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    private final AuthService authService =
+            new AuthServiceImpl(authProvider, jwtService, userAccountRepository, auditLogRepository);
 
     @Test
-    void loginSuccessIssuesToken() {
+    void loginSuccessUpdatesLastLoginAndAudits() {
         UserPrincipal principal = new UserPrincipal("ABC", "u1",
                 Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of());
         when(authProvider.authenticate("u1", "pw")).thenReturn(Optional.of(principal));
@@ -33,22 +41,39 @@ class AuthServiceTest {
 
         assertEquals("tok", result.token());
         assertEquals(principal, result.user());
+        verify(userAccountRepository).updateLastLoginTime("ABC");
+        verify(auditLogRepository).recordAuth("u1", "ABC", "SUCCESS");
     }
 
     @Test
-    void loginBadCredentialsThrows40101() {
+    void loginBadCredentialsAudits40101() {
         when(authProvider.authenticate("u1", "wrong")).thenReturn(Optional.empty());
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> authService.login("u1", "wrong"));
         assertEquals(ErrorCode.UNAUTHORIZED, e.errorCode());
+        verify(auditLogRepository).recordAuth("u1", null, "40101");
+        verifyNoInteractions(jwtService);
+        verify(userAccountRepository, never()).updateLastLoginTime(anyString());
+    }
+
+    @Test
+    void loginLockedAccountAudits40101() {
+        when(authProvider.authenticate("u1", "pw"))
+                .thenThrow(new CidasBusinessException(ErrorCode.UNAUTHORIZED, "账号受限，请联系管理员"));
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> authService.login("u1", "pw"));
+        assertEquals(ErrorCode.UNAUTHORIZED, e.errorCode());
+        verify(auditLogRepository).recordAuth("u1", null, "40101");
         verifyNoInteractions(jwtService);
     }
 
     @Test
-    void loginBlankInputThrows40001() {
+    void loginBlankInputSkipsAudit() {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> authService.login(" ", "pw"));
         assertEquals(ErrorCode.BAD_REQUEST, e.errorCode());
+        verifyNoInteractions(auditLogRepository, userAccountRepository, jwtService);
     }
 }

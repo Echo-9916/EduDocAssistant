@@ -2,6 +2,8 @@ package com.cidas.edudoc.access.application.impl;
 
 import com.cidas.edudoc.access.application.AuthProvider;
 import com.cidas.edudoc.access.application.AuthService;
+import com.cidas.edudoc.access.infrastructure.AuditLogRepository;
+import com.cidas.edudoc.access.infrastructure.UserAccountRepository;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.AuthContext;
@@ -17,14 +19,25 @@ public class AuthServiceImpl implements AuthService {
 
     private final AuthProvider authProvider;
     private final JwtService jwtService;
+    private final UserAccountRepository userAccountRepository;
+    private final AuditLogRepository auditLogRepository;
 
     @Override
     public AuthService.LoginResult login(String username, String password) {
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "用户名或密码不能为空");
         }
-        UserPrincipal principal = authProvider.authenticate(username.trim(), password)
-                .orElseThrow(() -> new CidasBusinessException(ErrorCode.UNAUTHORIZED, "用户名或密码错误"));
+        String trimmed = username.trim();
+        UserPrincipal principal;
+        try {
+            principal = authProvider.authenticate(trimmed, password)
+                    .orElseThrow(() -> new CidasBusinessException(ErrorCode.UNAUTHORIZED, "用户名或密码错误"));
+        } catch (CidasBusinessException e) {
+            auditLogRepository.recordAuth(trimmed, null, String.valueOf(e.errorCode().code()));
+            throw e;
+        }
+        userAccountRepository.updateLastLoginTime(principal.userId());
+        auditLogRepository.recordAuth(trimmed, principal.userId(), "SUCCESS");
         String token = jwtService.issue(principal.userId(), principal.username(), principal.roles());
         return new AuthService.LoginResult(token, principal);
     }

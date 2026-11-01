@@ -16,4 +16,6 @@ public interface UserAccountMapper {
     List<String> selectRoleCodes(@Param("userIdHex") String userIdHex);
 
     List<String> selectPermissionCodes(@Param("userIdHex") String userIdHex);
+
+    int updateLastLoginTime(@Param("userIdHex") String userIdHex);
 }

@@ -21,6 +21,10 @@ public class UserAccountRepository implements PrincipalLoader {
         return Optional.ofNullable(mapper.selectByUsername(username));
     }
 
+    public void updateLastLoginTime(String userIdHex) {
+        mapper.updateLastLoginTime(userIdHex);
+    }
+
     @Override
     public UserPrincipal loadPrincipal(String userIdHex, String username) {
         // 鉴权顺序第 2 步：账号状态，非正常（锁定/未激活/注销）直接拒绝

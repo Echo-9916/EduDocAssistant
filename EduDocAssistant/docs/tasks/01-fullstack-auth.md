@@ -29,7 +29,7 @@
   - 40101/40102 与错误码表、契约速查对齐。
 - **测试**：扩展 `AuthServiceTest`/`LocalAuthProviderTest`（真实 BCrypt 种子账号、锁定账号拒绝、last_login_time 落库、审计写入）
 - **依赖**：A-01
-- **状态**：未开始
+- **状态**：已完成
 
 ## A-03 后端 · 令牌撤销（logout 黑名单 + 40102）
 

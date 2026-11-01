@@ -31,4 +31,8 @@
           AND (ur.effective_to IS NULL OR ur.effective_to &gt; SYSTIMESTAMP)
     </select>
 
+    <update id="updateLastLoginTime">
+        UPDATE edudoc_user SET last_login_time = SYSTIMESTAMP WHERE id = HEXTORAW(#{userIdHex})
+    </update>
+
 </mapper>

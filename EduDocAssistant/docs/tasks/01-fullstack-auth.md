@@ -125,7 +125,10 @@
   - `mvn test` + `pnpm test` 全绿；手工/冒烟跑通三角色链路。
 - **测试**：e2e 冒烟清单（组件/单测已分散到 A-05~A-09，此处为端到端联调验证）
 - **依赖**：A-02、A-03、A-05、A-06、A-07、A-08、A-09
-- **状态**：未开始
+- **状态**：已完成
+  - 后端 e2e 冒烟（curl 对真实 Oracle）：student/teacher/ops 登录 200、me 200、错误密码 40101、locked 40101「账号受限」、logout 204、旧 token 复用 40102、reset-password/access-request 占位 200「该功能正在开发中」。
+  - `mvn test` 46 全绿；`pnpm test` 49 全绿；`tsc --noEmit` 干净。
+  - 前端 401 回跳/受限跳转由 `RequireAuth.test.tsx`/`Login.test.tsx`/`AccountRestricted.test.tsx` 覆盖；浏览器端人工冒烟留待部署环境执行。
 
 ## 建议执行顺序
 

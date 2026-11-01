@@ -40,28 +40,41 @@ describe('RoleEntry', () => {
     vi.resetAllMocks()
   })
 
-  it('单角色直接回工作台，不显示选择页', () => {
-    renderRoleEntry({ ...multiRoleUser, roles: ['STUDENT'] })
+  it('未登录回登录页', () => {
+    renderRoleEntry(null)
+
+    expect(screen.getByText('登录页')).toBeTruthy()
+  })
+
+  it('渲染身份卡片、课程列表、进入工作台/切换账号与角色演示入口', () => {
+    renderRoleEntry(multiRoleUser)
+
+    expect(screen.getByText('身份认证成功')).toBeTruthy()
+    expect(screen.getByText('alice')).toBeTruthy()
+    expect(screen.getByText(/学号：u1/)).toBeTruthy()
+    expect(screen.getByText('我的课程')).toBeTruthy()
+    expect(screen.getByText('Web开发技术')).toBeTruthy()
+    expect(screen.getByText('Oracle 数据库应用')).toBeTruthy()
+    expect(screen.getByText('JavaEE 程序设计')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '进入工作台' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '切换账号' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /学\s*生/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /教\s*师/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '教学管理' })).toBeTruthy()
+  })
+
+  it('进入工作台跳转当前账号工作台', () => {
+    renderRoleEntry(multiRoleUser)
+
+    fireEvent.click(screen.getByRole('button', { name: '进入工作台' }))
 
     expect(screen.getByText('学生工作台')).toBeTruthy()
-    expect(screen.queryByText('选择身份进入')).toBeNull()
   })
 
-  it('多角色显示身份卡片与角色入口', () => {
+  it('演示入口进入对应角色路线', () => {
     renderRoleEntry(multiRoleUser)
 
-    expect(screen.getByText('alice')).toBeTruthy()
-    expect(screen.getByText(/学生、教师/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: '进入学生工作台' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '进入教师工作台' })).toBeTruthy()
-    // 未持有的运维角色不出现入口
-    expect(screen.queryByRole('button', { name: '进入运维工作台' })).toBeNull()
-  })
-
-  it('点击角色入口进入对应工作台', () => {
-    renderRoleEntry(multiRoleUser)
-
-    fireEvent.click(screen.getByRole('button', { name: '进入教师工作台' }))
+    fireEvent.click(screen.getByRole('button', { name: /教\s*师/ }))
 
     expect(screen.getByText('教师工作台')).toBeTruthy()
   })

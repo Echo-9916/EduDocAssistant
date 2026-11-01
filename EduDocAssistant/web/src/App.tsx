@@ -1,12 +1,11 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider, landingPath, useAuth } from './auth/AuthContext'
+import { AuthProvider, homeOf, useAuth } from './auth/AuthContext'
 import RequireAuth from './auth/RequireAuth'
 import RoleEntry from './auth/RoleEntry'
 import AppShell from './layouts/AppShell'
 import Login from './pages/Login'
 import AccountRestricted from './pages/AccountRestricted'
 import ForgotPassword from './pages/ForgotPassword'
-import AccessRequest from './pages/AccessRequest'
 import Forbidden from './pages/Forbidden'
 import SectionPlaceholder from './pages/SectionPlaceholder'
 import Demo from './pages/Demo'
@@ -17,7 +16,7 @@ import type { RoleCodeValue } from './api/types'
 function Home() {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={landingPath(user.roles)} replace />
+  return <Navigate to={homeOf(user.roles)} replace />
 }
 
 const ROLES: { role: RoleCodeValue; nav: NavItem[] }[] = [
@@ -35,7 +34,6 @@ export default function App() {
           <Route path="/roles" element={<RoleEntry />} />
           <Route path="/account-restricted" element={<AccountRestricted />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/access-request" element={<AccessRequest />} />
           <Route path="/403" element={<Forbidden />} />
           <Route path="/demo" element={<Demo />} />
           <Route path="/" element={<Home />} />

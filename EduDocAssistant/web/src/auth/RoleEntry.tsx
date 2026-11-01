@@ -1,20 +1,27 @@
-import { Button, Card, Space, Typography } from 'antd'
+import { useState } from 'react'
+import { Avatar, Button, Checkbox, Tag } from 'antd'
 import { Navigate, useNavigate } from 'react-router-dom'
+import AuthLayout from './AuthLayout'
 import { homeOf, useAuth } from './AuthContext'
 import { roleLabel, rolePath } from '../routes'
 import type { RoleCodeValue } from '../api/types'
 
-const ROLE_ORDER: RoleCodeValue[] = ['STUDENT', 'TEACHER', 'OPS']
+const COURSES = ['Web开发技术', 'Oracle 数据库应用', 'JavaEE 程序设计']
 
-/** 多角色登录后的身份选择页：身份卡片 + 角色入口 + 切换账号。 */
+/** 演示角色入口：学生 / 教师 / 教学管理（原型把运维端演示入口标注为「教学管理」）。 */
+const DEMO_ENTRIES: { role: RoleCodeValue; label: string }[] = [
+  { role: 'STUDENT', label: '学生' },
+  { role: 'TEACHER', label: '教师' },
+  { role: 'OPS', label: '教学管理' },
+]
+
+/** 登录成功页（统一身份认证回调）：身份卡片 + 课程列表 + 进入工作台 / 切换账号 + 角色演示入口。 */
 export default function RoleEntry() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const [courses, setCourses] = useState<string[]>(COURSES)
 
   if (!user) return <Navigate to="/login" replace />
-  if (user.roles.length <= 1) return <Navigate to={homeOf(user.roles)} replace />
-
-  const roles = ROLE_ORDER.filter((r) => user.roles.includes(r))
 
   const switchAccount = async () => {
     await logout()
@@ -22,35 +29,55 @@ export default function RoleEntry() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#F4F7FB',
-        padding: 24,
-      }}
-    >
-      <Card title="选择身份进入" style={{ width: 420, borderRadius: 16 }}>
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <div>
-            <Typography.Text strong style={{ fontSize: 18 }}>{user.username}</Typography.Text>
-            <div style={{ color: '#475569' }}>
-              角色：{user.roles.map((r) => roleLabel[r as RoleCodeValue] ?? r).join('、')}
-            </div>
-            <div style={{ color: '#475569' }}>课程：暂无</div>
-          </div>
-          {roles.map((r) => (
-            <Button key={r} block onClick={() => navigate(rolePath[r], { replace: true })}>
-              进入{roleLabel[r]}工作台
-            </Button>
+    <AuthLayout title="身份认证成功" subtitle="请确认身份信息与课程，选择进入的工作台。">
+      {/* 身份卡片 */}
+      <div className="auth-id-card">
+        <Avatar size={48} style={{ background: '#2563EB', flex: '0 0 auto' }}>
+          {user.username.slice(0, 1).toUpperCase()}
+        </Avatar>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#1F2937' }}>{user.username}</div>
+          <div style={{ fontSize: 13, color: '#5B6B80', wordBreak: 'break-all' }}>学号：{user.userId}</div>
+        </div>
+        {user.roles.map((r) => (
+          <Tag key={r} color="blue" style={{ margin: 0 }}>
+            {roleLabel[r as RoleCodeValue] ?? r}
+          </Tag>
+        ))}
+      </div>
+
+      {/* 课程列表 */}
+      <div style={{ margin: '20px 0' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1F2937', marginBottom: 8 }}>我的课程</div>
+        <Checkbox.Group
+          value={courses}
+          onChange={(v) => setCourses(v as string[])}
+          style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+        >
+          {COURSES.map((c) => (
+            <Checkbox key={c} value={c}>
+              {c}
+            </Checkbox>
           ))}
-          <Button type="link" block onClick={switchAccount}>
-            切换账号
+        </Checkbox.Group>
+      </div>
+
+      <Button type="primary" block onClick={() => navigate(homeOf(user.roles), { replace: true })}>
+        进入工作台
+      </Button>
+      <Button block style={{ marginTop: 12 }} onClick={switchAccount}>
+        切换账号
+      </Button>
+
+      {/* 角色演示入口 */}
+      <div className="auth-divider" style={{ marginTop: 20 }}>演示角色路线</div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        {DEMO_ENTRIES.map(({ role, label }) => (
+          <Button key={role} style={{ flex: 1 }} onClick={() => navigate(rolePath[role])}>
+            {label}
           </Button>
-        </Space>
-      </Card>
-    </div>
+        ))}
+      </div>
+    </AuthLayout>
   )
 }

@@ -1,0 +1,203 @@
+.auth-page {
+  display: flex;
+  min-height: 100vh;
+  background: #f4f7fb;
+}
+
+/* 左侧品牌视觉区：814/1440 ≈ 56% */
+.auth-left {
+  position: relative;
+  flex: 0 0 56%;
+  overflow: hidden;
+  padding: 48px 64px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(55, 94, 153, 0.5), transparent 40%),
+    #1f3864;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.auth-left-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 85% 90%, rgba(37, 99, 235, 0.35), transparent 45%);
+}
+
+.auth-brand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-brand-mark {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.12);
+}
+
+.auth-brand-mark img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.auth-brand-copy strong {
+  display: block;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.auth-brand-copy span {
+  display: block;
+  margin-top: 2px;
+  color: #9fb2d4;
+  font-size: 12px;
+}
+
+/* 趣味几何装饰 */
+.auth-geometry {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.auth-geometry i {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* 政策链接 */
+.auth-policy {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: #9fb2d4;
+}
+
+.auth-policy a {
+  color: #9fb2d4;
+  text-decoration: none;
+}
+
+.auth-policy a:hover {
+  color: #fff;
+}
+
+/* 右侧表单区：640/1440 ≈ 44% */
+.auth-right {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #f4f7fb;
+  border-left: 1px solid #dde5ef; /* 中线 */
+}
+
+.auth-panel {
+  width: 530px;
+  max-width: 100%;
+  padding: 32px 40px;
+  background: #fff;
+  border: 1px solid #dde5ef;
+  border-radius: 24px;
+  box-shadow: 0 8px 30px rgba(31, 56, 100, 0.06);
+}
+
+.auth-title {
+  margin: 0 0 8px;
+  font-size: 32px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.auth-subtitle {
+  margin: 0 0 24px;
+  font-size: 16px;
+  color: #475569;
+}
+
+/* 表单字段：标签 20px Bold、输入 15px、控件圆角 8px、主按钮高 34px */
+.auth-panel .ant-form-item-label > label {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f2937;
+  height: auto;
+}
+
+.auth-panel .ant-input,
+.auth-panel .ant-input-affix-wrapper,
+.auth-panel .ant-select-selector {
+  font-size: 15px;
+  border-radius: 8px;
+}
+
+.auth-panel .ant-input-affix-wrapper,
+.auth-panel .ant-select-selector {
+  padding-block: 6px;
+}
+
+.auth-panel .ant-btn {
+  height: 34px;
+  border-radius: 8px;
+}
+
+.auth-panel .ant-form-item {
+  margin-bottom: 18px;
+}
+
+.auth-helper {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #5b6b80;
+}
+
+.auth-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.auth-id-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #dde5ef;
+  border-radius: 12px;
+  background: #f8fafd;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 16px;
+  color: #5b6b80;
+  font-size: 13px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #dde5ef;
+}

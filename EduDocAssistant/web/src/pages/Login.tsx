@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Alert, Button, Form, Input } from 'antd'
-import { ReadOutlined } from '@ant-design/icons'
+import { Alert, Button, Checkbox, Form, Input, message } from 'antd'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import AuthLayout from '../auth/AuthLayout'
 import { homeOf, landingPath, useAuth } from '../auth/AuthContext'
 import { ApiError } from '../api/http'
 
@@ -25,9 +25,8 @@ export default function Login() {
       const u = await login(values.username.trim(), values.password)
       navigate(redirect || landingPath(u.roles), { replace: true })
     } catch (e) {
-      // 40101 分两种：账号受限跳受限页，其余（密码错误等）按 message 表单提示
       if (e instanceof ApiError && e.code === 40101 && e.message.includes('账号受限')) {
-        navigate('/account-restricted', { replace: true })
+        navigate('/account-restricted', { replace: true, state: { username: values.username.trim() } })
         return
       }
       setError(e instanceof ApiError ? e.message : '登录失败')
@@ -37,51 +36,37 @@ export default function Login() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* 左侧品牌区 */}
-      <div
-        style={{
-          width: 440,
-          background: 'linear-gradient(160deg, #2563EB 0%, #1D4ED8 100%)',
-          color: '#fff',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          padding: 48,
-        }}
-      >
-        {/* Logo 占位：无正式图片资产，替换 Logo 图片时仅改此块 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 30, fontWeight: 700 }}>
-          <ReadOutlined />
-          <span>CIDAS</span>
+    <AuthLayout title="登录工作台" subtitle="使用学校账号继续，系统会自动识别所属角色。">
+      {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
+      <Form name="login" layout="vertical" onFinish={onFinish} requiredMark={false}>
+        <Form.Item
+          name="username"
+          label="账号"
+          rules={[{ required: true, whitespace: true, message: '请输入账号' }]}
+        >
+          <Input placeholder="2023001 或教师工号" autoComplete="username" />
+        </Form.Item>
+        <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+          <Input.Password placeholder="••••••••••" autoComplete="current-password" />
+        </Form.Item>
+        <div className="auth-helper" style={{ marginTop: -10, marginBottom: 12 }}>密码区分大小写</div>
+        <div className="auth-row-between" style={{ marginBottom: 18 }}>
+          <Form.Item name="remember" valuePropName="checked" noStyle>
+            <Checkbox>记住此设备</Checkbox>
+          </Form.Item>
+          <Link to="/forgot-password">忘记密码？</Link>
         </div>
-        <div style={{ marginTop: 8, fontSize: 16, opacity: 0.9 }}>校园智能文档辅助系统</div>
-      </div>
-      {/* 右侧表单区 */}
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <Form name="login" layout="vertical" onFinish={onFinish} style={{ width: 360 }}>
-          <h2 style={{ marginTop: 0 }}>登录</h2>
-          {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
-          <Form.Item
-            name="username"
-            label="用户名"
-            rules={[{ required: true, whitespace: true, message: '请输入用户名' }]}
-          >
-            <Input placeholder="用户名" autoComplete="username" />
-          </Form.Item>
-          <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password placeholder="密码" autoComplete="current-password" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={submitting} block>
-              登录
-            </Button>
-          </Form.Item>
-          <div style={{ textAlign: 'right' }}>
-            <Link to="/forgot-password">忘记密码？</Link>
-          </div>
-        </Form>
-      </div>
-    </div>
+        <Button type="primary" htmlType="submit" loading={submitting} block>
+          登录
+        </Button>
+        <div className="auth-divider">或</div>
+        <Button block onClick={() => message.info('学校统一身份认证暂未开放')}>
+          使用学校统一身份认证
+        </Button>
+        <p className="auth-helper" style={{ marginTop: 12 }}>
+          注意: 认证成功将同步校园账号默认身份信息，本系统仅获取登录必要字段，不会额外采集隐私数据。
+        </p>
+      </Form>
+    </AuthLayout>
   )
 }

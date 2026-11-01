@@ -10,18 +10,18 @@ vi.mock('../auth/AuthContext', () => ({
   useAuth: vi.fn(),
   homeOf: (roles: string[]) =>
     roles.includes('OPS') ? '/operations' : roles.includes('TEACHER') ? '/teacher' : '/student',
-  landingPath: (roles: string[]) => (roles.length > 1 ? '/roles' : '/student'),
+  landingPath: () => '/roles',
 }))
 
 const loginMock = vi.fn()
 
-function renderRestricted() {
+function renderRestricted(state?: { username?: string }) {
   return render(
-    <MemoryRouter initialEntries={['/account-restricted']}>
+    <MemoryRouter initialEntries={[{ pathname: '/account-restricted', state }]}>
       <Routes>
         <Route path="/account-restricted" element={<AccountRestricted />} />
+        <Route path="/operations/users" element={<div>角色与权限管理</div>} />
         <Route path="/login" element={<div>登录页</div>} />
-        <Route path="/access-request" element={<div>权限申请页</div>} />
       </Routes>
     </MemoryRouter>
   )
@@ -30,31 +30,24 @@ function renderRestricted() {
 describe('AccountRestricted', () => {
   beforeEach(() => vi.resetAllMocks())
 
-  it('渲染账号状态、原因、安全提示与操作按钮', () => {
-    renderRestricted()
+  it('渲染账号状态卡、操作按钮与安全提示', () => {
+    renderRestricted({ username: 'locked' })
 
-    expect(screen.getByText('账号受限')).toBeTruthy()
-    expect(screen.getByText('账号状态：受限')).toBeTruthy()
-    expect(screen.getByText(/锁定、未激活或已注销/)).toBeTruthy()
-    expect(screen.getByText('安全提示')).toBeTruthy()
+    expect(screen.getByText('账号暂时受限')).toBeTruthy()
+    expect(screen.getByText('locked')).toBeTruthy()
+    expect(screen.getByText('已锁定')).toBeTruthy()
+    expect(screen.getByText('多次连续密码错误')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '联系信息中心解锁' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '申请临时访问权限' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '返回登录' })).toBeTruthy()
+    expect(screen.getByText('安全提示')).toBeTruthy()
   })
 
-  it('申请入口跳权限申请页', () => {
+  it('申请临时访问权限跳角色与权限管理', () => {
     renderRestricted()
 
     fireEvent.click(screen.getByRole('button', { name: '申请临时访问权限' }))
 
-    expect(screen.getByText('权限申请页')).toBeTruthy()
-  })
-
-  it('返回登录', () => {
-    renderRestricted()
-
-    fireEvent.click(screen.getByRole('button', { name: '返回登录' }))
-
-    expect(screen.getByText('登录页')).toBeTruthy()
+    expect(screen.getByText('角色与权限管理')).toBeTruthy()
   })
 
   it('登录账号受限跳转受限页', async () => {
@@ -65,16 +58,16 @@ describe('AccountRestricted', () => {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/account-restricted" element={<AccountRestricted />} />
-          <Route path="/access-request" element={<div>权限申请页</div>} />
+          <Route path="/operations/users" element={<div>角色与权限管理</div>} />
         </Routes>
       </MemoryRouter>
     )
 
-    fireEvent.change(screen.getByPlaceholderText('用户名'), { target: { value: 'locked' } })
-    fireEvent.change(screen.getByPlaceholderText('密码'), { target: { value: 'pw' } })
+    fireEvent.change(screen.getByPlaceholderText('2023001 或教师工号'), { target: { value: 'locked' } })
+    fireEvent.change(screen.getByPlaceholderText('••••••••••'), { target: { value: 'pw' } })
     fireEvent.click(screen.getByRole('button', { name: /登\s*录/ }))
 
-    expect(await screen.findByText('账号受限')).toBeTruthy()
+    expect(await screen.findByText('账号暂时受限')).toBeTruthy()
     expect(screen.getByRole('button', { name: '申请临时访问权限' })).toBeTruthy()
   })
 })

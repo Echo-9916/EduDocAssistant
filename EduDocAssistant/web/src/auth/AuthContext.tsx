@@ -22,9 +22,9 @@ export function homeOf(roles: string[]): string {
   return '/student'
 }
 
-/** 登录/首页落地：多角色先进角色选择页，单角色直达工作台。 */
-export function landingPath(roles: string[]): string {
-  return roles.length > 1 ? '/roles' : homeOf(roles)
+/** 登录落地：进入「身份认证成功」页（统一身份认证回调），由用户确认后进入工作台。 */
+export function landingPath(_roles: string[]): string {
+  return '/roles'
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

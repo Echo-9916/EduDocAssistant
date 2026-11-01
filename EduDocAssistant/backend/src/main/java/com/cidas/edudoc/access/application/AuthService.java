@@ -9,7 +9,7 @@ public interface AuthService {
 
     UserPrincipal me();
 
-    void logout();
+    void logout(String token);
 
     record LoginResult(String token, UserPrincipal user) {
     }

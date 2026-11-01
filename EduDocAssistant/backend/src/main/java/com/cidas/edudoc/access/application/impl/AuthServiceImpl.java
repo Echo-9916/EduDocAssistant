@@ -8,6 +8,7 @@ import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.JwtService;
+import com.cidas.edudoc.common.security.TokenRevocationStore;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final UserAccountRepository userAccountRepository;
     private final AuditLogRepository auditLogRepository;
+    private final TokenRevocationStore tokenRevocationStore;
 
     @Override
     public AuthService.LoginResult login(String username, String password) {
@@ -48,8 +50,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public void logout() {
-        // ponytail: 无状态 JWT 无法服务端撤销，登出仅丢弃客户端令牌；
-        // 需要 40102 主动撤销时再加 token 版本号或黑名单表。
+    public void logout(String token) {
+        JwtService.TokenClaims claims = jwtService.parse(token);
+        tokenRevocationStore.revoke(claims.jti(), claims.expiresAt());
     }
 }

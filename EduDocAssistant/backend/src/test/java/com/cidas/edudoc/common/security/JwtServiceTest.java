@@ -3,10 +3,13 @@ package com.cidas.edudoc.common.security;
 import io.jsonwebtoken.ExpiredJwtException;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JwtServiceTest {
 
@@ -21,6 +24,8 @@ class JwtServiceTest {
         assertEquals("ABC123", claims.userId());
         assertEquals("alice", claims.username());
         assertEquals(Set.of("STUDENT", "TEACHER"), claims.roles());
+        assertNotNull(claims.jti());
+        assertTrue(claims.expiresAt().isAfter(Instant.now()));
     }
 
     @Test

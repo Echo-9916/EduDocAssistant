@@ -6,9 +6,11 @@ import com.cidas.edudoc.access.infrastructure.UserAccountRepository;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.JwtService;
+import com.cidas.edudoc.common.security.TokenRevocationStore;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 
@@ -27,8 +29,9 @@ class AuthServiceTest {
     private final JwtService jwtService = mock(JwtService.class);
     private final UserAccountRepository userAccountRepository = mock(UserAccountRepository.class);
     private final AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    private final TokenRevocationStore tokenRevocationStore = mock(TokenRevocationStore.class);
     private final AuthService authService =
-            new AuthServiceImpl(authProvider, jwtService, userAccountRepository, auditLogRepository);
+            new AuthServiceImpl(authProvider, jwtService, userAccountRepository, auditLogRepository, tokenRevocationStore);
 
     @Test
     void loginSuccessUpdatesLastLoginAndAudits() {
@@ -75,5 +78,16 @@ class AuthServiceTest {
                 () -> authService.login(" ", "pw"));
         assertEquals(ErrorCode.BAD_REQUEST, e.errorCode());
         verifyNoInteractions(auditLogRepository, userAccountRepository, jwtService);
+    }
+
+    @Test
+    void logoutRevokesTokenJti() {
+        JwtService.TokenClaims claims =
+                new JwtService.TokenClaims("u1", "u1", Set.of(), "jti-1", Instant.now());
+        when(jwtService.parse("tok")).thenReturn(claims);
+
+        authService.logout("tok");
+
+        verify(tokenRevocationStore).revoke("jti-1", claims.expiresAt());
     }
 }

@@ -1,11 +1,15 @@
 package com.cidas.edudoc.common.security;
 
+import com.cidas.edudoc.common.api.ApiResponse;
+import com.cidas.edudoc.common.api.ErrorCode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -20,6 +24,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final PrincipalLoader principalLoader;
+    private final TokenRevocationStore tokenRevocationStore;
+    private final ObjectMapper objectMapper;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -28,6 +34,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 JwtService.TokenClaims claims = jwtService.parse(header.substring(7));
+                if (claims.jti() != null && tokenRevocationStore.isRevoked(claims.jti())) {
+                    writeRevoked(response);
+                    return;
+                }
                 UserPrincipal principal = principalLoader.loadPrincipal(claims.userId(), claims.username());
                 if (principal == null) {
                     SecurityContextHolder.clearContext();
@@ -45,5 +55,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } finally {
             AuthContext.clear();
         }
+    }
+
+    private void writeRevoked(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getWriter(), ApiResponse.error(ErrorCode.TOKEN_REVOKED));
     }
 }

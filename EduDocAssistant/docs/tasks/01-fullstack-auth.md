@@ -41,7 +41,7 @@
   - 撤销存储用内存实现，对齐既有 `InMemoryIdempotencyStore` 模式（`# ponytail: 单机内存黑名单，多节点部署需换 Redis`）。
 - **测试**：扩展 `JwtServiceTest`/`JwtAuthenticationFilterTest`（jti 往返、登出后旧 token → 40102、有效 token → 放行）
 - **依赖**：A-02
-- **状态**：未开始
+- **状态**：已完成
 
 ## A-04 后端 · 找回密码 / 权限申请占位接口
 

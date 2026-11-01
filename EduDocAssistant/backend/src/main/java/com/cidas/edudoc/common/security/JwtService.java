@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /** JWT 签发与解析。令牌携带身份与角色声明，鉴权仍以每次请求从库实时加载的角色/权限为准。 */
@@ -30,6 +31,7 @@ public class JwtService {
     public String issue(String userId, String username, Set<String> roles) {
         Instant now = Instant.now();
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(userId)
                 .claim("username", username)
                 .claim("roles", roles)
@@ -45,9 +47,11 @@ public class JwtService {
         List<?> rawRoles = claims.get("roles", List.class);
         Set<String> roles = rawRoles == null ? Set.of()
                 : rawRoles.stream().map(Object::toString).collect(Collectors.toSet());
-        return new TokenClaims(claims.getSubject(), claims.get("username", String.class), roles);
+        return new TokenClaims(claims.getSubject(), claims.get("username", String.class), roles,
+                claims.getId(), claims.getExpiration().toInstant());
     }
 
-    public record TokenClaims(String userId, String username, Set<String> roles) {
+    public record TokenClaims(String userId, String username, Set<String> roles,
+                              String jti, Instant expiresAt) {
     }
 }

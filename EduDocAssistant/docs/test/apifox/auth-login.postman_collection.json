@@ -1,0 +1,180 @@
+{
+  "info": {
+    "name": "EduDocAssistant 登录认证接口",
+    "description": "登录垂直切片（A-01~A-04）手动测试集合。导入 Apifox 后：\n1. 先确认集合变量 baseUrl（默认 http://localhost:8080）。\n2. 依次运行「登录成功」→ 自动把 token 写入集合变量 token；若未自动填充，手动把登录返回 data.token 粘到集合变量。\n3. 其余带鉴权的请求自动使用 {{token}}。\n\n种子账号（db_seed）：student / teacher / ops 密码均为 Cidas@123；locked 为锁定账号（登录返回 40101）。\n\n响应统一 envelope：{ code, message, data, traceId, timestamp }。\n错误码：40001 参数错误；40101 未登录/账号受限；40102 令牌已撤销。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. 登录",
+      "item": [
+        {
+          "name": "登录成功（student）",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res && res.data && res.data.token) {",
+                  "  pm.collectionVariables.set('token', res.data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"student\",\n  \"password\": \"Cidas@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "预期：HTTP 200，code=200，data.token 为 JWT（含 jti）、data.user 含 userId/username/roles/permissions。成功后自动把 token 写入集合变量。"
+          },
+          "response": []
+        },
+        {
+          "name": "登录失败-密码错误",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"student\",\n  \"password\": \"wrong\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "预期：HTTP 401，code=40101，message=用户名或密码错误。"
+          },
+          "response": []
+        },
+        {
+          "name": "登录失败-账号锁定",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"locked\",\n  \"password\": \"Cidas@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "预期：HTTP 401，code=40101，message=账号受限，请联系管理员。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. 会话与占位接口",
+      "item": [
+        {
+          "name": "当前用户 me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "预期：HTTP 200，code=200，data 为 UserPrincipal（userId/username/roles/permissions/courseScope）。需先执行登录成功以获得 token。"
+          },
+          "response": []
+        },
+        {
+          "name": "登出 logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "logout"]
+            },
+            "description": "预期：HTTP 204 无响应体。登出后当前 token 被撤销。"
+          },
+          "response": []
+        },
+        {
+          "name": "登出后复用旧 token（应 40102）",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "预期：在「登出 logout」执行后调用，HTTP 401，code=40102，message=令牌已撤销。"
+          },
+          "response": []
+        },
+        {
+          "name": "找回密码（占位）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "reset-password"]
+            },
+            "description": "预期：HTTP 200，code=200，message=该功能正在开发中（无需鉴权）。"
+          },
+          "response": []
+        },
+        {
+          "name": "权限申请（占位）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/access-request",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "access-request"]
+            },
+            "description": "预期：HTTP 200，code=200，message=该功能正在开发中（无需鉴权）。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

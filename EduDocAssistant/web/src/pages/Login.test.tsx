@@ -10,6 +10,10 @@ vi.mock('../auth/AuthContext', () => ({
   useAuth: vi.fn(),
   homeOf: (roles: string[]) =>
     roles.includes('OPS') ? '/operations' : roles.includes('TEACHER') ? '/teacher' : '/student',
+  landingPath: (roles: string[]) =>
+    roles.length > 1
+      ? '/roles'
+      : roles.includes('OPS') ? '/operations' : roles.includes('TEACHER') ? '/teacher' : '/student',
 }))
 
 const alice: UserPrincipal = {

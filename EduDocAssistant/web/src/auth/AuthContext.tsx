@@ -22,6 +22,11 @@ export function homeOf(roles: string[]): string {
   return '/student'
 }
 
+/** 登录/首页落地：多角色先进角色选择页，单角色直达工作台。 */
+export function landingPath(roles: string[]): string {
+  return roles.length > 1 ? '/roles' : homeOf(roles)
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserPrincipal | null>(null)
   const [loading, setLoading] = useState(true)

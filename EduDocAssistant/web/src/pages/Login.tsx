@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Alert, Button, Form, Input } from 'antd'
 import { ReadOutlined } from '@ant-design/icons'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { homeOf, useAuth } from '../auth/AuthContext'
+import { homeOf, landingPath, useAuth } from '../auth/AuthContext'
 import { ApiError } from '../api/http'
 
 export default function Login() {
@@ -23,7 +23,7 @@ export default function Login() {
     setError(null)
     try {
       const u = await login(values.username.trim(), values.password)
-      navigate(redirect || homeOf(u.roles), { replace: true })
+      navigate(redirect || landingPath(u.roles), { replace: true })
     } catch (e) {
       // 40101 分两种：账号受限跳受限页，其余（密码错误等）按 message 表单提示
       if (e instanceof ApiError && e.code === 40101 && e.message.includes('账号受限')) {

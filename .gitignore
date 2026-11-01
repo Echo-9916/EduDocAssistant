@@ -1,5 +1,6 @@
 # 无关目录
 TempStore/
+.pnpm-store/
 
 # 历史归档与中间产物（保留在工作区,不进入版本库）
 03_页面原型/_archive/

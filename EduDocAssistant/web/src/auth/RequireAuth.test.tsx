@@ -11,7 +11,7 @@ function LoginProbe() {
   return <div>登录页{location.search}</div>
 }
 
-function renderGuard() {
+function renderGuard(opts?: { permission?: string }) {
   return render(
     <MemoryRouter initialEntries={['/student/workbench']}>
       <Routes>
@@ -20,7 +20,7 @@ function renderGuard() {
         <Route
           path="/student/workbench"
           element={
-            <RequireAuth roles={['STUDENT']}>
+            <RequireAuth roles={['STUDENT']} permission={opts?.permission}>
               <div>内容区</div>
             </RequireAuth>
           }
@@ -64,6 +64,26 @@ describe('RequireAuth', () => {
       loading: false,
     })
     renderGuard()
+    expect(screen.getByText('内容区')).toBeTruthy()
+  })
+
+  it('权限不足重定向到 /403', () => {
+    vi.mocked(useAuth).mockReturnValue({
+      ...stub,
+      user: { userId: 'u1', username: 'a', roles: ['STUDENT'], permissions: [], courseScope: [] },
+      loading: false,
+    })
+    renderGuard({ permission: 'DOCUMENT_READ' })
+    expect(screen.getByText('无权限')).toBeTruthy()
+  })
+
+  it('权限满足时渲染子内容', () => {
+    vi.mocked(useAuth).mockReturnValue({
+      ...stub,
+      user: { userId: 'u1', username: 'a', roles: ['STUDENT'], permissions: ['DOCUMENT_READ'], courseScope: [] },
+      loading: false,
+    })
+    renderGuard({ permission: 'DOCUMENT_READ' })
     expect(screen.getByText('内容区')).toBeTruthy()
   })
 })

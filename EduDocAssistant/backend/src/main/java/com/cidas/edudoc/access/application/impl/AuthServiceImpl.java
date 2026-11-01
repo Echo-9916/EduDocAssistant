@@ -25,7 +25,7 @@ public class AuthServiceImpl implements AuthService {
         }
         UserPrincipal principal = authProvider.authenticate(username.trim(), password)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.UNAUTHORIZED, "用户名或密码错误"));
-        String token = jwtService.issue(principal.userId(), principal.username());
+        String token = jwtService.issue(principal.userId(), principal.username(), principal.roles());
         return new AuthService.LoginResult(token, principal);
     }
 

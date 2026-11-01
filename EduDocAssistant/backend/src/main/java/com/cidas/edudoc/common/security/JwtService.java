@@ -10,8 +10,11 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-/** JWT 签发与解析。令牌只携带身份标识，角色/权限每次请求从库中实时加载，保证角色变更立即生效。 */
+/** JWT 签发与解析。令牌携带身份与角色声明，鉴权仍以每次请求从库实时加载的角色/权限为准。 */
 @Component
 public class JwtService {
 
@@ -24,11 +27,12 @@ public class JwtService {
         this.accessTtlSeconds = accessTtlSeconds;
     }
 
-    public String issue(String userId, String username) {
+    public String issue(String userId, String username, Set<String> roles) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(userId)
                 .claim("username", username)
+                .claim("roles", roles)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(accessTtlSeconds)))
                 .signWith(key)
@@ -38,9 +42,12 @@ public class JwtService {
     public TokenClaims parse(String token) {
         Claims claims = Jwts.parser().verifyWith(key).build()
                 .parseSignedClaims(token).getPayload();
-        return new TokenClaims(claims.getSubject(), claims.get("username", String.class));
+        List<?> rawRoles = claims.get("roles", List.class);
+        Set<String> roles = rawRoles == null ? Set.of()
+                : rawRoles.stream().map(Object::toString).collect(Collectors.toSet());
+        return new TokenClaims(claims.getSubject(), claims.get("username", String.class), roles);
     }
 
-    public record TokenClaims(String userId, String username) {
+    public record TokenClaims(String userId, String username, Set<String> roles) {
     }
 }

@@ -6,8 +6,8 @@ spring:
     name: edudoc-backend
   datasource:
     url: jdbc:oracle:thin:@//localhost:1521/FREEPDB1
-    username: user_cidas
-    password: cidas123
+    username: ${EDUDOC_DB_USERNAME:user_cidas}
+    password: ${EDUDOC_DB_PASSWORD:cidas123}
     driver-class-name: oracle.jdbc.OracleDriver
 
 edudoc:

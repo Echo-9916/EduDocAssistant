@@ -40,7 +40,7 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void validTokenSetsAuthentication() throws Exception {
-        when(jwtService.parse("token")).thenReturn(new JwtService.TokenClaims("u1", "alice"));
+        when(jwtService.parse("token")).thenReturn(new JwtService.TokenClaims("u1", "alice", Set.of()));
         UserPrincipal principal = new UserPrincipal("u1", "alice",
                 Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of());
         when(repo.loadPrincipal("u1", "alice")).thenReturn(principal);
@@ -69,7 +69,7 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void lockedAccountClearsContext() throws Exception {
-        when(jwtService.parse("token")).thenReturn(new JwtService.TokenClaims("u1", "alice"));
+        when(jwtService.parse("token")).thenReturn(new JwtService.TokenClaims("u1", "alice", Set.of()));
         when(repo.loadPrincipal("u1", "alice")).thenReturn(null);
 
         MockHttpServletRequest req = new MockHttpServletRequest();

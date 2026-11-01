@@ -42,9 +42,16 @@ export default function App() {
               }
             >
               <Route index element={<Navigate to={nav[0].key} replace />} />
-              {nav.map((item) => (
-                <Route key={item.key} path={item.key} element={<SectionPlaceholder title={item.label} />} />
-              ))}
+              {nav.map((item) => {
+                const element = <SectionPlaceholder title={item.label} />
+                return (
+                  <Route
+                    key={item.key}
+                    path={item.key}
+                    element={item.permission ? <RequireAuth permission={item.permission}>{element}</RequireAuth> : element}
+                  />
+                )
+              })}
             </Route>
           ))}
           <Route path="*" element={<Navigate to="/" replace />} />

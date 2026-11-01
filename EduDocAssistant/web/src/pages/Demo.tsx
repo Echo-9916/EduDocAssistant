@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Button, Form, Input, Modal, Pagination, Space, Table, message } from 'antd'
+import { Form, Input, Space, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { AppButton, AppModal, AppPagination, AppTable, requiredRule } from '../components'
 
 type Item = { id: number; name: string; status: string }
 
@@ -16,7 +17,7 @@ const columns: ColumnsType<Item> = [
   { title: '状态', dataIndex: 'status' },
 ]
 
-/** 基础组件演示页：验证 antd 主题、按钮/表单/表格/分页/弹窗可正常使用。 */
+/** 基础组件演示页：验证统一组件封装（按钮/表单校验/表格分页/弹窗/分页）可正常使用。 */
 export default function Demo() {
   const [open, setOpen] = useState(false)
   const [page, setPage] = useState(1)
@@ -26,10 +27,10 @@ export default function Demo() {
     <div style={{ padding: 24 }}>
       <h2>基础组件演示</h2>
       <Space wrap>
-        <Button type="primary" onClick={() => setOpen(true)}>
-          打开弹窗
-        </Button>
-        <Button onClick={() => message.success('操作成功')}>消息提示</Button>
+        <AppButton onClick={() => setOpen(true)}>打开弹窗</AppButton>
+        <AppButton type="default" onClick={() => message.success('操作成功')}>
+          消息提示
+        </AppButton>
       </Space>
 
       <Form
@@ -38,29 +39,23 @@ export default function Demo() {
         style={{ marginTop: 16 }}
         onFinish={() => message.success('校验通过')}
       >
-        <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+        <Form.Item name="name" label="名称" rules={[requiredRule('请输入名称')]}>
           <Input placeholder="请输入" />
         </Form.Item>
         <Form.Item>
-          <Button htmlType="submit">提交</Button>
+          <AppButton htmlType="submit">提交</AppButton>
         </Form.Item>
       </Form>
 
-      <Table<Item>
+      <AppTable<Item>
         rowKey="id"
         columns={columns}
         dataSource={dataSource}
         style={{ marginTop: 16 }}
-        pagination={{
-          current: page,
-          pageSize: 10,
-          onChange: setPage,
-          showSizeChanger: true,
-          showTotal: (t) => `共 ${t} 条`,
-        }}
+        pagination={{ current: page, pageSize: 10, onChange: setPage }}
       />
 
-      <Pagination
+      <AppPagination
         current={page}
         total={dataSource.length}
         pageSize={10}
@@ -68,9 +63,9 @@ export default function Demo() {
         style={{ marginTop: 16 }}
       />
 
-      <Modal open={open} title="确认" onOk={() => setOpen(false)} onCancel={() => setOpen(false)}>
+      <AppModal open={open} title="确认" onOk={() => setOpen(false)} onCancel={() => setOpen(false)}>
         这是一个弹窗。
-      </Modal>
+      </AppModal>
     </div>
   )
 }

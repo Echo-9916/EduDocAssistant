@@ -3,6 +3,8 @@ package com.cidas.edudoc.common.security;
 import io.jsonwebtoken.ExpiredJwtException;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -14,16 +16,17 @@ class JwtServiceTest {
     @Test
     void issueAndParseRoundTrip() {
         JwtService service = new JwtService(SECRET, 3600);
-        String token = service.issue("ABC123", "alice");
+        String token = service.issue("ABC123", "alice", Set.of("STUDENT", "TEACHER"));
         JwtService.TokenClaims claims = service.parse(token);
         assertEquals("ABC123", claims.userId());
         assertEquals("alice", claims.username());
+        assertEquals(Set.of("STUDENT", "TEACHER"), claims.roles());
     }
 
     @Test
     void expiredTokenThrows() {
         JwtService service = new JwtService(SECRET, -1);
-        String token = service.issue("ABC", "u");
+        String token = service.issue("ABC", "u", Set.of());
         assertThrows(ExpiredJwtException.class, () -> service.parse(token));
     }
 }

@@ -27,7 +27,7 @@ class AuthServiceTest {
         UserPrincipal principal = new UserPrincipal("ABC", "u1",
                 Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of());
         when(authProvider.authenticate("u1", "pw")).thenReturn(Optional.of(principal));
-        when(jwtService.issue("ABC", "u1")).thenReturn("tok");
+        when(jwtService.issue("ABC", "u1", Set.of("STUDENT"))).thenReturn("tok");
 
         AuthService.LoginResult result = authService.login("u1", "pw");
 

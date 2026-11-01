@@ -20,12 +20,21 @@ const http = axios.create({
   timeout: 15000,
 })
 
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
 http.interceptors.request.use((config) => {
   const token = getToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
   config.headers['X-Trace-Id'] = newTraceId()
+  const idempotencyKey = resolveIdempotencyKey(
+    config.method ?? 'get',
+    config.headers['Idempotency-Key'] as string | undefined,
+  )
+  if (idempotencyKey) {
+    config.headers['Idempotency-Key'] = idempotencyKey
+  }
   return config
 })
 
@@ -88,4 +97,12 @@ export function newTraceId(): string {
 /** 幂等键：写操作首次生成，重试时复用同一 key。 */
 export function newIdempotencyKey(): string {
   return crypto.randomUUID()
+}
+
+/** 写请求需要幂等键：调用方已给（重试复用）则保留，否则生成；读请求返回 undefined。 */
+export function resolveIdempotencyKey(method: string, existing?: string): string | undefined {
+  if (!WRITE_METHODS.has(method.toUpperCase())) {
+    return undefined
+  }
+  return existing || newIdempotencyKey()
 }

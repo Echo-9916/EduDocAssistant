@@ -1,6 +1,5 @@
 package com.cidas.edudoc.common.security;
 
-import com.cidas.edudoc.access.infrastructure.UserAccountRepository;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -20,7 +19,7 @@ import java.io.IOException;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final UserAccountRepository userAccountRepository;
+    private final PrincipalLoader principalLoader;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -29,7 +28,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 JwtService.TokenClaims claims = jwtService.parse(header.substring(7));
-                UserPrincipal principal = userAccountRepository.loadPrincipal(claims.userId(), claims.username());
+                UserPrincipal principal = principalLoader.loadPrincipal(claims.userId(), claims.username());
                 if (principal == null) {
                     SecurityContextHolder.clearContext();
                 } else {

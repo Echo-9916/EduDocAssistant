@@ -1,6 +1,8 @@
 package com.cidas.edudoc.access.application.impl;
 
 import com.cidas.edudoc.access.application.AuthProvider;
+import com.cidas.edudoc.access.domain.AccountStatus;
+import com.cidas.edudoc.access.domain.AuthSource;
 import com.cidas.edudoc.access.infrastructure.UserAccount;
 import com.cidas.edudoc.access.infrastructure.UserAccountRepository;
 import com.cidas.edudoc.common.api.CidasBusinessException;
@@ -17,23 +19,20 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class LocalAuthProvider implements AuthProvider {
 
-    private static final String SOURCE_LOCAL = "LOCAL";
-    private static final String STATUS_ACTIVE = "A";
-
     private final UserAccountRepository repository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
     public Optional<UserPrincipal> authenticate(String username, String password) {
         Optional<UserAccount> account = repository.findByUsername(username)
-                .filter(a -> SOURCE_LOCAL.equals(a.getAuthSource()))
+                .filter(a -> AuthSource.LOCAL.code().equals(a.getAuthSource()))
                 .filter(a -> a.getPasswordHash() != null
                         && passwordEncoder.matches(password, a.getPasswordHash()));
         if (account.isEmpty()) {
             return Optional.empty();
         }
         UserAccount found = account.get();
-        if (!STATUS_ACTIVE.equals(found.getAccountStatus())) {
+        if (!AccountStatus.ACTIVE.code().equals(found.getAccountStatus())) {
             throw new CidasBusinessException(ErrorCode.UNAUTHORIZED, "账号受限，请联系管理员");
         }
         return Optional.of(repository.loadPrincipal(found.getId(), found.getUsername()));

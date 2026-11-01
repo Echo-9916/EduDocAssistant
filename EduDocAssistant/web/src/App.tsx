@@ -4,6 +4,7 @@ import RequireAuth from './auth/RequireAuth'
 import RoleEntry from './auth/RoleEntry'
 import AppShell from './layouts/AppShell'
 import Login from './pages/Login'
+import AccountRestricted from './pages/AccountRestricted'
 import Forbidden from './pages/Forbidden'
 import SectionPlaceholder from './pages/SectionPlaceholder'
 import Demo from './pages/Demo'
@@ -30,6 +31,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/roles" element={<RoleEntry />} />
+          <Route path="/account-restricted" element={<AccountRestricted />} />
           <Route path="/403" element={<Forbidden />} />
           <Route path="/demo" element={<Demo />} />
           <Route path="/" element={<Home />} />

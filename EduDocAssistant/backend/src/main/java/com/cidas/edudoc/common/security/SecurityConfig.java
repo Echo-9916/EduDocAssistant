@@ -21,7 +21,8 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/login", "/api/smoke", "/actuator/health").permitAll()
+                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/reset-password",
+                                "/api/v1/auth/access-request", "/api/smoke", "/actuator/health").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(accessDeniedHandler))

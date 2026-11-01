@@ -10,6 +10,12 @@ public record ApiResponse<T>(int code, String message, T data, String traceId, S
                 TraceContext.get(), Instant.now().toString());
     }
 
+    /** 成功但无数据、仅带提示文案的响应（如占位接口）。 */
+    public static ApiResponse<Void> message(String message) {
+        return new ApiResponse<>(ErrorCode.OK.code(), message, null,
+                TraceContext.get(), Instant.now().toString());
+    }
+
     public static <T> ApiResponse<T> error(ErrorCode errorCode) {
         return error(errorCode, errorCode.defaultMessage());
     }

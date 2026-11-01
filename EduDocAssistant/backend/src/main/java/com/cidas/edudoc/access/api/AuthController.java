@@ -36,6 +36,16 @@ public class AuthController {
         authService.logout(authorization.substring(7));
     }
 
+    @PostMapping("/reset-password")
+    public ApiResponse<Void> resetPassword() {
+        return ApiResponse.message("该功能正在开发中");
+    }
+
+    @PostMapping("/access-request")
+    public ApiResponse<Void> accessRequest() {
+        return ApiResponse.message("该功能正在开发中");
+    }
+
     public record LoginRequest(String username, String password) {
     }
 }

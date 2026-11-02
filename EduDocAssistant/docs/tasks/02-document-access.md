@@ -25,12 +25,13 @@
 - **现状**：pom 无 OSS SDK/Redis/Tika；application.yml 无 redis 与 oss 配置节；幂等键存于 `InMemoryIdempotencyStore`（其 ponytail 注释指明升级路径为 Redis）。
 - **验收标准**：
   - pom 新增：`com.aliyun.oss:aliyun-sdk-oss`（3.18.x）、`com.aliyun:sts20150401`（V2.0 OpenAPI SDK，不选维护态的旧 `aliyun-java-sdk-sts`）、`spring-boot-starter-data-redis`、`org.apache.tika:tika-core` + `tika-parsers-standard-package`（3.x）；版本号落地时锁定并回填本文档；JDK 21 若报 JAXB 缺类按官方文档补（大概率不需要）。
+  - 实际锁定版本（2026-11-02）：aliyun-sdk-oss **3.18.2**、sts20150401 **1.1.7**、tika **3.3.1**（4.0.0-alpha 不用）、data-redis 随 Boot 3.5.4；JAXB 无需补充。
   - `application.yml` 新增：`spring.data.redis.host/port`（默认 localhost:6379）；`edudoc.oss.{endpoint,region,bucket,access-key-id,access-key-secret,role-arn,sts-endpoint,object-key-prefix=edudoc/uploads,session-ttl-minutes=120,sts-duration-seconds=900}`（敏感项走环境变量）；`edudoc.outbox.{enabled,poll-interval-ms=1000,batch-size=50,max-retry=5}`；`edudoc.parse.{enabled,concurrency=2,stream-key=edudoc:stream:document-parse,group=cg-document-parse,chunk-size=1500}`。
   - 新建 `infrastructure.oss.OssProperties`（`@ConfigurationProperties("edudoc.oss")`，包路径对齐详细设计表 2-1）。
   - 新建 `common.api.RedisIdempotencyStore`（`SET key NX EX 86400`）替换 `InMemoryIdempotencyStore` 装配；`IdempotencyFilter` 及其测试若引用旧实现改为依赖 `IdempotencyStore` 端口。
-- **测试**：`RedisIdempotencyStoreTest`（mock StringRedisTemplate：首见 true / 重放 false）；`mvn test` 存量全绿。
+- **测试**：`RedisIdempotencyStoreTest`（mock StringRedisTemplate：首见 true / 重放 false / Redis 返回 null 视为重复）；`mvn test` 存量全绿。
 - **依赖**：前置环境就绪
-- **状态**：未开始
+- **状态**：已完成（2026-11-02，`mvn test` 55 全绿；Redis 复用用户已有 `redis-dev` 容器 v8.10.1:6379；`InMemoryIdempotencyStore` 已删除；`EduDocApplication` 加 `@ConfigurationPropertiesScan`）
 
 ## B-02 后端 · 课程种子 + courseScope 填充 + 课程查询接口
 
@@ -38,12 +39,12 @@
 - **现状**：`04_seed.sql` 无课程数据；`UserPrincipal.courseScope` 为空占位（`UserAccountRepository.java` L36 ponytail 注释）；前端上传表单与课程筛选无数据源。
 - **验收标准**：
   - `SeedDataRunner` 扩展：幂等 seed 2 门课程 + 成员（teacher=TEACHER、student=STUDENT；按 course_code+term_code 判存）。
-  - 新增 `access.infrastructure.{Course,CourseMapper,CourseRepository}` + `mapper/CourseMapper.xml`（HEXTORAW/RAWTOHEX 先例）；`UserAccountMapper.xml` 增 `selectCourseIds`。
+  - 新增 `access.infrastructure.{Course,CourseMapper,CourseRepository}` + `mapper/CourseMapper.xml`（HEXTORAW/RAWTOHEX 先例）；courseScope 查询复用 `CourseRepository.courseIdsOf`（不另加 `UserAccountMapper.selectCourseIds`，一条 SQL 两处用）。
   - `loadPrincipal` 填充 courseScope = `edudoc_course_member` 有效成员课程集合，删除占位注释并同步更新 `AccessGuard.java` L23 注释。
   - 新增 `GET /api/v1/courses`（认证即可，无权限点）→ 当前用户课程 `[{id,courseCode,courseName,termCode,memberRole}]`。**契约外辅助接口**（接口契约速查无此端点），理由：上传表单与列表筛选的数据源；回填契约速查。
-- **测试**：`CourseRepositoryTest`（真实 Oracle，仿 `RbacLifecycleIntegrationTest` 先例）、`CourseControllerTest`、`SeedDataRunnerTest` 扩展（课程幂等）。
+- **测试**：`CourseQueryServiceImplTest`、`CourseControllerTest`、`SeedDataRunnerTest` 扩展（课程幂等）、`UserAccountRepositoryTest`（courseScope 断言）；真实 Oracle 的课程查询验证并入 B-13 联调（本地 mock 单测已覆盖装配）。
 - **依赖**：无（可与 B-01 并行）
-- **状态**：未开始
+- **状态**：已完成（2026-11-02，`mvn test` 58 全绿；种子 CS101/MATH201，teacher 授两课、student 仅 CS101）
 
 ## B-03 后端 · 上传会话 + STS 签发
 

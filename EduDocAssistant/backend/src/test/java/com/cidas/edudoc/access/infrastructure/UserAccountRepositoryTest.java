@@ -14,28 +14,32 @@ import static org.mockito.Mockito.when;
 
 class UserAccountRepositoryTest {
 
+    private final CourseRepository courseRepo = mock(CourseRepository.class);
+
     @Test
     void lockedAccountReturnsNullPrincipal() {
         UserAccountMapper mapper = mock(UserAccountMapper.class);
         when(mapper.selectAccountStatus("ABC")).thenReturn("L");
-        UserAccountRepository repo = new UserAccountRepository(mapper);
+        UserAccountRepository repo = new UserAccountRepository(mapper, courseRepo);
 
         assertNull(repo.loadPrincipal("ABC", "u1"));
     }
 
     @Test
-    void activeAccountLoadsRolesAndPermissions() {
+    void activeAccountLoadsRolesPermissionsAndCourseScope() {
         UserAccountMapper mapper = mock(UserAccountMapper.class);
         when(mapper.selectAccountStatus("ABC")).thenReturn("A");
         when(mapper.selectRoleCodes("ABC")).thenReturn(List.of("STUDENT"));
         when(mapper.selectPermissionCodes("ABC")).thenReturn(List.of("DOCUMENT_READ"));
-        UserAccountRepository repo = new UserAccountRepository(mapper);
+        when(courseRepo.courseIdsOf("ABC")).thenReturn(Set.of("C1", "C2"));
+        UserAccountRepository repo = new UserAccountRepository(mapper, courseRepo);
 
         UserPrincipal principal = repo.loadPrincipal("ABC", "u1");
 
         assertNotNull(principal);
         assertEquals(Set.of("STUDENT"), principal.roles());
         assertEquals(Set.of("DOCUMENT_READ"), principal.permissions());
+        assertEquals(Set.of("C1", "C2"), principal.courseScope());
     }
 
     @Test
@@ -45,7 +49,8 @@ class UserAccountRepositoryTest {
         when(mapper.selectRoleCodes("ABC")).thenReturn(List.of("STUDENT"));
         when(mapper.selectPermissionCodes("ABC")).thenReturn(List.of());
         when(mapper.selectDisplayName("ABC")).thenReturn("学生测试");
-        UserAccountRepository repo = new UserAccountRepository(mapper);
+        when(courseRepo.courseIdsOf("ABC")).thenReturn(Set.of());
+        UserAccountRepository repo = new UserAccountRepository(mapper, courseRepo);
 
         UserPrincipal principal = repo.loadPrincipal("ABC", "u1");
 

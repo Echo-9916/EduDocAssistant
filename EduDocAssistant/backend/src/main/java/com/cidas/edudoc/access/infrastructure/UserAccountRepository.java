@@ -16,6 +16,7 @@ import java.util.Set;
 public class UserAccountRepository implements PrincipalLoader {
 
     private final UserAccountMapper mapper;
+    private final CourseRepository courseRepository;
 
     public Optional<UserAccount> findByUsername(String username) {
         return Optional.ofNullable(mapper.selectByUsername(username));
@@ -33,7 +34,7 @@ public class UserAccountRepository implements PrincipalLoader {
         }
         Set<String> roles = new HashSet<>(mapper.selectRoleCodes(userIdHex));
         Set<String> permissions = new HashSet<>(mapper.selectPermissionCodes(userIdHex));
-        // ponytail: courseScope 待课程成员模块落地后填充
-        return new UserPrincipal(userIdHex, username, mapper.selectDisplayName(userIdHex), roles, permissions, Set.of());
+        return new UserPrincipal(userIdHex, username, mapper.selectDisplayName(userIdHex), roles, permissions,
+                courseRepository.courseIdsOf(userIdHex));
     }
 }

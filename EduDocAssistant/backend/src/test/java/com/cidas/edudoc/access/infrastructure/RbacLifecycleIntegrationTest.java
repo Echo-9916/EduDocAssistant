@@ -116,7 +116,9 @@ class RbacLifecycleIntegrationTest {
     @Test
     void filtersFutureExpiredAndDisabledRolesAndCarriesDisplayName() {
         try (SqlSession session = factory.openSession(true)) {
-            UserAccountRepository repo = new UserAccountRepository(session.getMapper(UserAccountMapper.class));
+            // courseScope 非本测试关注点，mock 返回空集合
+            UserAccountRepository repo = new UserAccountRepository(session.getMapper(UserAccountMapper.class),
+                    org.mockito.Mockito.mock(CourseRepository.class));
 
             UserPrincipal principal = repo.loadPrincipal(USER_ID, USERNAME);
 

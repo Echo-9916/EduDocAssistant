@@ -29,6 +29,45 @@ public class SeedDataRunner implements ApplicationRunner {
                 new ClassPathResource("db_seed/seed_accounts.csv").getInputStream(),
                 StandardCharsets.UTF_8);
         seed(parse(csv));
+        seedCourses();
+    }
+
+    /** 种子课程：teacher 授两门课，student 仅选 CS101（用于课程范围与列表筛选联调）。 */
+    void seedCourses() {
+        seedCourse("CS101", "计算机导论", "2026-FALL",
+                new String[][]{{"teacher", "TEACHER"}, {"student", "STUDENT"}});
+        seedCourse("MATH201", "高等数学", "2026-FALL",
+                new String[][]{{"teacher", "TEACHER"}});
+    }
+
+    private void seedCourse(String courseCode, String courseName, String termCode, String[][] members) {
+        Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM edudoc_course WHERE course_code = ? AND term_code = ?",
+                Integer.class, courseCode, termCode);
+        if (exists != null && exists > 0) {
+            log.info("种子课程已存在，跳过：{}（{}）", courseCode, termCode);
+            return;
+        }
+        String teacherIdHex = queryUserId("teacher");
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_course (course_code, course_name, term_code, teacher_id) "
+                        + "VALUES (?, ?, ?, HEXTORAW(?))",
+                courseCode, courseName, termCode, teacherIdHex);
+        String courseIdHex = jdbcTemplate.queryForObject(
+                "SELECT RAWTOHEX(id) FROM edudoc_course WHERE course_code = ? AND term_code = ?",
+                String.class, courseCode, termCode);
+        for (String[] member : members) {
+            jdbcTemplate.update(
+                    "INSERT INTO edudoc_course_member (course_id, user_id, member_role) "
+                            + "SELECT HEXTORAW(?), id, ? FROM edudoc_user WHERE username = ?",
+                    courseIdHex, member[1], member[0]);
+        }
+        log.info("种子课程已创建：{}（{}，成员 {} 人）", courseCode, termCode, members.length);
+    }
+
+    private String queryUserId(String username) {
+        return jdbcTemplate.queryForObject(
+                "SELECT RAWTOHEX(id) FROM edudoc_user WHERE username = ?", String.class, username);
     }
 
     void seed(List<SeedAccount> accounts) {

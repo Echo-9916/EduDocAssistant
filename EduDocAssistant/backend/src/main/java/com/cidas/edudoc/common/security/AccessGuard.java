@@ -15,7 +15,7 @@ public class AccessGuard {
     @Around("@annotation(requirePermission)")
     public Object guard(ProceedingJoinPoint joinPoint, RequirePermission requirePermission) throws Throwable {
         // 认证 → 账号状态 → 角色 已在 JwtAuthenticationFilter / UserAccountRepository 完成；
-        // 课程范围本阶段为占位，待课程成员模块落地后按 principal.courseScope() 过滤。
+        // 课程范围由 principal.courseScope()（课程成员表）承载，文档级过滤在各域应用服务按需校验。
         UserPrincipal principal = AuthContext.require();
         assertPermitted(principal, requirePermission.value());
         return joinPoint.proceed();

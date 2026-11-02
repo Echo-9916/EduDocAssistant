@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.access.infrastructure.CourseMapper">
+
+    <select id="selectCoursesByUser" resultType="com.cidas.edudoc.access.infrastructure.Course">
+        SELECT RAWTOHEX(c.id) AS id, c.course_code AS courseCode,
+               c.course_name AS courseName, c.term_code AS termCode,
+               m.member_role AS memberRole
+        FROM edudoc_course_member m
+        JOIN edudoc_course c ON c.id = m.course_id AND c.status = 'A'
+        WHERE m.user_id = HEXTORAW(#{userIdHex}) AND m.status = 'A'
+        ORDER BY c.course_code
+    </select>
+
+</mapper>

@@ -33,6 +33,25 @@ class SeedDataRunnerTest {
     }
 
     @Test
+    void seedsNewCourseOnceAndSkipsExisting() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        SeedDataRunner runner = new SeedDataRunner(jdbc, mock(PasswordEncoder.class));
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("CS101"), eq("2026-FALL"))).thenReturn(0);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("MATH201"), eq("2026-FALL"))).thenReturn(1);
+        when(jdbc.queryForObject(anyString(), eq(String.class), eq("teacher"))).thenReturn("HT");
+        when(jdbc.queryForObject(anyString(), eq(String.class), eq("CS101"), eq("2026-FALL"))).thenReturn("HC");
+
+        runner.seedCourses();
+
+        verify(jdbc).update(startsWith("INSERT INTO edudoc_course ("),
+                eq("CS101"), eq("计算机导论"), eq("2026-FALL"), eq("HT"));
+        verify(jdbc).update(startsWith("INSERT INTO edudoc_course_member"), eq("HC"), eq("TEACHER"), eq("teacher"));
+        verify(jdbc).update(startsWith("INSERT INTO edudoc_course_member"), eq("HC"), eq("STUDENT"), eq("student"));
+        verify(jdbc, never()).update(startsWith("INSERT INTO edudoc_course ("),
+                eq("MATH201"), any(), any(), any());
+    }
+
+    @Test
     void skipsExistingAccount() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);

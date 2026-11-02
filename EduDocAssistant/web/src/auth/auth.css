@@ -1,13 +1,14 @@
 .auth-page {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: #f4f7fb;
 }
 
-/* 左侧品牌视觉区：814/1440 ≈ 56% */
+/* 左侧品牌视觉区：与右侧 1:1 分栏 */
 .auth-left {
   position: relative;
-  flex: 0 0 56%;
+  flex: 0 0 50%;
   overflow: hidden;
   padding: 48px 64px;
   color: #fff;
@@ -34,20 +35,20 @@
 }
 
 .auth-brand-mark {
-  width: 44px;
-  height: 44px;
+  width: 66px;
+  height: 66px;
   display: grid;
   place-items: center;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 14px;
   background: #fff;
   border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.12);
 }
 
 .auth-brand-mark img {
-  width: 36px;
-  height: 36px;
+  width: 54px;
+  height: 54px;
   object-fit: contain;
 }
 
@@ -70,11 +71,85 @@
 .auth-characters {
   position: relative;
   flex: 1;
+  min-height: 0;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  margin: 32px 0 24px;
+  margin: 24px 0;
   pointer-events: none;
+}
+
+/* 角色场景整体放大 1.3 倍；矮视口下回落缩放，避免顶部被裁切 */
+.auth-characters .characters-scene {
+  transform: scale(1.3);
+  transform-origin: bottom center;
+}
+
+@media (max-height: 900px) {
+  .auth-characters .characters-scene {
+    transform: scale(1.05);
+  }
+}
+
+@media (max-height: 760px) {
+  .auth-characters .characters-scene {
+    transform: scale(0.9);
+  }
+}
+
+@media (max-height: 620px) {
+  .auth-characters .characters-scene {
+    transform: scale(0.72);
+  }
+}
+
+/* 登录成功彩带（仅登录成功页，见 AuthLayout Confetti） */
+.auth-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.auth-confetti i {
+  position: absolute;
+  bottom: -24px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: confetti-launch 3s linear forwards;
+}
+
+.auth-confetti i.from-left {
+  left: -12px;
+}
+
+.auth-confetti i.from-right {
+  right: -12px;
+}
+
+/* 左右两下角斜向上喷射：上升段 ease-out 减速，越过峰值后 ease-in 加速飘落 */
+@keyframes confetti-launch {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1);
+  }
+  6% {
+    opacity: 1;
+  }
+  40% {
+    transform: translate3d(calc(var(--dx) * 0.55), var(--peak), 0) rotate(calc(var(--rot) * 0.45));
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.6);
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--dx), calc(var(--peak) + 115vh), 0) rotate(var(--rot));
+    opacity: 0;
+  }
 }
 
 /* 政策链接 */
@@ -96,22 +171,22 @@
   color: #fff;
 }
 
-/* 右侧表单区：640/1440 ≈ 44% */
+/* 右侧表单区：与左侧 1:1 分栏 */
 .auth-right {
   position: relative;
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  padding: 48px 64px;
   background: #f4f7fb;
   border-left: 1px solid #dde5ef; /* 中线 */
+  overflow-y: auto; /* 表单过高时仅在右侧内部滚动，页面本身不滚动 */
 }
 
 .auth-panel {
-  width: 530px;
+  width: 440px;
   max-width: 100%;
-  padding: 32px 40px;
+  margin: auto; /* 居中；溢出时自动边距归零，避免顶部被裁切 */
+  padding: 36px 44px;
   background: #fff;
   border: 1px solid #dde5ef;
   border-radius: 24px;
@@ -119,22 +194,28 @@
 }
 
 .auth-title {
-  margin: 0 0 8px;
-  font-size: 32px;
+  margin: 0 0 6px;
+  font-size: 28px;
   font-weight: 700;
+  letter-spacing: 0.2px;
   color: #1f2937;
 }
 
 .auth-subtitle {
-  margin: 0 0 24px;
-  font-size: 16px;
-  color: #475569;
+  margin: 0 0 28px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #5b6b80;
 }
 
-/* 表单字段：标签 20px Bold、输入 15px、控件圆角 8px、主按钮高 34px */
+/* 表单字段：标签 14px Semibold、输入 14px / 40px 高、控件圆角 8px、主按钮 40px */
+.auth-panel .ant-form-item-label {
+  padding-bottom: 6px;
+}
+
 .auth-panel .ant-form-item-label > label {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   color: #1f2937;
   height: auto;
 }
@@ -142,22 +223,35 @@
 .auth-panel .ant-input,
 .auth-panel .ant-input-affix-wrapper,
 .auth-panel .ant-select-selector {
-  font-size: 15px;
+  font-size: 14px;
   border-radius: 8px;
 }
 
 .auth-panel .ant-input-affix-wrapper,
 .auth-panel .ant-select-selector {
-  padding-block: 6px;
+  padding-block: 8px;
+}
+
+.auth-panel .ant-input-affix-wrapper .ant-input {
+  font-size: 14px;
 }
 
 .auth-panel .ant-btn {
-  height: 34px;
+  height: 40px;
+  font-size: 15px;
+  font-weight: 600;
   border-radius: 8px;
 }
 
+.auth-panel .ant-btn-sm,
+.auth-panel .ant-btn-link {
+  height: auto;
+  font-size: 13px;
+  font-weight: 400;
+}
+
 .auth-panel .ant-form-item {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .auth-helper {

@@ -10,8 +10,8 @@ export const theme: ThemeConfig = {
     colorText: '#1F2937',
     colorTextSecondary: '#475569',
     colorTextTertiary: '#5B6B80',
-    fontSize: 12,
-    borderRadius: 6,
+    fontSize: 14,
+    borderRadius: 8,
     fontFamily: "'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif",
   },
 }

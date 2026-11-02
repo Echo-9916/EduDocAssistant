@@ -47,23 +47,26 @@ export default function ForgotPassword() {
       {notice && <Alert type="info" showIcon message={notice} style={{ marginBottom: 16 }} />}
       <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
         <Form.Item label="验证方式">
+          {/* ponytail: 演示占位邮箱（S-6），接真实找回流程时改为读取当前账号绑定的校内邮箱 */}
           <Input value="校内邮箱 · zhang***@campus.edu.cn" disabled />
         </Form.Item>
         <Form.Item name="code" label="验证码" rules={[{ required: true, message: '请输入验证码' }]}>
           <Input
             placeholder="6 位数字验证码"
             suffix={
-              <Button type="link" size="small" style={{ padding: 0 }} onClick={sendCode} disabled={countdown > 0}>
-                {countdown > 0 ? `${countdown} 秒` : '发送验证码'}
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                onClick={sendCode}
+                disabled={countdown > 0}
+                title={countdown > 0 ? `${countdown} 秒后可重新发送` : undefined}
+              >
+                {countdown > 0 ? `${countdown}s 后重发` : '发送验证码'}
               </Button>
             }
           />
         </Form.Item>
-        {countdown > 0 && (
-          <div className="auth-helper" style={{ marginTop: -12, marginBottom: 12 }}>
-            {countdown} 秒后可重新发送
-          </div>
-        )}
         <Form.Item
           name="newPassword"
           label="新密码"

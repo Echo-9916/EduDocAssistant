@@ -7,3 +7,4 @@
 ## 阶段2 垂直切片（vertical slice）
 
 - [01-fullstack-auth.md](01-fullstack-auth.md) —— 登录切片：认证种子数据、登录/登出/令牌撤销、登录页/角色入口/账号受限/找回密码/权限申请、端到端联调。
+- [02-document-access.md](02-document-access.md) —— 文档接入切片：真实 OSS STS 直传（含断点续传）、Outbox + Redis Stream 异步解析（Tika 分块）、我的文档列表/详情/回收站、学生与教师双端页面、端到端联调。

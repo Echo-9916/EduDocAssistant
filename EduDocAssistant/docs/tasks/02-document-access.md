@@ -71,9 +71,9 @@
   - 边界：撞 `uk_document_1` → 捕 `DuplicateKeyException` → 40901「同名文档已存在或位于回收站，请恢复或等待清理」（2026-11-02 用户决策，不改标题不加列）；提交成功但 Redis 回填失败 → 会话仍 OPEN 时按 oss_object uk（bucket+objectKey+versionId）反查 version 重放，不重复建档。
   - 幂等语义分层记录进 DocumentTest.md：`IdempotencyFilter` 同 key 重放 = 40902（防双击），业务重试须用新 key（http.ts 默认行为），业务幂等靠会话重放。
   - 新建：dto、`document.infrastructure.{OssObject,Document,DocumentVersion}` 各 + Mapper + Repository + 3 个 XML；`access.application.AuditService(+impl)`（详细设计表 3-1 契约类，document 域经接口跨域调用）；`AuditLog`/`AuditLogMapper.xml` 补 documentIdHex/detailJson。
-- **测试**：`CompleteUploadTest`（mock OssStorageAdapter/仓储：五写一事务、大小不符 40901 且会话回 OPEN、hash 不符 40901、COMPLETED 重放、oss_object 恢复路径、同名 40901、审计调用断言；对应详细设计 UT-01/UT-02）。
+- **测试**：`CompleteUploadTest`(12 例:五写一事务、大小不符 40901 且会话回 OPEN、hash 不符 40901、COMPLETED 重放、COMPLETING 恢复路径、同名 40901、非本人 40301、摘要格式 40001、会话缺失 40401;对应详细设计 UT-01/UT-02)、`DocumentProvisioningServiceImplTest`(建档字段断言)。
 - **依赖**：B-03
-- **状态**：未开始
+- **状态**：已完成（2026-11-02，`mvn test` 88 全绿；**真实端到端**：STS 凭据直传 OSS PUT 200 → complete 建档 → 重放同 id；Oracle 核查查证 document=PARSING/version=1 UPLOAD/oss_object=ORIGINAL/size=50、Outbox `DOCUMENT_PARSE_REQUESTED`=NEW 且 `JSON_VALUE` 可读（`CAST(x AS JSON)` 可行）、审计 UPLOAD_COMPLETED=200。遗留的 "B04 live" 测试文档留在库中作 B-07 列表联调数据）
 
 ## B-05 后端 · Outbox 调度器 + Redis Stream 发布
 

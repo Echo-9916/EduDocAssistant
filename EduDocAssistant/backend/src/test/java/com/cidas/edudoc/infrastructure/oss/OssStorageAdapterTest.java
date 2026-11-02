@@ -22,7 +22,8 @@ class OssStorageAdapterTest {
     private final OssProperties properties = new OssProperties("https://oss-cn-beijing.aliyuncs.com",
             "cn-beijing", "cidas-oss-bucket", "ak", "sk", "acs:ram::1:role/edudoc-upload",
             "sts.cn-beijing.aliyuncs.com", "edudoc/uploads", 120, 900);
-    private final OssStorageAdapter adapter = new OssStorageAdapter(properties, stsClient);
+    private final OssStorageAdapter adapter =
+            new OssStorageAdapter(properties, stsClient, mock(com.aliyun.oss.OSS.class));
 
     private static AssumeRoleResponse stubResponse() {
         AssumeRoleResponseBody.AssumeRoleResponseBodyCredentials credentials =

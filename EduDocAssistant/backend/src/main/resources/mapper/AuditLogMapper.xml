@@ -4,9 +4,13 @@
 
     <insert id="insert">
         INSERT INTO edudoc_audit_log
-            (actor_id, actor_role, action_type, resource_type, resource_ref, result_code, trace_id)
-        VALUES (HEXTORAW(#{log.actorIdHex, jdbcType=VARCHAR}), #{log.actorRole, jdbcType=VARCHAR}, #{log.actionType, jdbcType=VARCHAR},
-                #{log.resourceType, jdbcType=VARCHAR}, #{log.resourceRef, jdbcType=VARCHAR}, #{log.resultCode, jdbcType=VARCHAR}, #{log.traceId, jdbcType=VARCHAR})
+            (actor_id, actor_role, action_type, resource_type, resource_ref, document_id,
+             result_code, trace_id, detail_json)
+        VALUES (HEXTORAW(#{log.actorIdHex, jdbcType=VARCHAR}), #{log.actorRole, jdbcType=VARCHAR},
+            #{log.actionType, jdbcType=VARCHAR}, #{log.resourceType, jdbcType=VARCHAR},
+            #{log.resourceRef, jdbcType=VARCHAR}, HEXTORAW(#{log.documentIdHex, jdbcType=VARCHAR}),
+            #{log.resultCode, jdbcType=VARCHAR}, #{log.traceId, jdbcType=VARCHAR},
+            CAST(#{log.detailJson, jdbcType=VARCHAR} AS JSON))
     </insert>
 
 </mapper>

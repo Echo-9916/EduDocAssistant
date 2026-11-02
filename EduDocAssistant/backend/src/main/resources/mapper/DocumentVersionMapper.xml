@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.document.infrastructure.DocumentVersionMapper">
+
+    <insert id="insert">
+        INSERT INTO edudoc_document_version (id, document_id, version_no, version_type,
+            source_object_id, editor_id, content_hash, version_status)
+        VALUES (HEXTORAW(#{version.id}), HEXTORAW(#{version.documentId}), #{version.versionNo},
+            #{version.versionType}, HEXTORAW(#{version.sourceObjectId}), HEXTORAW(#{version.editorId}),
+            #{version.contentHash}, #{version.versionStatus})
+    </insert>
+
+    <select id="selectBySourceObject" resultType="com.cidas.edudoc.document.infrastructure.DocumentVersion">
+        SELECT RAWTOHEX(v.id) AS id, RAWTOHEX(v.document_id) AS documentId, v.version_no AS versionNo,
+               v.version_type AS versionType, RAWTOHEX(v.source_object_id) AS sourceObjectId,
+               RAWTOHEX(v.editor_id) AS editorId, v.content_hash AS contentHash, v.version_status AS versionStatus
+        FROM edudoc_document_version v
+        WHERE v.source_object_id = HEXTORAW(#{sourceObjectIdHex})
+    </select>
+
+</mapper>

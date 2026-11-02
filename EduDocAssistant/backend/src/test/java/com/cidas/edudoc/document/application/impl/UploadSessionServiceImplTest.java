@@ -45,8 +45,10 @@ class UploadSessionServiceImplTest {
     private final OssProperties properties = new OssProperties("https://oss-cn-beijing.aliyuncs.com",
             "cn-beijing", "b", "ak", "sk", "acs:ram::1:role/edudoc-upload",
             "sts.cn-beijing.aliyuncs.com", "edudoc/uploads", 120, 900);
+    private final com.cidas.edudoc.document.application.DocumentProvisioningService provisioningService =
+            mock(com.cidas.edudoc.document.application.DocumentProvisioningService.class);
     private final UploadSessionServiceImpl service = new UploadSessionServiceImpl(
-            sessionRepository, ossStorageAdapter, courseRepository, properties);
+            sessionRepository, ossStorageAdapter, courseRepository, properties, provisioningService);
 
     @BeforeEach
     void setUp() {

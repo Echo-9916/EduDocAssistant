@@ -1,5 +1,9 @@
 package com.cidas.edudoc.infrastructure.oss;
 
+import com.aliyun.oss.OSS;
+import com.aliyun.oss.OSSException;
+import com.aliyun.oss.model.OSSObject;
+import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.sts20150401.models.AssumeRoleRequest;
 import com.aliyun.sts20150401.models.AssumeRoleResponse;
 import com.aliyun.sts20150401.models.AssumeRoleResponseBody;
@@ -8,6 +12,12 @@ import com.cidas.edudoc.common.api.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.io.InputStream;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.Optional;
+
 /** OSS 适配：浏览器直传的短期 STS 签发（inline policy 收窄到单个 objectKey，概要 §5.4 不暴露长期凭据）。 */
 @Component
 @RequiredArgsConstructor
@@ -15,6 +25,7 @@ public class OssStorageAdapter {
 
     private final OssProperties properties;
     private final com.aliyun.sts20150401.Client stsClient;
+    private final OSS ossClient;
 
     public UploadCredentials issueUploadCredentials(String objectKey, String roleSessionName) {
         String policy = """
@@ -34,12 +45,51 @@ public class OssStorageAdapter {
                     c.getExpiration(), properties.bucket(), properties.region(), properties.endpoint());
         } catch (Exception e) {
             throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                    "上传凭据签发失败：" + e.getMessage(), true, java.util.Map.of());
+                    "上传凭据签发失败：" + e.getMessage(), true, Map.of());
+        }
+    }
+
+    /** 对象头校验（complete 回调第一步）：不存在返回空，服务端不可用抛 50301。 */
+    public Optional<ObjectInfo> headObject(String objectKey) {
+        try {
+            ObjectMetadata meta = ossClient.getObjectMetadata(properties.bucket(), objectKey);
+            return Optional.of(new ObjectInfo(meta.getContentLength(), meta.getETag(),
+                    meta.getVersionId(), meta.getServerSideEncryption()));
+        } catch (OSSException e) {
+            if ("NoSuchKey".equals(e.getErrorCode())) {
+                return Optional.empty();
+            }
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "OSS 对象校验失败：" + e.getErrorCode(), true, Map.of());
+        } catch (Exception e) {
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "OSS 对象校验失败：" + e.getMessage(), true, Map.of());
+        }
+    }
+
+    /** 流式实算对象 SHA-256（小写 hex，20MB 上限内单机可接受）。 */
+    public String sha256Of(String objectKey) {
+        try (OSSObject object = ossClient.getObject(properties.bucket(), objectKey);
+             InputStream in = object.getObjectContent()) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) > 0) {
+                digest.update(buffer, 0, read);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (Exception e) {
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "OSS 对象读取失败：" + e.getMessage(), true, Map.of());
         }
     }
 
     /** 浏览器直传所需的全部信息（STS 临时凭据 + 目标对象位置）。 */
     public record UploadCredentials(String accessKeyId, String accessKeySecret, String securityToken,
                                     String expiration, String bucket, String region, String endpoint) {
+    }
+
+    /** 对象头信息（size/ETag/版本/加密方式）。 */
+    public record ObjectInfo(long contentLength, String etag, String versionId, String encryption) {
     }
 }

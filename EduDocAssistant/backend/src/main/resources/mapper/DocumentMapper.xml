@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.document.infrastructure.DocumentMapper">
+
+    <insert id="insert">
+        INSERT INTO edudoc_document (id, course_id, owner_id, title, doc_type, status)
+        VALUES (HEXTORAW(#{document.id}), HEXTORAW(#{document.courseId, jdbcType=VARCHAR}),
+            HEXTORAW(#{document.ownerId}), #{document.title}, #{document.docType}, #{document.status})
+    </insert>
+
+    <update id="updateCurrentVersion">
+        UPDATE edudoc_document
+        SET current_version_id = HEXTORAW(#{versionId})
+        WHERE id = HEXTORAW(#{documentId})
+    </update>
+
+</mapper>

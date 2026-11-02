@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.document.infrastructure.OssObjectMapper">
+
+    <insert id="insert">
+        INSERT INTO edudoc_oss_object (id, bucket_name, region, object_key, object_version_id, etag,
+            content_hash, size_bytes, mime_type, encryption_type, object_role)
+        VALUES (HEXTORAW(#{object.id}), #{object.bucketName}, #{object.region}, #{object.objectKey},
+            #{object.objectVersionId, jdbcType=VARCHAR}, #{object.etag, jdbcType=VARCHAR},
+            #{object.contentHash}, #{object.sizeBytes}, #{object.mimeType},
+            #{object.encryptionType}, #{object.objectRole})
+    </insert>
+
+    <select id="selectByObject" resultType="com.cidas.edudoc.document.infrastructure.OssObject">
+        SELECT RAWTOHEX(id) AS id, bucket_name AS bucketName, region, object_key AS objectKey,
+               object_version_id AS objectVersionId, etag, content_hash AS contentHash,
+               size_bytes AS sizeBytes, mime_type AS mimeType, encryption_type AS encryptionType,
+               object_role AS objectRole
+        FROM edudoc_oss_object
+        WHERE bucket_name = #{bucketName} AND object_key = #{objectKey} AND status = 'A'
+    </select>
+
+</mapper>

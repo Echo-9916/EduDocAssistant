@@ -13,6 +13,8 @@ public interface UserAccountMapper {
 
     String selectAccountStatus(@Param("userIdHex") String userIdHex);
 
+    String selectDisplayName(@Param("userIdHex") String userIdHex);
+
     List<String> selectRoleCodes(@Param("userIdHex") String userIdHex);
 
     List<String> selectPermissionCodes(@Param("userIdHex") String userIdHex);

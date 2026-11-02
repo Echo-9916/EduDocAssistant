@@ -7,8 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-/** 当前登录用户主体：既作安全上下文，也作 /auth/me 响应。 */
-public record UserPrincipal(String userId, String username, Set<String> roles,
+/** 当前登录用户主体：既作安全上下文，也作 /auth/me 响应。displayName 为显示姓名（edudoc_user.display_name），可为空。 */
+public record UserPrincipal(String userId, String username, String displayName, Set<String> roles,
                             Set<String> permissions, Set<String> courseScope) {
 
     /** 角色映射为 ROLE_ 前缀，权限点映射为裸编码，供 hasRole/hasAuthority 判定。 */

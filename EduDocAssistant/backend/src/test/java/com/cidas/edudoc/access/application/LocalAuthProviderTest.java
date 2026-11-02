@@ -35,6 +35,30 @@ class LocalAuthProviderTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> provider.authenticate("u1", "pw"));
         assertEquals(ErrorCode.UNAUTHORIZED, e.errorCode());
+        assertEquals("账号受限：账号已锁定，请联系管理员", e.getMessage());
+        assertEquals("L", e.context().get("accountStatus"));
+    }
+
+    @Test
+    void inactiveAccountRejectedWithOwnReason() {
+        when(repository.findByUsername("u1")).thenReturn(Optional.of(
+                new UserAccount("ABC", "u1", "Alice", "hash", "I", "LOCAL")));
+        when(encoder.matches("pw", "hash")).thenReturn(true);
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> provider.authenticate("u1", "pw"));
+        assertEquals("账号受限：账号未激活，请先完成激活", e.getMessage());
+    }
+
+    @Test
+    void disabledAccountRejectedWithOwnReason() {
+        when(repository.findByUsername("u1")).thenReturn(Optional.of(
+                new UserAccount("ABC", "u1", "Alice", "hash", "D", "LOCAL")));
+        when(encoder.matches("pw", "hash")).thenReturn(true);
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> provider.authenticate("u1", "pw"));
+        assertEquals("账号受限：账号已注销，无法登录", e.getMessage());
     }
 
     @Test
@@ -43,12 +67,26 @@ class LocalAuthProviderTest {
                 new UserAccount("ABC", "u1", "Alice", "hash", "A", "LOCAL")));
         when(encoder.matches("pw", "hash")).thenReturn(true);
         when(repository.loadPrincipal("ABC", "u1")).thenReturn(
-                new UserPrincipal("ABC", "u1", Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of()));
+                new UserPrincipal("ABC", "u1", "Alice", Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of()));
 
         Optional<UserPrincipal> result = provider.authenticate("u1", "pw");
 
         assertTrue(result.isPresent());
         assertEquals("ABC", result.get().userId());
+    }
+
+    @Test
+    void concurrentStatusChangeReturnsStable40101() {
+        // P2-S1：首次查询正常、二次状态检查返回 null（并发锁定/注销/删除）
+        when(repository.findByUsername("u1")).thenReturn(Optional.of(
+                new UserAccount("ABC", "u1", "Alice", "hash", "A", "LOCAL")));
+        when(encoder.matches("pw", "hash")).thenReturn(true);
+        when(repository.loadPrincipal("ABC", "u1")).thenReturn(null);
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> provider.authenticate("u1", "pw"));
+        assertEquals(ErrorCode.UNAUTHORIZED, e.errorCode());
+        assertEquals("账号状态已变更，请重新登录", e.getMessage());
     }
 
     @Test
@@ -68,7 +106,7 @@ class LocalAuthProviderTest {
         when(repository.findByUsername("student")).thenReturn(Optional.of(
                 new UserAccount("ABC", "student", "学生测试", hash, "A", "LOCAL")));
         when(repository.loadPrincipal("ABC", "student")).thenReturn(
-                new UserPrincipal("ABC", "student", Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of()));
+                new UserPrincipal("ABC", "student", "学生测试", Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of()));
 
         Optional<UserPrincipal> result = realProvider.authenticate("student", "Cidas@123");
 

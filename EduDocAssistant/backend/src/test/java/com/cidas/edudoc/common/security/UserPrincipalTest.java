@@ -12,7 +12,7 @@ class UserPrincipalTest {
 
     @Test
     void authoritiesPrefixRolesAndKeepPermissionsBare() {
-        UserPrincipal p = new UserPrincipal("u1", "alice",
+        UserPrincipal p = new UserPrincipal("u1", "alice", null,
                 Set.of("STUDENT"), Set.of("DOCUMENT_READ", "AI_QA"), Set.of());
 
         Set<String> authorities = p.authorities().stream()

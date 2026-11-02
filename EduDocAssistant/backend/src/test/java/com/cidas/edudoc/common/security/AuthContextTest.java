@@ -22,7 +22,7 @@ class AuthContextTest {
 
     @Test
     void setThenGetReturnsSamePrincipal() {
-        UserPrincipal p = new UserPrincipal("u1", "alice", Set.of("STUDENT"), Set.of(), Set.of());
+        UserPrincipal p = new UserPrincipal("u1", "alice", null, Set.of("STUDENT"), Set.of(), Set.of());
 
         AuthContext.set(p);
 

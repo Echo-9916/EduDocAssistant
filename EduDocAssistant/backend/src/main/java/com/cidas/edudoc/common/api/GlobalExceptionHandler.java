@@ -13,15 +13,17 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(CidasBusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusiness(CidasBusinessException e) {
+    public ResponseEntity<ApiResponse<Object>> handleBusiness(CidasBusinessException e) {
         log.warn("业务异常 code={} retryable={} traceId={}", e.errorCode().code(), e.retryable(),
                 TraceContext.get(), e);
+        // context 非空时随 data 下发（如 accountStatus），前端按结构化字段分支（P2-2）
+        Object data = e.context().isEmpty() ? null : e.context();
         return ResponseEntity.status(e.errorCode().httpStatus())
-                .body(ApiResponse.error(e.errorCode(), e.getMessage()));
+                .body(ApiResponse.error(e.errorCode(), e.getMessage(), data));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception e) {
+    public ResponseEntity<ApiResponse<Object>> handleUnknown(Exception e) {
         log.error("未捕获异常 traceId={}", TraceContext.get(), e);
         return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.httpStatus())
                 .body(ApiResponse.error(ErrorCode.INTERNAL_ERROR));

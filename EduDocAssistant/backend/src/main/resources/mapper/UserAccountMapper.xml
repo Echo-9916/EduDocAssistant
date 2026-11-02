@@ -14,11 +14,16 @@
         SELECT account_status FROM edudoc_user WHERE id = HEXTORAW(#{userIdHex})
     </select>
 
+    <select id="selectDisplayName" resultType="string">
+        SELECT display_name FROM edudoc_user WHERE id = HEXTORAW(#{userIdHex})
+    </select>
+
     <select id="selectRoleCodes" resultType="string">
         SELECT r.role_code
         FROM edudoc_role r
         JOIN edudoc_user_role ur ON r.id = ur.role_id
         WHERE ur.user_id = HEXTORAW(#{userIdHex}) AND r.status = 'A'
+          AND ur.effective_from &lt;= SYSTIMESTAMP
           AND (ur.effective_to IS NULL OR ur.effective_to &gt; SYSTIMESTAMP)
     </select>
 
@@ -26,8 +31,10 @@
         SELECT DISTINCT p.permission_code
         FROM edudoc_permission p
         JOIN edudoc_role_permission rp ON p.id = rp.permission_id
+        JOIN edudoc_role r ON r.id = rp.role_id AND r.status = 'A'
         JOIN edudoc_user_role ur ON rp.role_id = ur.role_id
         WHERE ur.user_id = HEXTORAW(#{userIdHex})
+          AND ur.effective_from &lt;= SYSTIMESTAMP
           AND (ur.effective_to IS NULL OR ur.effective_to &gt; SYSTIMESTAMP)
     </select>
 

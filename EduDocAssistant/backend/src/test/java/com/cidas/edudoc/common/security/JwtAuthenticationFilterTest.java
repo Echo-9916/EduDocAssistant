@@ -52,7 +52,7 @@ class JwtAuthenticationFilterTest {
     @Test
     void validTokenSetsAuthentication() throws Exception {
         when(jwtService.parse("token")).thenReturn(claims("jti-1"));
-        UserPrincipal principal = new UserPrincipal("u1", "alice",
+        UserPrincipal principal = new UserPrincipal("u1", "alice", null,
                 Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of());
         when(repo.loadPrincipal("u1", "alice")).thenReturn(principal);
 

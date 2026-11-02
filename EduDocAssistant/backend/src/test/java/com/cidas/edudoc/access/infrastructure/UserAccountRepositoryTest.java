@@ -37,4 +37,19 @@ class UserAccountRepositoryTest {
         assertEquals(Set.of("STUDENT"), principal.roles());
         assertEquals(Set.of("DOCUMENT_READ"), principal.permissions());
     }
+
+    @Test
+    void principalCarriesDisplayNameFromDb() {
+        UserAccountMapper mapper = mock(UserAccountMapper.class);
+        when(mapper.selectAccountStatus("ABC")).thenReturn("A");
+        when(mapper.selectRoleCodes("ABC")).thenReturn(List.of("STUDENT"));
+        when(mapper.selectPermissionCodes("ABC")).thenReturn(List.of());
+        when(mapper.selectDisplayName("ABC")).thenReturn("学生测试");
+        UserAccountRepository repo = new UserAccountRepository(mapper);
+
+        UserPrincipal principal = repo.loadPrincipal("ABC", "u1");
+
+        assertNotNull(principal);
+        assertEquals("学生测试", principal.displayName());
+    }
 }

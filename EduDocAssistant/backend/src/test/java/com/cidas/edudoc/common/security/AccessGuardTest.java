@@ -25,7 +25,7 @@ class AccessGuardTest {
 
     @Test
     void permitsWhenPrincipalHasPermission() {
-        UserPrincipal principal = new UserPrincipal("u1", "alice",
+        UserPrincipal principal = new UserPrincipal("u1", "alice", null,
                 Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of());
 
         assertDoesNotThrow(() -> AccessGuard.assertPermitted(principal, "DOCUMENT_READ"));
@@ -33,7 +33,7 @@ class AccessGuardTest {
 
     @Test
     void deniesWhenPermissionMissing() {
-        UserPrincipal principal = new UserPrincipal("u1", "alice",
+        UserPrincipal principal = new UserPrincipal("u1", "alice", null,
                 Set.of("STUDENT"), Set.of(), Set.of());
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
@@ -43,7 +43,7 @@ class AccessGuardTest {
 
     @Test
     void guardProceedsWhenPermitted() throws Throwable {
-        UserPrincipal principal = new UserPrincipal("u1", "alice",
+        UserPrincipal principal = new UserPrincipal("u1", "alice", null,
                 Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of());
         AuthContext.set(principal);
 

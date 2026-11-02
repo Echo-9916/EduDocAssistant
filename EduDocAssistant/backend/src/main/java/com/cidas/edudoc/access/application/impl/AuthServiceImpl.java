@@ -12,6 +12,7 @@ import com.cidas.edudoc.common.security.TokenRevocationStore;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 认证编排实现：登录签发令牌、查询当前主体、登出。 */
 @Service
@@ -23,6 +24,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserAccountRepository userAccountRepository;
     private final AuditLogRepository auditLogRepository;
     private final TokenRevocationStore tokenRevocationStore;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     public AuthService.LoginResult login(String username, String password) {
@@ -35,12 +37,16 @@ public class AuthServiceImpl implements AuthService {
             principal = authProvider.authenticate(trimmed, password)
                     .orElseThrow(() -> new CidasBusinessException(ErrorCode.UNAUTHORIZED, "用户名或密码错误"));
         } catch (CidasBusinessException e) {
+            // 拒绝审计独立于成功事务，登录被拒也必须留存（自动提交，不随异常回滚）
             auditLogRepository.recordAuth(trimmed, null, String.valueOf(e.errorCode().code()));
             throw e;
         }
-        userAccountRepository.updateLastLoginTime(principal.userId());
-        auditLogRepository.recordAuth(trimmed, principal.userId(), "SUCCESS");
-        String token = jwtService.issue(principal.userId(), principal.username(), principal.roles());
+        // P2-1：登录时间 + SUCCESS 审计 + 令牌签发同事务，任一失败整体回滚，不留「成功登录」虚假审计
+        String token = transactionTemplate.execute(status -> {
+            userAccountRepository.updateLastLoginTime(principal.userId());
+            auditLogRepository.recordAuth(trimmed, principal.userId(), "SUCCESS");
+            return jwtService.issue(principal.userId(), principal.username(), principal.roles());
+        });
         return new AuthService.LoginResult(token, principal);
     }
 

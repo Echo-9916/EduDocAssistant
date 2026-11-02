@@ -34,6 +34,6 @@ public class UserAccountRepository implements PrincipalLoader {
         Set<String> roles = new HashSet<>(mapper.selectRoleCodes(userIdHex));
         Set<String> permissions = new HashSet<>(mapper.selectPermissionCodes(userIdHex));
         // ponytail: courseScope 待课程成员模块落地后填充
-        return new UserPrincipal(userIdHex, username, roles, permissions, Set.of());
+        return new UserPrincipal(userIdHex, username, mapper.selectDisplayName(userIdHex), roles, permissions, Set.of());
     }
 }

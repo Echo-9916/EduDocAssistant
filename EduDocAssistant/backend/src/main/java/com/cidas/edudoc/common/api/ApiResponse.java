@@ -21,7 +21,12 @@ public record ApiResponse<T>(int code, String message, T data, String traceId, S
     }
 
     public static <T> ApiResponse<T> error(ErrorCode errorCode, String message) {
-        return new ApiResponse<>(errorCode.code(), message, null,
+        return error(errorCode, message, null);
+    }
+
+    /** 错误响应携带结构化上下文（如 accountStatus），供前端按稳定字段分支（P2-2）。 */
+    public static <T> ApiResponse<T> error(ErrorCode errorCode, String message, T data) {
+        return new ApiResponse<>(errorCode.code(), message, data,
                 TraceContext.get(), Instant.now().toString());
     }
 }

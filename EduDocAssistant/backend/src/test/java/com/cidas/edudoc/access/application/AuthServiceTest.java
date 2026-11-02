@@ -9,6 +9,8 @@ import com.cidas.edudoc.common.security.JwtService;
 import com.cidas.edudoc.common.security.TokenRevocationStore;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -16,6 +18,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,12 +33,14 @@ class AuthServiceTest {
     private final UserAccountRepository userAccountRepository = mock(UserAccountRepository.class);
     private final AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
     private final TokenRevocationStore tokenRevocationStore = mock(TokenRevocationStore.class);
-    private final AuthService authService =
-            new AuthServiceImpl(authProvider, jwtService, userAccountRepository, auditLogRepository, tokenRevocationStore);
+    private final PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
+    private final AuthService authService = new AuthServiceImpl(authProvider, jwtService,
+            userAccountRepository, auditLogRepository, tokenRevocationStore,
+            new TransactionTemplate(txManager));
 
     @Test
     void loginSuccessUpdatesLastLoginAndAudits() {
-        UserPrincipal principal = new UserPrincipal("ABC", "u1",
+        UserPrincipal principal = new UserPrincipal("ABC", "u1", null,
                 Set.of("STUDENT"), Set.of("DOCUMENT_READ"), Set.of());
         when(authProvider.authenticate("u1", "pw")).thenReturn(Optional.of(principal));
         when(jwtService.issue("ABC", "u1", Set.of("STUDENT"))).thenReturn("tok");
@@ -46,6 +51,21 @@ class AuthServiceTest {
         assertEquals(principal, result.user());
         verify(userAccountRepository).updateLastLoginTime("ABC");
         verify(auditLogRepository).recordAuth("u1", "ABC", "SUCCESS");
+        verify(txManager).commit(any());
+    }
+
+    @Test
+    void loginTokenIssueFailureRollsBackWrites() {
+        UserPrincipal principal = new UserPrincipal("ABC", "u1", null,
+                Set.of("STUDENT"), Set.of(), Set.of());
+        when(authProvider.authenticate("u1", "pw")).thenReturn(Optional.of(principal));
+        when(jwtService.issue("ABC", "u1", Set.of("STUDENT"))).thenThrow(new IllegalStateException("sign failed"));
+
+        assertThrows(IllegalStateException.class, () -> authService.login("u1", "pw"));
+
+        // 故障注入：签发失败时成功写入整体回滚，不留「成功登录」虚假审计（P2-1）
+        verify(txManager).rollback(any());
+        verify(txManager, never()).commit(any());
     }
 
     @Test
@@ -63,7 +83,7 @@ class AuthServiceTest {
     @Test
     void loginLockedAccountAudits40101() {
         when(authProvider.authenticate("u1", "pw"))
-                .thenThrow(new CidasBusinessException(ErrorCode.UNAUTHORIZED, "账号受限，请联系管理员"));
+                .thenThrow(new CidasBusinessException(ErrorCode.UNAUTHORIZED, "账号受限：账号已锁定，请联系管理员"));
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> authService.login("u1", "pw"));

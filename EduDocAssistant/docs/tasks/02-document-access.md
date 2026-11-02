@@ -57,9 +57,9 @@
   - 会话存 Redis（无数据库表，概要 §2.2）：key `edudoc:upsession:{sessionId}`，TTL=session-ttl-minutes，value JSON `{sessionId,ownerUserIdHex,courseIdHex|null,title,docType,fileName,sizeBytes,mimeType,objectKey,status:OPEN|COMPLETING|COMPLETED,completedDocumentIdHex|null,completedVersionIdHex|null,createdAt}`。
   - STS 最小权限：AssumeRole 带 inline policy，Action 仅 `oss:PutObject/InitiateMultipartUpload/UploadPart/CompleteMultipartUpload/AbortMultipartUpload/ListParts`，Resource 精确到单 objectKey；DurationSeconds=900；长期 AK 只在服务端。
   - 新建：`document.api.UploadController` + dto、`document.application.UploadSessionService(+impl)`、`document.domain.{UploadSession,DocumentType}`、`document.infrastructure.UploadSessionRepository`（Redis）、`infrastructure.oss.{OssStorageAdapter,OssConfig}`。
-- **测试**：`UploadSessionServiceTest`（41301/41501/课程范围 40301、STS policy JSON 断言只含单 objectKey、会话 TTL 与字段完整）。
+- **测试**：`UploadSessionServiceImplTest`（12 例：41301/41501/课程范围 40301/教师必填课程/标题校验/objectKey 清洗）、`OssStorageAdapterTest`（mock STS：inline policy 精确到单 objectKey、DurationSeconds=900、失败映射 50301 可重试）；空 mimeType 按扩展名单侧校验（个别浏览器对 .doc 送空值）。
 - **依赖**：B-01、B-02
-- **状态**：未开始
+- **状态**：已完成（2026-11-02，`mvn test` 72 全绿；本地起服务对**真实阿里云 STS** 实测：教师登录 → `POST /upload-sessions` 201 返回 STS 临时凭据/objectKey/桶定位，RAM 角色与策略配置验证通过；反例 21MB→41301、.txt→41501、缺幂等键→40001；Redis `edudoc:upsession:*` 键与 TTL 落盘。附：用户环境变量名笔误已修正为 `EDUDOC_OSS_ACCESS_KEY_ID/_SECRET`）
 
 ## B-04 后端 · complete 回调（核心事务）
 

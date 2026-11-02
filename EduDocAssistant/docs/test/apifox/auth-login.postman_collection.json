@@ -85,7 +85,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "auth", "login"]
             },
-            "description": "预期：HTTP 401，code=40101，message=账号受限，请联系管理员。"
+            "description": "预期：HTTP 401，code=40101，message=账号受限：账号已锁定，请联系管理员，data={\"accountStatus\":\"L\"}。"
           },
           "response": []
         }

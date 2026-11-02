@@ -1,3 +1,4 @@
+
 # 01 fullstack-auth 垂直切片 · 登录
 
 > 状态取值：`未开始` / `进行中` / `已完成`（本阶段新建，全部 `未开始`）。
@@ -61,8 +62,8 @@
 - **验收标准**：
   - 登录页含品牌 Logo、用户名、密码（显示/隐藏切换）、登录按钮、「忘记密码？」链接（跳 A-08）。
   - 校验：用户名/密码必填、用户名去首尾空格；失败保留输入。
-  - 提交对接 `AuthContext.login`；40101 账号受限 → 跳 A-07 受限页；其它错误按 `ApiError.message` 表单提示。
-  - 已登录访问 `/login` → 回跳 `homeOf(roles)`；带 `?redirect=` 登录成功回跳（401 回跳闭环）。
+  - 提交对接 `AuthContext.login`；40101 携带结构化 `data.accountStatus` → 跳 A-07 受限页；其它错误按 `ApiError.message` 表单提示。
+  - 已登录访问 `/login` → 先进 `/roles`；带 `?redirect=` 登录成功也先进 `/roles`（深链存路由 state），「进入工作台」后回跳原页（401 回跳闭环，P1-1）。
   - 「登录·密码可见」作为同一表单的 `Input.Password` 切换实现，不单独建页。
 - **测试**：`web/src/pages/Login.test.tsx`（渲染、校验、提交、错误提示、回跳）
 - **依赖**：A-02、F-05（AuthContext）、F-08（antd，已具备）
@@ -73,10 +74,10 @@
 - **需求/设计/原型引用**：`04_登录与认证页面设计规范.md`（统一身份认证回调、登录成功页：身份卡片/课程列表/进入工作台/切换账号/3 角色入口）；`06_三角色路线与交互边界.md`（SSO 回调 3 角色入口）；详细设计 §4.1 SSO 回调。
 - **现状**：`AuthContext.homeOf` 多角色取最高优先级（OPS>TEACHER>STUDENT），无角色选择。
 - **验收标准**：
-  - 多角色用户登录后展示身份卡片（姓名/角色/课程）+ 学生/教师/运维 3 个角色入口，点击进入对应工作台（`/student` `/teacher` `/operations`）。
-  - 单角色用户直接进入对应工作台，不闪选择页。
+  - 所有用户登录后统一进入「身份认证成功」角色选择页（`/roles`），展示身份卡片（姓名/角色/课程），点击「进入工作台」按 `homeOf` 进入对应工作台（`/student` `/teacher` `/operations`）；携带合法站内 `redirect` 时回跳深链目标，非法值回退 `homeOf`。
+  - 原型的「3 个角色演示入口」不实现，已删除（2026-11-02 用户决策）：种子账号均为单角色，跨角色入口在生产 `RequireAuth` 下必然进入 `/403`，演示需求与生产 RBAC 无法兼容；设计文档中该元素仅保留为原型记录，不作为验收项。
   - 切换账号：登出并回登录页。
-- **测试**：`web/src/auth/RoleEntry.test.tsx`（单/多角色分支、切换账号、进入工作台路由）
+- **测试**：`web/src/auth/RoleEntry.test.tsx`（未登录回跳、身份卡/课程渲染、进入工作台路由、redirect 回跳与非法值回退、无演示入口、切换账号）
 - **依赖**：A-05、F-06（三端布局骨架）
 - **状态**：已完成
 
@@ -85,9 +86,9 @@
 - **需求/设计/原型引用**：`04_登录与认证页面设计规范.md`（账号受限：账号状态、操作按钮、安全提示）；详细设计 §2.3 错误码客户端处理（40101 跳登录/受限态）。
 - **现状**：无受限页，后端 40101 统一被 F-07 拦为跳登录。
 - **验收标准**：
-  - 锁定/未激活/注销账号登录时展示受限页（账号状态、原因、安全提示、返回登录）。
-  - 「申请临时访问权限」入口跳 A-09 权限申请页。
-- **测试**：`web/src/pages/AccountRestricted.test.tsx`（渲染 + 从登录错误跳转 + 申请入口跳转）
+  - 锁定/未激活/注销账号登录时展示受限页（账号状态、受限原因、安全提示）；状态标签按 `data.accountStatus`（L/I/D）渲染，不依赖中文文案（P2-2）。按 2026-11-01 决策不提供「返回登录」入口。
+  - 「申请临时访问权限」入口调用公开占位接口 `/auth/access-request` 并提示占位文案（见 A-09）。
+- **测试**：`web/src/pages/AccountRestricted.test.tsx`（L/I/D/未知状态与无 state 回退渲染 + 从登录错误跳转 + 申请入口占位接口）
 - **依赖**：A-02（40101 语义）、A-05
 - **状态**：已完成
 
@@ -108,9 +109,9 @@
 - **需求/设计/原型引用**：`04_登录与认证页面设计规范.md`（账号受限与权限申请：申请临时访问权限）。
 - **现状**：无权限申请页，账号受限页「申请临时访问权限」无落点。
 - **验收标准**：
-  - 原型无独立「权限申请」表单页，`账号受限` 页「申请临时访问权限」直接跳转「角色与权限管理」（运维 `/operations/users`）。
-  - 原型对齐后不再建 `AccessRequest.tsx`，A-04 的 `/auth/access-request` 占位接口保留待后续审批流使用。
-- **测试**：`web/src/pages/AccountRestricted.test.tsx`（申请入口跳角色与权限管理）
+  - 原型无独立「权限申请」表单页；受限用户此时未认证，`/operations/users` 会被 `RequireAuth` 拦回登录页（复审 P2-3），故「申请临时访问权限」改为调用公开占位接口 `POST /auth/access-request`，展示「该功能正在开发中」。
+  - 不再建 `AccessRequest.tsx`；待审批流落地后以公开申请页替换占位调用。
+- **测试**：`web/src/pages/AccountRestricted.test.tsx`（申请入口调用占位接口并提示占位文案）
 - **依赖**：A-04、A-07（入口）
 - **状态**：已完成
 
@@ -118,17 +119,17 @@
 
 - **需求/设计/原型引用**：详细设计 §4.4 前后端交互（401 保留回跳）、§4.1 路由表；需求 NFR-01（1000 在线）/P-02（3 秒内 95%）。
 - **验收标准**：
-  - 三角色种子账号 `student`/`teacher`/`ops` 分别登录 → 进入各自工作台 → 登出 → 回登录；登出后旧 token 复用 → 40102 → 跳登录。
-  - 未登录访问 `/student` → 40101 → 跳 `/login?redirect=…` → 登录后回跳原页。
-  - `locked` 账号登录 → 受限页 → 权限申请占位提示；登录页「忘记密码？」→ 找回密码页 → 占位提示。
+  - 三角色种子账号 `student`/`teacher`/`ops` 分别登录 → 先进 `/roles` → 「进入工作台」进入各自工作台 → 登出 → 回登录；登出后旧 token 复用 → 40102 → 跳登录。
+  - 未登录访问 `/student` → 40101 → 跳 `/login?redirect=…` → 登录后先进 `/roles`，「进入工作台」后回跳原页（P1-1）。
+  - `locked` 账号登录 → 受限页（状态标签按 `data.accountStatus`）→ 权限申请占位提示；登录页「忘记密码？」→ 找回密码页 → 占位提示。
   - 令牌过期/本地清除 → 401 → 跳登录并保留回跳。
   - `mvn test` + `pnpm test` 全绿；手工/冒烟跑通三角色链路。
 - **测试**：e2e 冒烟清单（组件/单测已分散到 A-05~A-09，此处为端到端联调验证）
+  - 后端 e2e 冒烟（curl 对真实 Oracle）：student/teacher/ops 登录 200、me 200（含 displayName）、错误密码 40101、locked 40101「账号受限：账号已锁定」+ `data.accountStatus=L`、logout 204、旧 token 复用 40102、reset-password/access-request 占位 200「该功能正在开发中」。
+  - RBAC 生命周期由 `RbacLifecycleIntegrationTest`（真实 Oracle，未来/过期/停用/有效四类关联）覆盖。
+  - 前端 401 回跳/受限跳转/角色选择统一落点由 `RequireAuth.test.tsx`/`Login.test.tsx`/`RoleEntry.test.tsx`/`AccountRestricted.test.tsx` 覆盖；浏览器端人工冒烟为遗留事项，待部署环境执行（不阻断自动化验收，合并复审前补真实浏览器三角色证据）。
 - **依赖**：A-02、A-03、A-05、A-06、A-07、A-08、A-09
-- **状态**：已完成
-  - 后端 e2e 冒烟（curl 对真实 Oracle）：student/teacher/ops 登录 200、me 200、错误密码 40101、locked 40101「账号受限」、logout 204、旧 token 复用 40102、reset-password/access-request 占位 200「该功能正在开发中」。
-  - `mvn test` 46 全绿；`pnpm test` 49 全绿；`tsc --noEmit` 干净。
-  - 前端 401 回跳/受限跳转由 `RequireAuth.test.tsx`/`Login.test.tsx`/`AccountRestricted.test.tsx` 覆盖；浏览器端人工冒烟留待部署环境执行。
+- **状态**：已完成（`mvn test` 52 全绿；`pnpm test` 52 全绿；`tsc --noEmit`、`pnpm build` 通过）
 
 ## 建议执行顺序
 

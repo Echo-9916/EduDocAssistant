@@ -46,6 +46,7 @@
       "user": {
         "userId": "…（32 位大写 HEX）",
         "username": "student",
+        "displayName": "学生测试",
         "roles": ["STUDENT"],
         "permissions": ["…"],
         "courseScope": []
@@ -90,7 +91,7 @@
   { "username": "locked", "password": "Cidas@123" }
   ```
 
-- **预期返回**：HTTP 401，`code=40101`，`message=账号受限，请联系管理员`，`data=null`
+- **预期返回**：HTTP 401，`code=40101`，`message=账号受限：账号已锁定，请联系管理员`，`data={"accountStatus":"L"}`（结构化状态契约，前端按 `data.accountStatus` 分支；I/D 状态分别返回「账号未激活，请先完成激活」/「账号已注销，无法登录」及对应状态码）
 
 ---
 
@@ -108,6 +109,7 @@
     "data": {
       "userId": "…",
       "username": "student",
+      "displayName": "学生测试",
       "roles": ["STUDENT"],
       "permissions": ["…"],
       "courseScope": []

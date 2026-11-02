@@ -89,17 +89,20 @@ describe('Login', () => {
     expect(loginMock).toHaveBeenCalledWith('alice', 'pw')
   })
 
-  it('带 redirect 时登录成功回跳目标页', async () => {
+  it('带 redirect 时登录成功仍先进角色选择页', async () => {
     loginMock.mockResolvedValue(alice)
     renderLogin({ initialEntries: ['/login?redirect=%2Fteacher'] })
 
     fillAndSubmit('alice', 'pw')
 
-    expect(await screen.findByText('教师工作台')).toBeTruthy()
+    expect(await screen.findByText('身份认证成功页')).toBeTruthy()
+    expect(screen.queryByText('教师工作台')).toBeNull()
   })
 
-  it('账号受限跳受限页', async () => {
-    loginMock.mockRejectedValue(new ApiError(40101, '账号受限，请联系管理员'))
+  it('账号受限按结构化 accountStatus 跳受限页', async () => {
+    loginMock.mockRejectedValue(
+      new ApiError(40101, '账号受限：账号已锁定，请联系管理员', undefined, { accountStatus: 'L' })
+    )
     renderLogin()
 
     fillAndSubmit('locked', 'pw')
@@ -117,9 +120,10 @@ describe('Login', () => {
     expect(screen.queryByText('账号受限页')).toBeNull()
   })
 
-  it('已登录访问 /login 回跳工作台', async () => {
+  it('已登录访问 /login 先进角色选择页', async () => {
     renderLogin({ user: alice })
 
-    expect(await screen.findByText('学生工作台')).toBeTruthy()
+    expect(await screen.findByText('身份认证成功页')).toBeTruthy()
+    expect(screen.queryByText('学生工作台')).toBeNull()
   })
 })

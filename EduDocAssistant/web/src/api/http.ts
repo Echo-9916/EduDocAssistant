@@ -2,16 +2,18 @@ import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 import type { ApiResponse } from './types'
 import { clearToken, getToken } from './token'
 
-/** 业务/协议错误：携带错误码与 traceId，供上层按码跳登录/无权限/字段提示。 */
+/** 业务/协议错误：携带错误码、traceId 与结构化 data（如 accountStatus），供上层按稳定字段分支。 */
 export class ApiError extends Error {
   readonly code: number
   readonly traceId?: string
+  readonly data?: unknown
 
-  constructor(code: number, message: string, traceId?: string) {
+  constructor(code: number, message: string, traceId?: string, data?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.traceId = traceId
+    this.data = data
   }
 }
 
@@ -42,7 +44,7 @@ http.interceptors.response.use(
   (response) => {
     const body = response.data as ApiResponse<unknown>
     if (body && typeof body.code === 'number' && body.code !== 200) {
-      return Promise.reject(new ApiError(body.code, body.message, body.traceId))
+      return Promise.reject(new ApiError(body.code, body.message, body.traceId, body.data))
     }
     return response
   },
@@ -55,7 +57,7 @@ http.interceptors.response.use(
         const redirect = encodeURIComponent(window.location.pathname + window.location.search)
         window.location.replace(`/login?redirect=${redirect}`)
       }
-      return Promise.reject(new ApiError(body.code, body.message, body.traceId))
+      return Promise.reject(new ApiError(body.code, body.message, body.traceId, body.data))
     }
     if (error.code === 'ECONNABORTED') {
       return Promise.reject(new ApiError(50401, '请求超时'))

@@ -3,7 +3,7 @@ import { Alert, Button, Checkbox, Form, Input, message } from 'antd'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import AuthLayout from '../auth/AuthLayout'
 import { signalCharacters, triggerLoginError } from '../auth/AnimatedCharacters'
-import { homeOf, landingPath, useAuth } from '../auth/AuthContext'
+import { landingPath, useAuth } from '../auth/AuthContext'
 import { ApiError } from '../api/http'
 
 export default function Login() {
@@ -14,21 +14,29 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [passwordVisible, setPasswordVisible] = useState(false)
 
-  if (user) {
-    return <Navigate to={homeOf(user.roles)} replace />
-  }
-
   const redirect = new URLSearchParams(location.search).get('redirect')
+
+  // P1-1：所有认证落点统一先进角色选择页；深链目标存入路由 state，「进入工作台」后回跳
+  if (user) {
+    return <Navigate to="/roles" state={redirect ? { redirect } : undefined} replace />
+  }
 
   const onFinish = async (values: { username: string; password: string }) => {
     setSubmitting(true)
     setError(null)
     try {
       const u = await login(values.username.trim(), values.password)
-      navigate(redirect || landingPath(u.roles), { replace: true })
+      navigate(landingPath(u.roles), { replace: true, state: redirect ? { redirect } : undefined })
     } catch (e) {
-      if (e instanceof ApiError && e.code === 40101 && e.message.includes('账号受限')) {
-        navigate('/account-restricted', { replace: true, state: { username: values.username.trim() } })
+      // P2-2：按结构化 data.accountStatus 判定账号受限，不再依赖中文文案
+      const accountStatus = e instanceof ApiError
+        ? (e.data as { accountStatus?: string } | null | undefined)?.accountStatus
+        : undefined
+      if (e instanceof ApiError && e.code === 40101 && accountStatus) {
+        navigate('/account-restricted', {
+          replace: true,
+          state: { username: values.username.trim(), accountStatus, reason: e.message },
+        })
         return
       }
       setError(e instanceof ApiError ? e.message : '登录失败')
@@ -70,8 +78,9 @@ export default function Login() {
             onChange={(e) => signalCharacters({ passwordLen: e.target.value.length })}
           />
         </Form.Item>
-        <div className="auth-helper" style={{ marginTop: -10, marginBottom: 12 }}>密码区分大小写</div>
-        <div className="auth-row-between" style={{ marginBottom: 18 }}>
+        <div className="auth-helper" style={{ marginTop: -12, marginBottom: 16 }}>密码区分大小写</div>
+        <div className="auth-row-between" style={{ marginBottom: 20 }}>
+          {/* ponytail: 「记住此设备」为原型元素，待后端支持长效会话/设备绑定后接线（S-3） */}
           <Form.Item name="remember" valuePropName="checked" noStyle>
             <Checkbox>记住此设备</Checkbox>
           </Form.Item>

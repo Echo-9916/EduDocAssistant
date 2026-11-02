@@ -21,6 +21,8 @@ export interface PageResult<T> {
 export interface UserPrincipal {
   userId: string
   username: string
+  /** 显示姓名（edudoc_user.display_name），可能为空 */
+  displayName?: string
   roles: string[]
   permissions: string[]
   courseScope: string[]

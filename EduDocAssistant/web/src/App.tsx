@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider, homeOf, useAuth } from './auth/AuthContext'
+import { AuthProvider, useAuth } from './auth/AuthContext'
 import RequireAuth from './auth/RequireAuth'
 import RoleEntry from './auth/RoleEntry'
 import AppShell from './layouts/AppShell'
@@ -16,7 +16,8 @@ import type { RoleCodeValue } from './api/types'
 function Home() {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={homeOf(user.roles)} replace />
+  // P1-1：已登录访问根路径也统一先进角色选择页
+  return <Navigate to="/roles" replace />
 }
 
 const ROLES: { role: RoleCodeValue; nav: NavItem[] }[] = [

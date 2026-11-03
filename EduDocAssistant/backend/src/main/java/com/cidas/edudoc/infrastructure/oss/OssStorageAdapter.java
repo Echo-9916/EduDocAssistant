@@ -84,6 +84,17 @@ public class OssStorageAdapter {
         }
     }
 
+    /** 对象下载到本地临时文件（解析 worker 用，防 20MB 堆内膨胀）。 */
+    public void downloadTo(String objectKey, java.nio.file.Path target) {
+        try {
+            ossClient.getObject(new com.aliyun.oss.model.GetObjectRequest(properties.bucket(), objectKey),
+                    target.toFile());
+        } catch (Exception e) {
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "OSS 对象下载失败：" + e.getMessage(), true, Map.of());
+        }
+    }
+
     /** 浏览器直传所需的全部信息（STS 临时凭据 + 目标对象位置）。 */
     public record UploadCredentials(String accessKeyId, String accessKeySecret, String securityToken,
                                     String expiration, String bucket, String region, String endpoint) {

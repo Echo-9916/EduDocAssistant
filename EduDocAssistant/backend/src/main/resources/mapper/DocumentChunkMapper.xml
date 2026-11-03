@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.document.infrastructure.DocumentChunkMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO edudoc_document_chunk (id, document_version_id, chunk_no, heading_path, page_no,
+            char_start, char_end, content_text, token_count, content_hash, index_status)
+        <foreach collection="chunks" item="chunk" separator=" UNION ALL ">
+            SELECT HEXTORAW(#{chunk.id}), HEXTORAW(#{chunk.documentVersionId}), #{chunk.chunkNo},
+                #{chunk.headingPath, jdbcType=VARCHAR}, #{chunk.pageNo, jdbcType=NUMERIC},
+                #{chunk.charStart}, #{chunk.charEnd}, #{chunk.contentText, jdbcType=CLOB},
+                #{chunk.tokenCount}, #{chunk.contentHash}, #{chunk.indexStatus}
+            FROM DUAL
+        </foreach>
+    </insert>
+
+    <delete id="deleteByVersion">
+        DELETE FROM edudoc_document_chunk WHERE document_version_id = HEXTORAW(#{versionIdHex})
+    </delete>
+
+    <select id="countByVersion" resultType="int">
+        SELECT COUNT(*) FROM edudoc_document_chunk WHERE document_version_id = HEXTORAW(#{versionIdHex})
+    </select>
+
+</mapper>

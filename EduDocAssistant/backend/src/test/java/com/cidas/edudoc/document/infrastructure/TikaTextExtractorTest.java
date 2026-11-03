@@ -1,0 +1,110 @@
+package com.cidas.edudoc.document.infrastructure;
+
+import com.cidas.edudoc.document.domain.TextBlock;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFStyle;
+import org.apache.poi.xwpf.usermodel.XWPFStyles;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** B-06 Tika 提取：docx 标题栈与 pdf 页码（程序生成样本，不放二进制 fixture）。 */
+class TikaTextExtractorTest {
+
+    private final TikaTextExtractor extractor = new TikaTextExtractor();
+
+    @TempDir
+    Path dir;
+
+    @Test
+    void docxKeepsHeadingPathPerParagraph() throws Exception {
+        Path file = dir.resolve("sample.docx");
+        try (XWPFDocument doc = new XWPFDocument(); var out = Files.newOutputStream(file)) {
+            defineHeadingStyles(doc);
+            heading(doc, "Heading1", "第一章 概述");
+            paragraph(doc, "第一段正文内容。");
+            heading(doc, "Heading2", "1.1 背景");
+            paragraph(doc, "第二段正文内容。");
+            doc.write(out);
+        }
+
+        List<TextBlock> blocks = extractor.extract(file, "sample.docx");
+
+        TextBlock first = blocks.stream()
+                .filter(b -> b.text().contains("第一段正文内容")).findFirst().orElseThrow();
+        TextBlock second = blocks.stream()
+                .filter(b -> b.text().contains("第二段正文内容")).findFirst().orElseThrow();
+        assertTrue(first.headingPath().contains("第一章 概述"),
+                "headingPath 未捕获标题，blocks=" + blocks);
+        assertTrue(second.headingPath().contains("1.1 背景"), "blocks=" + blocks);
+        assertTrue(!first.headingPath().contains("1.1 背景"), "兄弟标题不应污染浅层级");
+    }
+
+    private static void defineHeadingStyles(XWPFDocument doc) {
+        XWPFStyles styles = doc.createStyles();
+        addNamedStyle(styles, "Heading1", "heading 1", 1);
+        addNamedStyle(styles, "Heading2", "heading 2", 2);
+    }
+
+    private static void addNamedStyle(XWPFStyles styles, String id, String name, int level) {
+        org.openxmlformats.schemas.wordprocessingml.x2006.main.CTStyle style =
+                org.openxmlformats.schemas.wordprocessingml.x2006.main.CTStyle.Factory.newInstance();
+        style.setStyleId(id);
+        style.setType(org.openxmlformats.schemas.wordprocessingml.x2006.main.STStyleType.PARAGRAPH);
+        style.addNewName().setVal(name);
+        style.addNewPPr().addNewOutlineLvl().setVal(java.math.BigInteger.valueOf(level - 1));
+        styles.addStyle(new XWPFStyle(style));
+    }
+
+    @Test
+    void pdfIncrementsPageNumber() throws Exception {
+        Path file = dir.resolve("sample.pdf");
+        try (PDDocument doc = new PDDocument(); OutputStream out = Files.newOutputStream(file)) {
+            for (String title : List.of("FIRST PAGE TEXT", "SECOND PAGE TEXT")) {
+                PDPage page = new PDPage();
+                doc.addPage(page);
+                try (PDPageContentStream content = new PDPageContentStream(doc, page)) {
+                    content.beginText();
+                    content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                    content.newLineAtOffset(72, 700);
+                    content.showText(title);
+                    content.endText();
+                }
+            }
+            doc.save(out);
+        }
+
+        List<TextBlock> blocks = extractor.extract(file, "sample.pdf");
+
+        assertTrue(blocks.stream().anyMatch(b -> b.text().contains("FIRST PAGE TEXT")));
+        assertTrue(blocks.stream().anyMatch(b -> b.text().contains("SECOND PAGE TEXT")));
+        assertEquals(2, blocks.stream().mapToInt(TextBlock::pageNo).max().orElse(0),
+                "第二页块页码应为 2，实际: " + blocks);
+    }
+
+    private static void heading(XWPFDocument doc, String style, String text) {
+        XWPFParagraph paragraph = doc.createParagraph();
+        paragraph.setStyle(style);
+        paragraph.createRun().setText(text);
+    }
+
+    private static void paragraph(XWPFDocument doc, String text) {
+        XWPFParagraph paragraph = doc.createParagraph();
+        XWPFRun run = paragraph.createRun();
+        run.setText(text);
+    }
+}

@@ -100,9 +100,9 @@
   - 分块（`document.domain.ChunkingService` 纯函数）：段落累积至 chunk-size（默认 1500 字符）在段落边界切，单段超限硬切；chunk_no 从 1 递增；heading_path="H1 / H2"（截 1000，允许为空——老式 .doc 结构识别弱）；char_start/char_end 为全文偏移；token_count≈ceil(chars/2)（`// ponytail: 中文估算，ai 域接入真 tokenizer 时替换`）；content_hash=SHA-256(块文本)；index_status='PENDING'（向量化属 ai 域不入本切片）。
   - 事务边界：删该 version 旧 chunks + 分批（50/批）插新（CLOB `jdbcType=CLOB`）+ document.status=READY 单事务；成功 XACK + 审计 PARSE_SUCCEEDED；异常 → FAILED + 审计 PARSE_FAILED + XACK（重试走 `POST /{id}/parse`；`// ponytail: 无 DLQ/pending 回收，单机+人工重试够用，需要时加 XAUTOCLAIM`）。
   - 新建：`document.application.DocumentParseWorker`、`document.domain.{ChunkingService,Chunk}`、`document.infrastructure.{RedisStreamConfig,TikaTextExtractor,DocumentChunk+Mapper+Repository}` + XML。
-- **测试**：`ChunkingServiceTest`（切块边界/超长段/heading 路径/hash 与 token 估算）、`TikaTextExtractorTest`（test resources 程序生成小 docx/pdf 样本，断言文本与页码）、`DocumentParseWorkerTest`（mock：PARSING→READY、失败→FAILED+审计、重复消息跳过；对应 UT-20 消费侧）。
+- **测试**：`ChunkingServiceTest`（切块边界/超长硬切/偏移连续/heading 归属/token 估算）、`TikaTextExtractorTest`（程序生成 docx——需定义 heading 样式、pdf 双页断言页码=2）、`DocumentParseWorkerTest`（mock：PARSING→READY、失败→FAILED+审计、过期事件与非当前版本跳过；对应 UT-20 消费侧）。
 - **依赖**：B-04、B-05
-- **状态**：未开始
+- **状态**：已完成（2026-11-03，`mvn test` 106 全绿；真机双路径：伪造 PDF（纯文本字节）→ TikaException → document=FAILED+审计 42201；**结构完整真 PDF**（Python 手写 xref，583B）→ 上传→complete→**0.5s** 解析成功（P-04 预算 60s）→ READY+chunk 落库（page_no=1 证明 PDFBox 页边界 div.page 路线有效、char/token/hash 全字段）；修复守卫笔误 `compareAndSet(true,true)`→`(false,true)`（曾致 worker 静默不启动），启动时输出 enabled/disabled 日志。开发备注：解析 worker 消费旧事件用 `createGroup(ReadOffset.from("0"))`，组建立前的事件走历史回放不丢）
 
 ## B-07 后端 · 文档列表 + 详情
 

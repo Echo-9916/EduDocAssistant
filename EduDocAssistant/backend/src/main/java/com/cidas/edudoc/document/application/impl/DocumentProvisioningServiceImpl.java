@@ -42,7 +42,7 @@ public class DocumentProvisioningServiceImpl implements DocumentProvisioningServ
 
         String documentId = Ids.hex16();
         documentRepository.insert(new Document(documentId, session.courseId(), session.ownerUserId(),
-                session.title(), session.documentType().name(), "PARSING"));
+                session.title(), session.documentType().name(), "PARSING", null));
 
         String versionId = Ids.hex16();
         documentVersionRepository.insert(new DocumentVersion(versionId, documentId, 1, "UPLOAD",

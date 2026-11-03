@@ -14,4 +14,15 @@
         WHERE id = HEXTORAW(#{documentId})
     </update>
 
+    <select id="selectById" resultType="com.cidas.edudoc.document.infrastructure.Document">
+        SELECT RAWTOHEX(d.id) AS id, RAWTOHEX(d.course_id) AS courseId, RAWTOHEX(d.owner_id) AS ownerId,
+               d.title, d.doc_type AS docType, d.status, RAWTOHEX(d.current_version_id) AS currentVersionId
+        FROM edudoc_document d
+        WHERE d.id = HEXTORAW(#{documentId})
+    </select>
+
+    <update id="updateStatus">
+        UPDATE edudoc_document SET status = #{status} WHERE id = HEXTORAW(#{documentId})
+    </update>
+
 </mapper>

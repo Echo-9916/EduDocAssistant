@@ -14,4 +14,5 @@ public class Document {
     private String title;
     private String docType;
     private String status;
+    private String currentVersionId;
 }

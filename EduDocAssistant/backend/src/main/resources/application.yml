@@ -35,6 +35,8 @@ edudoc:
     poll-interval-ms: 1000
     batch-size: 50
     max-retry: 5
+    stream-keys:
+      DOCUMENT_PARSE_REQUESTED: edudoc:stream:document-parse
   parse:
     enabled: true
     concurrency: 2

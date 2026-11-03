@@ -13,4 +13,6 @@ public class OutboxEvent {
     private String aggregateRef;
     private String eventType;
     private String payloadJson;
+    private int retryCount;
+    private String status;
 }

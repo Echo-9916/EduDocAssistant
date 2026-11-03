@@ -8,4 +8,34 @@
             #{event.eventType}, CAST(#{event.payloadJson} AS JSON), 'NEW')
     </insert>
 
+    <select id="selectPublishable" resultType="com.cidas.edudoc.common.outbox.OutboxEvent">
+        SELECT RAWTOHEX(id) AS id, aggregate_type AS aggregateType, aggregate_ref AS aggregateRef,
+               event_type AS eventType,
+               JSON_SERIALIZE(payload_json RETURNING VARCHAR2(4000)) AS payloadJson,
+               retry_count AS retryCount, status
+        FROM edudoc_outbox_event
+        WHERE status = 'NEW' AND (next_retry_at IS NULL OR next_retry_at &lt;= SYSTIMESTAMP)
+        ORDER BY create_time
+        FETCH FIRST #{batchSize} ROWS ONLY
+    </select>
+
+    <update id="markPublished">
+        UPDATE edudoc_outbox_event
+        SET status = 'PUBLISHED', published_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{id}) AND status = 'NEW'
+    </update>
+
+    <update id="markRetry">
+        UPDATE edudoc_outbox_event
+        SET retry_count = retry_count + 1,
+            next_retry_at = SYSTIMESTAMP + NUMTODSINTERVAL(#{delaySeconds}, 'SECOND')
+        WHERE id = HEXTORAW(#{id}) AND status = 'NEW'
+    </update>
+
+    <update id="markFailed">
+        UPDATE edudoc_outbox_event
+        SET status = 'FAILED', retry_count = retry_count + 1
+        WHERE id = HEXTORAW(#{id}) AND status = 'NEW'
+    </update>
+
 </mapper>

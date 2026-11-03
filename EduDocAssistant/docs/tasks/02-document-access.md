@@ -85,9 +85,9 @@
   - 按 event_type 路由 Stream key（`DOCUMENT_PARSE_REQUESTED → edudoc:stream:document-parse`，`// ponytail: 新事件类型在此加路由`）；消息字段 `{eventId,eventType,taskId,documentIdHex,versionIdHex,schemaVersion=1}`；taskId=eventId hex——不建独立解析任务表，任务状态最终事实 = `edudoc_document.status`（对齐概要 §2.4）。
   - `payload_json`（Oracle JSON 类型）由 Jackson 序列化保证 IS JSON 合法。
   - 单机不抢锁：`// ponytail: 单节点轮询，多实例加 FOR UPDATE SKIP LOCKED`。
-- **测试**：`OutboxDispatcherTest`（mock 仓储 + StreamOperations：NEW→PUBLISHED、XADD 失败退避字段断言、超限 FAILED、空批跳过；对应 UT-20 发布侧）。
+- **测试**：`OutboxDispatcherTest`（6 例：NEW→PUBLISHED、失败退避 `10*2^n` 秒、600s 封顶、超限 FAILED、无路由 FAILED、停用空转；对应 UT-20 发布侧）。路由表落 `edudoc.outbox.stream-keys`（event_type→stream 映射，比设计伪代码的 switch 更省一个类）。
 - **依赖**：B-01
-- **状态**：未开始
+- **状态**：已完成（2026-11-03，`mvn test` 94 全绿；真机：启动后 B-04 的 NEW 事件被调度器 XADD 进 `edudoc:stream:document-parse`，`XLEN=1`、XRANGE 可见 eventId/taskId/schemaVersion/payload 全字段，DB 侧 status=PUBLISHED、published_at 落定；`@EnableScheduling` 已开）
 
 ## B-06 后端 · 解析 worker（Tika 提取 + 分块 + 状态机）
 

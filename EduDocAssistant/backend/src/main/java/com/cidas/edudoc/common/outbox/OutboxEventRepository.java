@@ -6,9 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Map;
 
-/** 事件写入端口：调用方事务内提交，B-05 调度器负责投递。 */
+/** 事件写入端口：调用方事务内提交，{@link OutboxDispatcher} 负责投递。 */
 @Repository
 @RequiredArgsConstructor
 public class OutboxEventRepository {
@@ -24,7 +25,23 @@ public class OutboxEventRepository {
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Outbox 负载序列化失败", e);
         }
-        mapper.insert(new OutboxEvent(id, aggregateType, aggregateRef, eventType, json));
+        mapper.insert(new OutboxEvent(id, aggregateType, aggregateRef, eventType, json, 0, "NEW"));
         return id;
+    }
+
+    public List<OutboxEvent> findPublishable(int batchSize) {
+        return mapper.selectPublishable(batchSize);
+    }
+
+    public void markPublished(String id) {
+        mapper.markPublished(id);
+    }
+
+    public void markRetry(String id, long delaySeconds) {
+        mapper.markRetry(id, delaySeconds);
+    }
+
+    public void markFailed(String id) {
+        mapper.markFailed(id);
     }
 }

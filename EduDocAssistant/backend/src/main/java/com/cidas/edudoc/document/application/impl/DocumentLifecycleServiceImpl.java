@@ -4,6 +4,7 @@ import com.cidas.edudoc.access.application.AuditService;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.outbox.OutboxEventRepository;
+import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.document.application.DocumentLifecycleService;
 import com.cidas.edudoc.document.infrastructure.Document;
@@ -96,6 +97,9 @@ public class DocumentLifecycleServiceImpl implements DocumentLifecycleService {
 
     /** owner 校验：非本人或不存在一律 40401，与详情一致不泄露存在性。 */
     private Document requireOwned(String documentId) {
+        if (!Ids.isHex16(documentId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文档 ID 格式不合法");
+        }
         String ownerId = AuthContext.require().userId();
         Document doc = documentRepository.findById(documentId)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在"));

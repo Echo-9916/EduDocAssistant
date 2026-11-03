@@ -35,6 +35,8 @@ import static org.mockito.Mockito.when;
 /** B-08：软删/恢复/重解析的状态与并发分支。 */
 class DocumentLifecycleServiceTest {
 
+    private static final String DOC_ID = "D1EAD1EAD1EAD1EAD1EAD1EAD1EAD1EA";
+
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final DocumentChunkRepository chunkRepository = mock(DocumentChunkRepository.class);
     private final DocumentVersionRepository versionRepository = mock(DocumentVersionRepository.class);
@@ -56,118 +58,125 @@ class DocumentLifecycleServiceTest {
     }
 
     private static Document doc(String status) {
-        return new Document("D1", null, "U1", "t", "COURSEWARE", status, "V1");
+        return new Document(DOC_ID, null, "U1", "t", "COURSEWARE", status, "V1");
     }
 
     @Test
     void deleteSoftDeletesAndAuditsPrevStatus() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("READY")));
-        when(documentRepository.softDelete("D1")).thenReturn(1);
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("READY")));
+        when(documentRepository.softDelete(DOC_ID)).thenReturn(1);
 
-        service.delete("D1");
+        service.delete(DOC_ID);
 
-        verify(documentRepository).softDelete("D1");
-        verify(auditService).record(eq("DOCUMENT_DELETED"), eq("DOCUMENT"), eq("D1"), eq("D1"),
+        verify(documentRepository).softDelete(DOC_ID);
+        verify(auditService).record(eq("DOCUMENT_DELETED"), eq("DOCUMENT"), eq(DOC_ID), eq(DOC_ID),
                 eq("200"), eq(Map.of("prevStatus", "READY")));
     }
 
     @Test
     void deleteAlreadyTrashedConflicts() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("DELETED")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("DELETED")));
 
-        assertCode(ErrorCode.CONFLICT, () -> service.delete("D1"));
+        assertCode(ErrorCode.CONFLICT, () -> service.delete(DOC_ID));
         verify(documentRepository, never()).softDelete(anyString());
+    }
+
+    @Test
+    void malformedIdIsBadRequestNotDatabaseError() {
+        assertCode(ErrorCode.BAD_REQUEST, () -> service.delete("x"));
+        assertCode(ErrorCode.BAD_REQUEST, () -> service.restore("not-hex"));
+        assertCode(ErrorCode.BAD_REQUEST, () -> service.reparse("zz", null));
     }
 
     @Test
     void deleteOtherUsersDocumentIsNotFound() {
         Document other = doc("READY");
         other.setOwnerId("OTHER");
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(other));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(other));
 
-        assertCode(ErrorCode.NOT_FOUND, () -> service.delete("D1"));
+        assertCode(ErrorCode.NOT_FOUND, () -> service.delete(DOC_ID));
     }
 
     @Test
     void restoreWithChunksBecomesReady() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("DELETED")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("DELETED")));
         when(chunkRepository.countByVersion("V1")).thenReturn(4);
-        when(documentRepository.restore("D1", "READY")).thenReturn(1);
+        when(documentRepository.restore(DOC_ID, "READY")).thenReturn(1);
 
-        service.restore("D1");
+        service.restore(DOC_ID);
 
-        verify(auditService).record(eq("DOCUMENT_RESTORED"), eq("DOCUMENT"), eq("D1"), eq("D1"),
+        verify(auditService).record(eq("DOCUMENT_RESTORED"), eq("DOCUMENT"), eq(DOC_ID), eq(DOC_ID),
                 eq("200"), eq(Map.of("restoredStatus", "READY")));
     }
 
     @Test
     void restoreWithoutChunksBecomesFailed() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("DELETED")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("DELETED")));
         when(chunkRepository.countByVersion("V1")).thenReturn(0);
-        when(documentRepository.restore("D1", "FAILED")).thenReturn(1);
+        when(documentRepository.restore(DOC_ID, "FAILED")).thenReturn(1);
 
-        service.restore("D1");
+        service.restore(DOC_ID);
 
-        verify(documentRepository).restore("D1", "FAILED");
+        verify(documentRepository).restore(DOC_ID, "FAILED");
     }
 
     @Test
     void restoreNotInTrashConflicts() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("READY")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("READY")));
 
-        assertCode(ErrorCode.CONFLICT, () -> service.restore("D1"));
+        assertCode(ErrorCode.CONFLICT, () -> service.restore(DOC_ID));
     }
 
     @Test
     void restoreWithSameNameActiveDocumentConflicts() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("DELETED")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("DELETED")));
         when(chunkRepository.countByVersion("V1")).thenReturn(1);
-        when(documentRepository.restore("D1", "READY")).thenThrow(new DuplicateKeyException("uk"));
+        when(documentRepository.restore(DOC_ID, "READY")).thenThrow(new DuplicateKeyException("uk"));
 
-        CidasBusinessException e = assertThrows(CidasBusinessException.class, () -> service.restore("D1"));
+        CidasBusinessException e = assertThrows(CidasBusinessException.class, () -> service.restore(DOC_ID));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
         assertEquals("已存在同名活跃文档，无法恢复", e.getMessage());
     }
 
     @Test
     void reparsePublishesEventAndReturnsTaskId() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("FAILED")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("FAILED")));
         when(versionRepository.findById("V1")).thenReturn(Optional.of(
-                new DocumentVersion("V1", "D1", 1, "UPLOAD", "O1", "U1", "h", "A")));
+                new DocumentVersion("V1", DOC_ID, 1, "UPLOAD", "O1", "U1", "h", "A")));
         when(ossObjectRepository.findById("O1")).thenReturn(Optional.of(
                 new OssObject("O1", "cidas-oss-bucket", "cn-beijing", "k/b.pdf", null,
                         "E", "h", 10, "application/pdf", "NONE", "ORIGINAL")));
         when(outboxEventRepository.publish(eq("DOCUMENT_VERSION"), eq("V1"),
                 eq("DOCUMENT_PARSE_REQUESTED"), any(Map.class))).thenReturn("T1");
 
-        String taskId = service.reparse("D1", null);
+        String taskId = service.reparse(DOC_ID, null);
 
         assertEquals("T1", taskId);
-        verify(documentRepository).updateStatus("D1", "PARSING");
-        verify(auditService).record(eq("PARSE_REQUESTED"), eq("DOCUMENT"), eq("D1"), eq("D1"),
+        verify(documentRepository).updateStatus(DOC_ID, "PARSING");
+        verify(auditService).record(eq("PARSE_REQUESTED"), eq("DOCUMENT"), eq(DOC_ID), eq(DOC_ID),
                 eq("200"), eq(Map.of("versionId", "V1", "taskId", "T1")));
     }
 
     @Test
     void reparseWhileParsingConflicts() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("PARSING")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("PARSING")));
 
-        assertCode(ErrorCode.CONFLICT, () -> service.reparse("D1", null));
+        assertCode(ErrorCode.CONFLICT, () -> service.reparse(DOC_ID, null));
     }
 
     @Test
     void reparseNonCurrentVersionConflicts() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("READY")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("READY")));
 
-        assertCode(ErrorCode.CONFLICT, () -> service.reparse("D1", "V9"));
+        assertCode(ErrorCode.CONFLICT, () -> service.reparse(DOC_ID, "V9"));
     }
 
     @Test
     void reparseWithMissingSourceObjectConflicts() {
-        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("READY")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("READY")));
         when(versionRepository.findById("V1")).thenReturn(Optional.empty());
 
-        assertCode(ErrorCode.CONFLICT, () -> service.reparse("D1", null));
+        assertCode(ErrorCode.CONFLICT, () -> service.reparse(DOC_ID, null));
         verify(outboxEventRepository, never()).publish(anyString(), anyString(), anyString(), any());
     }
 

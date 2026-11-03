@@ -39,6 +39,9 @@ public class DocumentQueryServiceImpl implements DocumentQueryService {
 
     @Override
     public Detail detail(String documentId) {
+        if (!com.cidas.edudoc.common.persistence.Ids.isHex16(documentId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文档 ID 格式不合法");
+        }
         String ownerId = AuthContext.require().userId();
         DocumentViewRow row = documentRepository.detail(documentId)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在"));

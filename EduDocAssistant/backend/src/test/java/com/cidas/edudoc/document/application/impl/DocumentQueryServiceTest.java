@@ -36,6 +36,8 @@ import static org.mockito.Mockito.when;
 /** B-07：owner 强制、默认排除回收站、分页钳制、LIKE 转义、非 owner 40401。 */
 class DocumentQueryServiceTest {
 
+    private static final String DOC_ID = "D1EAD1EAD1EAD1EAD1EAD1EAD1EAD1EA";
+
     private final DocumentRepository repository = mock(DocumentRepository.class);
     private final DocumentQueryServiceImpl service = new DocumentQueryServiceImpl(repository);
 
@@ -51,7 +53,7 @@ class DocumentQueryServiceTest {
 
     private static DocumentViewRow row(String status) {
         DocumentViewRow row = new DocumentViewRow();
-        row.setId("D1");
+        row.setId(DOC_ID);
         row.setOwnerId("U1");
         row.setTitle("t");
         row.setStatus(status);
@@ -68,7 +70,7 @@ class DocumentQueryServiceTest {
         PageResult<Summary> result = service.list(new ListQuery(null, null, null, null, null, null));
 
         assertEquals(1, result.total());
-        assertEquals("D1", result.items().get(0).id());
+        assertEquals(DOC_ID, result.items().get(0).id());
         assertEquals(20, result.pageSize());
     }
 
@@ -107,13 +109,19 @@ class DocumentQueryServiceTest {
     }
 
     @Test
+    void detailMalformedIdIsBadRequest() {
+        CidasBusinessException e = assertThrows(CidasBusinessException.class, () -> service.detail("x"));
+        assertEquals(ErrorCode.BAD_REQUEST, e.errorCode());
+    }
+
+    @Test
     void detailOfOtherUsersDocumentIsNotFound() {
         DocumentViewRow other = row("READY");
         other.setOwnerId("OTHER");
-        when(repository.detail("D1")).thenReturn(Optional.of(other));
+        when(repository.detail(DOC_ID)).thenReturn(Optional.of(other));
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
-                () -> service.detail("D1"));
+                () -> service.detail(DOC_ID));
         assertEquals(ErrorCode.NOT_FOUND, e.errorCode());
     }
 
@@ -122,9 +130,9 @@ class DocumentQueryServiceTest {
         DocumentViewRow row = row("DELETED");
         row.setChunkCount(3);
         row.setPurgeAt("2026-12-03T09:00:00");
-        when(repository.detail("D1")).thenReturn(Optional.of(row));
+        when(repository.detail(DOC_ID)).thenReturn(Optional.of(row));
 
-        Detail detail = service.detail("D1");
+        Detail detail = service.detail(DOC_ID);
 
         assertEquals(3, detail.chunkCount());
         assertEquals("2026-12-03T09:00:00", detail.purgeAt());

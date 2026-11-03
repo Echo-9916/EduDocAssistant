@@ -2,7 +2,7 @@
 
 > 覆盖 02 切片 B-01~B-08 后端接口（课程查询、上传会话、complete 建档、解析闭环、文档查询、回收站与重解析）。结构与 [AuthTest.md](AuthTest.md) 同源，便于脱离 Apifox 手工验证。
 > Apifox 可直接导入 [apifox/document-access.postman_collection.json](apifox/document-access.postman_collection.json)：8 组 35 个请求含全部反例；登录/课程/会话变量自动串联，STS 直传由 pre-request 脚本现场做 OSS V1 签名，Body 内嵌 583 字节真 PDF（SHA-256=01cb9afc…，脚本现算 contentHash），按文件夹顺序执行即可走完上传→解析→查询→回收站→重解析全链路。
-> **回归基线**：2026-11-03 全量回归 **32/32 通过**（含全部反例），`mvn test` 125 全绿。
+> **回归基线**：2026-11-03 首轮 32/32；1103 审查整改后复验 **41/41**（新增框架异常/跨用户幂等/内容伪装探针），`mvn test` 130 全绿。
 
 ## 环境与前置
 
@@ -10,7 +10,8 @@
 - **依赖服务**：Oracle FREEPDB1（`oracle-dev` 容器）、Redis（`redis-dev` 容器，`redis-cli ping` 应回 PONG）
 - **OSS 环境变量**（用户级，不入仓）：`EDUDOC_OSS_ACCESS_KEY_ID` / `EDUDOC_OSS_ACCESS_KEY_SECRET`；bucket=`cidas-oss-bucket`，region=`cn-beijing`，RAM 角色 `edudoc-upload`
 - **鉴权头**：`Authorization: Bearer <token>`（登录返回的 `data.token`）
-- **幂等键**：所有写接口必须带 `Idempotency-Key`（缺失 40001；同 key 重放 40902）。**业务重试必须换新 key**——幂等过滤器防双击，业务幂等靠上传会话状态机（详见 §3 说明）
+- **幂等键**：所有写接口必须带 `Idempotency-Key`（缺失 40001；同 key 重放 40902）。键作用域 = **认证主体 + 方法 + 路径**（1103 审查 S4 整改），跨用户、跨端点使用相同 key 互不顶替。**业务重试必须换新 key**——幂等过滤器防双击，业务幂等靠上传会话状态机（详见 §3 说明）
+- **框架异常契约**（1103 审查 S1 整改，不再塌缩为 500/50001）：未匹配路由 → 404/40401；方法不允许（如 `DELETE /courses`）→ 405/**40501**（整改新增码位，需同步设计文档 §5.1 字典）；Content-Type 不支持 → 415/41501；畸形 JSON / 参数类型错误（`page=abc`）/ 缺必填参数 → 400/40001
 - **种子数据**：账号见 AuthTest.md；课程 2 门（CS101 教师授课+学生选课、MATH201 仅教师），启动时 `SeedDataRunner` 幂等写入
 - **测试样本**：结构完整的 PDF（可用 `GET /` 前的 `gen_pdf.py` 方式生成；**纯文本改后缀的假 PDF 会被解析置 FAILED**，属预期）
 - **观测命令**：
@@ -81,6 +82,7 @@ curl -s -H "Authorization: Bearer $TT" http://localhost:8080/api/v1/courses
 无需调接口。观测：complete 后 `edudoc_outbox_event` 出现 `DOCUMENT_PARSE_REQUESTED`(NEW)；调度器 ≤1s 投 Stream 并置 PUBLISHED；worker 消费 → Tika 提取分块 → 文档转 **READY**，`edudoc_document_chunk` 落库（chunk_no/heading_path/page_no/char_start/char_end/token_count/content_hash/index_status=PENDING），审计 `PARSE_SUCCEEDED`。30 页以内文档应在 60s 预算内（实测单页 0.5s）。
 
 - **失败分支**：损坏文件 → 文档 FAILED + 审计 `PARSE_FAILED(42201)`；重试走 §7 重新解析
+- **内容伪装防御**（1103 审查 S5 整改）：纯文本改名 `.pdf` 上传——会话/直传/建档均通过（自报值只做初筛），但解析时按 **Tika 真实探测的 Content-Type 复验**（允许 pdf/msword/OOXML word），不符 → FAILED + 审计；提取文本另有 8M 字符上限防内容爆炸
 
 ```bash
 curl -s -H "Authorization: Bearer $TT" "http://localhost:8080/api/v1/documents/$DOCID" | grep -o '"status":"[A-Z]*"'
@@ -89,8 +91,9 @@ curl -s -H "Authorization: Bearer $TT" "http://localhost:8080/api/v1/documents/$
 ## 5. 文档列表
 
 - **Method / URL**：`GET /api/v1/documents?courseId=&type=&status=&keyword=&page=1&pageSize=20`
-- **预期返回**：HTTP 200，`data={items:[{id,title,docType,status,courseId,courseName,sizeBytes,mimeType,versionNo,createTime,updateTime}],total,page,pageSize}`；默认 `update_time DESC`；**强制 owner=当前用户**；默认排除 DELETED，显式 `status=DELETED` 查回收站；`pageSize` 钳制 1..100（缺省 20）；keyword LIKE 已转义 `% _ \`
-- **反例**：无 token → HTTP 401；无 DOCUMENT_READ 权限 → 40301
+- **预期返回**：HTTP 200，`data={items:[{id,title,docType,status,courseId,courseName,sizeBytes,mimeType,versionNo,createTime,updateTime}],total,page,pageSize}`；默认 `update_time DESC`；**强制 owner=当前用户**；默认排除 DELETED，显式 `status=DELETED` 查回收站；`pageSize` 钳制 1..100（缺省 20）；keyword LIKE 已转义 `% _ \`；offset 按 long 计算，`page=2147483647` 返回空页而非溢出回首页（1103 审查 S3）
+- **反例**：无 token → HTTP 401；`courseId=y`（非 hex）→ 40001（1103 审查 S2，此前穿透 HEXTORAW 变 500/50001）；`page=abc` → 400/40001
+- **权限说明**：种子三角色均持有 DOCUMENT_READ（04_seed.sql），该反例无法用种子数据触发，需临时收回权限验证；可触发的等价反例见 §7（OPS 调 parse → 40301）
 
 ## 6. 文档详情
 
@@ -106,7 +109,7 @@ curl -s -H "Authorization: Bearer $TT" "http://localhost:8080/api/v1/documents/$
 | `POST /{id}/restore` | DOCUMENT_DELETE | 204；按当前版本有无分块推断 READY/FAILED；撞同名活跃文档 → 40901 |
 | `POST /{id}/parse`（body `{}` 或 `{"versionId":"…"}`） | DOCUMENT_EDIT | 200 `{taskId}`（=outbox eventId）；仅 READY/FAILED 可重解析，PARSING/UPLOADING/DELETED → 40901；versionId 仅允许当前版本 |
 
-- **反例**：已删再删 → 40901「已在回收站」；非回收站恢复 → 40901；非 owner → 40401
+- **反例**：已删再删 → 40901「已在回收站」；非回收站恢复 → 40901；非 owner → 40401；OPS 调 `parse` → 40301（无 DOCUMENT_EDIT，种子数据可触发的权限反例）；`POST /{id}/parse` 传非当前版本 versionId → 40901
 
 ## 8. 登录链路回归（01 切片不回归即视为损坏）
 
@@ -126,6 +129,7 @@ curl -s -H "Authorization: Bearer $TT" "http://localhost:8080/api/v1/documents/$
 8. `9 Stream 观测`：XLEN 增长、XPENDING 首列=0（无积压）
 9. `8 登录链路回归`
 
-## 回归结果（2026-11-03）
+## 回归结果
 
-32 项检查全部通过，覆盖：认证鉴权 3、幂等 2、会话校验 4、直传+complete 6、解析闭环 2、同名冲突 1、查询 5、回收站与重解析 7、Stream 观测 2、令牌撤销 1。发现并修复 1 项：非法 hex 文档 ID 曾触发 `HEXTORAW` 数据库异常返回 50001，已改为入口校验返回 40001（`Ids.isHex16`，详情/删除/恢复/重解析四入口）。
+- **首轮（2026-11-03 上午）**：32 项全过。发现并修复：非法 hex 文档 ID 曾触发 `HEXTORAW` 异常返回 50001 → 入口校验 40001（`Ids.isHex16`）。
+- **1103 审查整改复验（2026-11-03）**：**41/41 通过**（`mvn test` 130 全绿）。新增探针全部通过：courseId 非 hex → 40001；未匹配路由 → 404/40401；`DELETE /courses` → 405/40501；`page=abc`、畸形 JSON → 400/40001；跨用户同幂等键不再互相顶替；`page=2147483647` 返回空页；纯文本伪装 `.pdf` 建档后经真实类型复验置 FAILED。整改清单：S1 框架异常分支、S2 courseId 入口校验、S3 分页 offset long 化、S4 幂等键作用域（主体+方法+路径）、S5 Tika 内容类型复验+提取上限、S6 SDK 异常原文只进日志、S7 审计序列化失败告警、S8 parts 契约注释纠偏、S9 JSON_SERIALIZE 上限注释、S11 sessionId 统一大写 hex、P3② consumer 名补 pid、P5 解析回写加 `status='PARSING'` 守卫。

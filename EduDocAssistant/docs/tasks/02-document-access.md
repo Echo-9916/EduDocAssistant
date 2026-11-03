@@ -201,6 +201,28 @@
 
 前置（auth 分支收尾 ∥ 用户备齐环境）→ B-01 → B-02 → B-03 → B-04 → B-05 → B-06 →（B-07 ∥ B-08）→ B-10 →（B-11 ∥ B-12）→ B-13。B-02 与 B-01 可并行；B-09 在接口契约固定（B-03/B-04 评审通过）后可与后端 B-05~B-08 并行。
 
+## 审查整改记录（1103 报告,2026-11-03）
+
+必修项（推送前）——**全部完成**,`mvn test` 130 全绿 + 真机探针 41/41:
+
+| 项 | 整改 |
+| --- | --- |
+| S1 框架异常塌缩 500 | `GlobalExceptionHandler` 补 NoResourceFound(404/40401)、MethodNotSupported(405/**40501 新码位**)、MediaTypeNotSupported(415/41501)、MessageNotReadable/TypeMismatch/MissingParam/MissingHeader/BindException(400/40001);客户端错误一律 WARN 级 |
+| S2 courseId 穿透 HEXTORAW | `DocumentQueryServiceImpl.list` 入口 `Ids.isHex16` 校验 → 40001;detail 的全限定名写法统一为 import(S11a) |
+| S3 分页 offset 溢出 | offset 改 long 计算并贯穿 Repository/Mapper,`page=MAX_VALUE` 返回空页 |
+| S4 幂等键跨用户顶替 | `IdempotencyFilter` 键作用域 = `{userId}:{method}:{uri}:{key}`(Stripe/IETF 惯例);`IdempotencyFilterTest` 补作用域断言,auth 域回归通过 |
+| S5 只信自报类型 | `TikaTextExtractor` 解析后按探测 Content-Type 复验(pdf/msword/OOXML word,不符→IOException→FAILED+审计);提取文本 8M 字符上限防内容爆炸 |
+
+P3 顺手项:S6 SDK 异常原文只进日志、客户端回固定文案;S7 审计明细序列化失败 log.warn;S8 `parts` 注释纠偏为"接收但不校验不落库"(B-10 checkpoint 由浏览器自持);S9 `JSON_SERIALIZE VARCHAR2(4000)` 上限注释;S11b sessionId 改走 `Ids.hex16()`(objectKey 两段 hex 大小写统一);P3② consumer 名补 pid(`parse-{host}-{pid}-{index}`);P5 解析回写(success/failure)加 `AND status='PARSING'` 守卫,迟到事件整笔跳过。
+
+文档口径回填(报告 P1/P2/P4,以代码为事实契约):
+
+- **Redis 会话 JSON 实际字段**(P1):`{id, ownerUserId, courseId, title, documentType, fileName, sizeBytes, mimeType, objectKey, status, completedDocumentId, completedVersionId, createdAt}`——非任务文档 B-03 原列的 `sessionId/ownerUserIdHex/...` 命名,record 组件名即 JSON 字段名,未加 @JsonProperty。
+- **Stream 消息实际字段**(P2):`{eventId, eventType, taskId, aggregateType, aggregateRef(=versionId), schemaVersion, payload(JSON 字符串,含 documentId/versionId/bucket/objectKey)}`——无 documentIdHex/versionIdHex 顶层字段;**ai 域接线以此为准**,任务文档 B-05 原字段列表作废。
+- **PARSING 置位方**(P4):由生产方负责(complete 建档即 PARSING、重解析先置 PARSING),worker 只做状态守卫不写 PARSING;事件到达时文档非 PARSING → 跳过并 XACK。
+
+遗留(随 B-09/B-10/B-13 处理):S10 分块 offset 在硬切+跨块合并时与 `\n` 连接符有细微漂移、代理对可能被切断(ai 域用 offset 做引用定位前须修);`RbacLifecycleIntegrationTest` 默认 `mvn test` 静默 0 项的可观测性;40501 码位需回填《详细设计说明书》§5.1 字典(docs/design 为复刻,Word 源文件侧同步)。
+
 ## 风险与已知债务
 
 | # | 事项 | 处理 |

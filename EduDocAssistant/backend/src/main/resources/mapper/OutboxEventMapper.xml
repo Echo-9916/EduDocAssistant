@@ -8,6 +8,8 @@
             #{event.eventType}, CAST(#{event.payloadJson} AS JSON), 'NEW')
     </insert>
 
+    <!-- 1103 审查 S9：RETURNING VARCHAR2(4000) 即事件负载硬上限；
+         新事件类型若 payload 可能超 4KB（如批量清单），改用 RETURNING CLOB + ClobTypeHandler -->
     <select id="selectPublishable" resultType="com.cidas.edudoc.common.outbox.OutboxEvent">
         SELECT RAWTOHEX(id) AS id, aggregate_type AS aggregateType, aggregate_ref AS aggregateRef,
                event_type AS eventType,

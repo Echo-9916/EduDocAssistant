@@ -8,12 +8,14 @@ import com.cidas.edudoc.document.infrastructure.DocumentChunk;
 import com.cidas.edudoc.document.infrastructure.DocumentChunkRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DocumentParseTxServiceImpl implements DocumentParseTxService {
@@ -25,13 +27,17 @@ public class DocumentParseTxServiceImpl implements DocumentParseTxService {
     @Override
     @Transactional
     public void writeSuccess(String documentId, String versionId, List<Chunk> chunks) {
+        // 1103 审查 P5：状态守卫先行——文档不在 PARSING 即整笔跳过，不动分块不留假审计
+        if (documentRepository.markStatusIfParsing(documentId, "READY") == 0) {
+            log.info("解析结果回写跳过（文档已不在 PARSING）documentId={}", documentId);
+            return;
+        }
         chunkRepository.deleteByVersion(versionId);
         chunkRepository.insertAll(chunks.stream()
                 .map(chunk -> new DocumentChunk(Ids.hex16(), versionId, chunk.chunkNo(),
                         chunk.headingPath(), chunk.pageNo(), chunk.charStart(), chunk.charEnd(),
                         chunk.text(), chunk.tokenCount(), chunk.contentHash(), "PENDING"))
                 .toList());
-        documentRepository.updateStatus(documentId, "READY");
         auditService.record("PARSE_SUCCEEDED", "DOCUMENT", documentId, documentId, "200",
                 Map.of("versionId", versionId, "chunkCount", chunks.size()));
     }
@@ -39,7 +45,10 @@ public class DocumentParseTxServiceImpl implements DocumentParseTxService {
     @Override
     @Transactional
     public void writeFailure(String documentId, String versionId, String reason) {
-        documentRepository.updateStatus(documentId, "FAILED");
+        if (documentRepository.markStatusIfParsing(documentId, "FAILED") == 0) {
+            log.info("解析失败回写跳过（文档已不在 PARSING）documentId={}", documentId);
+            return;
+        }
         auditService.record("PARSE_FAILED", "DOCUMENT", documentId, documentId, "42201",
                 Map.of("versionId", versionId, "reason", reason == null ? "" : trim(reason)));
     }

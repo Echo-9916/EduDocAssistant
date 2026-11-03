@@ -23,7 +23,7 @@ class ErrorCodeTest {
 
     @Test
     void countMatchesDesignDictionary() {
-        // 1 个成功码 + 18 个错误码（详细设计 §5.1）
-        assertEquals(19, ErrorCode.values().length);
+        // 1 个成功码 + 19 个错误码（详细设计 §5.1 + 1103 审查整改补 40501 方法不允许）
+        assertEquals(20, ErrorCode.values().length);
     }
 }

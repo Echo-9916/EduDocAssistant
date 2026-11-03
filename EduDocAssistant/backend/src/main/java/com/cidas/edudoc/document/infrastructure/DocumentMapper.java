@@ -16,9 +16,12 @@ public interface DocumentMapper {
 
     int updateStatus(@Param("documentId") String documentIdHex, @Param("status") String status);
 
+    /** 条件更新（1103 审查 P5）：仅当文档处于 PARSING 才迁移状态，迟到事件不得覆盖新状态。 */
+    int updateStatusFromParsing(@Param("documentId") String documentIdHex, @Param("status") String status);
+
     List<DocumentViewRow> selectPage(@Param("ownerId") String ownerId, @Param("courseId") String courseId,
                                      @Param("docType") String docType, @Param("status") String status,
-                                     @Param("keyword") String keyword, @Param("offset") int offset,
+                                     @Param("keyword") String keyword, @Param("offset") long offset,
                                      @Param("limit") int limit);
 
     long countPage(@Param("ownerId") String ownerId, @Param("courseId") String courseId,

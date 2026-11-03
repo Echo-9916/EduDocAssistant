@@ -69,10 +69,11 @@ public class DocumentParseWorker {
             thread.setDaemon(true);
             return thread;
         });
-        String host = hostName();
+        // consumer 名含 pid（1103 审查 P3②）：同机多 JVM 实例不撞名、pending 归属清晰
+        String instance = hostName() + "-" + ProcessHandle.current().pid();
         for (int i = 0; i < properties.concurrency(); i++) {
             int index = i;
-            pool.submit(() -> consumeLoop("parse-" + host + "-" + index));
+            pool.submit(() -> consumeLoop("parse-" + instance + "-" + index));
         }
         log.info("解析 worker 已启动：stream={} group={} concurrency={}",
                 properties.streamKey(), properties.group(), properties.concurrency());

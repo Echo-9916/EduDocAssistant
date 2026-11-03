@@ -64,7 +64,7 @@ class DocumentQueryServiceTest {
     @Test
     void listIsScopedToOwnerWithDefaults() {
         when(repository.count(eq("U1"), isNull(), isNull(), isNull(), isNull())).thenReturn(1L);
-        when(repository.page(eq("U1"), isNull(), isNull(), isNull(), isNull(), eq(0), eq(20)))
+        when(repository.page(eq("U1"), isNull(), isNull(), isNull(), isNull(), eq(0L), eq(20)))
                 .thenReturn(List.of(row("READY")));
 
         PageResult<Summary> result = service.list(new ListQuery(null, null, null, null, null, null));
@@ -77,16 +77,39 @@ class DocumentQueryServiceTest {
     @Test
     void pageSizeClampedAndOffsetComputed() {
         when(repository.count(any(), any(), any(), any(), any())).thenReturn(30L);
-        when(repository.page(any(), any(), any(), any(), any(), anyInt(), anyInt())).thenReturn(List.of());
+        when(repository.page(any(), any(), any(), any(), any(), anyLong(), anyInt())).thenReturn(List.of());
 
         service.list(new ListQuery(null, null, null, null, 3, 500));
 
-        ArgumentCaptor<Integer> offset = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<Long> offset = ArgumentCaptor.forClass(Long.class);
         ArgumentCaptor<Integer> limit = ArgumentCaptor.forClass(Integer.class);
         verify(repository).page(eq("U1"), isNull(), isNull(), isNull(), isNull(),
                 offset.capture(), limit.capture());
-        assertEquals(200, offset.getValue());
+        assertEquals(200L, offset.getValue());
         assertEquals(100, limit.getValue());
+    }
+
+    @Test
+    void hugePageDoesNotOverflowToFirstPage() {
+        // 1103 审查 S3：int 溢出曾使 page=MAX_VALUE 静默返回首页数据
+        when(repository.count(any(), any(), any(), any(), any())).thenReturn(30L);
+        when(repository.page(any(), any(), any(), any(), any(), anyLong(), anyInt())).thenReturn(List.of());
+
+        PageResult<Summary> result = service.list(new ListQuery(null, null, null, null, Integer.MAX_VALUE, 2));
+
+        ArgumentCaptor<Long> offset = ArgumentCaptor.forClass(Long.class);
+        verify(repository).page(any(), any(), any(), any(), any(), offset.capture(), anyInt());
+        assertEquals(4294967292L, offset.getValue());
+        assertTrue(result.items().isEmpty());
+    }
+
+    @Test
+    void malformedCourseIdRejectedBeforeSql() {
+        // 1103 审查 S2：courseId=y 曾穿透 HEXTORAW 触发 Oracle 异常 → 500/50001
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> service.list(new ListQuery("y", null, null, null, 1, 20)));
+        assertEquals(ErrorCode.BAD_REQUEST, e.errorCode());
+        verify(repository, never()).count(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -96,7 +119,7 @@ class DocumentQueryServiceTest {
         service.list(new ListQuery(null, null, null, "50%_x", 1, 20));
 
         verify(repository).count(eq("U1"), isNull(), isNull(), isNull(), eq("50\\%\\_x"));
-        verify(repository, never()).page(any(), any(), any(), any(), any(), anyInt(), anyInt());
+        verify(repository, never()).page(any(), any(), any(), any(), any(), anyLong(), anyInt());
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.aliyun.sts20150401.models.AssumeRoleResponseBody;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -18,7 +19,11 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Optional;
 
-/** OSS 适配：浏览器直传的短期 STS 签发（inline policy 收窄到单个 objectKey，概要 §5.4 不暴露长期凭据）。 */
+/**
+ * OSS 适配：浏览器直传的短期 STS 签发（inline policy 收窄到单个 objectKey，概要 §5.4 不暴露长期凭据）。
+ * 1103 审查 S6：SDK 异常原文（含 endpoint/RoleArn/RequestId）只进日志，客户端统一回固定文案。
+ */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class OssStorageAdapter {
@@ -44,8 +49,9 @@ public class OssStorageAdapter {
             return new UploadCredentials(c.getAccessKeyId(), c.getAccessKeySecret(), c.getSecurityToken(),
                     c.getExpiration(), properties.bucket(), properties.region(), properties.endpoint());
         } catch (Exception e) {
+            log.warn("STS AssumeRole 失败 objectKey={}", objectKey, e);
             throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                    "上传凭据签发失败：" + e.getMessage(), true, Map.of());
+                    "上传凭据签发失败，请稍后重试", true, Map.of());
         }
     }
 
@@ -59,11 +65,13 @@ public class OssStorageAdapter {
             if ("NoSuchKey".equals(e.getErrorCode())) {
                 return Optional.empty();
             }
+            log.warn("OSS headObject 失败 objectKey={} errorCode={}", objectKey, e.getErrorCode(), e);
             throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                    "OSS 对象校验失败：" + e.getErrorCode(), true, Map.of());
+                    "文件校验失败，请稍后重试", true, Map.of());
         } catch (Exception e) {
+            log.warn("OSS headObject 异常 objectKey={}", objectKey, e);
             throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                    "OSS 对象校验失败：" + e.getMessage(), true, Map.of());
+                    "文件校验失败，请稍后重试", true, Map.of());
         }
     }
 
@@ -79,8 +87,9 @@ public class OssStorageAdapter {
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (Exception e) {
+            log.warn("OSS sha256 读取失败 objectKey={}", objectKey, e);
             throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                    "OSS 对象读取失败：" + e.getMessage(), true, Map.of());
+                    "文件内容读取失败，请稍后重试", true, Map.of());
         }
     }
 
@@ -90,8 +99,9 @@ public class OssStorageAdapter {
             ossClient.getObject(new com.aliyun.oss.model.GetObjectRequest(properties.bucket(), objectKey),
                     target.toFile());
         } catch (Exception e) {
+            log.warn("OSS 下载失败 objectKey={}", objectKey, e);
             throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                    "OSS 对象下载失败：" + e.getMessage(), true, Map.of());
+                    "文件下载失败，请稍后重试", true, Map.of());
         }
     }
 

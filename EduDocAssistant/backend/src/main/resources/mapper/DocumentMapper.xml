@@ -25,6 +25,11 @@
         UPDATE edudoc_document SET status = #{status} WHERE id = HEXTORAW(#{documentId})
     </update>
 
+    <update id="updateStatusFromParsing">
+        UPDATE edudoc_document SET status = #{status}
+        WHERE id = HEXTORAW(#{documentId}) AND status = 'PARSING'
+    </update>
+
     <sql id="listWhere">
         WHERE d.owner_id = HEXTORAW(#{ownerId})
         <choose>

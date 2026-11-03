@@ -29,8 +29,13 @@ public class DocumentRepository {
         mapper.updateStatus(documentIdHex, status);
     }
 
+    /** 返回 1 表示迁移成功；0 表示文档已不在 PARSING（迟到/重复事件），调用方跳过回写。 */
+    public int markStatusIfParsing(String documentIdHex, String status) {
+        return mapper.updateStatusFromParsing(documentIdHex, status);
+    }
+
     public List<DocumentViewRow> page(String ownerId, String courseId, String docType, String status,
-                                      String keyword, int offset, int limit) {
+                                      String keyword, long offset, int limit) {
         return mapper.selectPage(ownerId, courseId, docType, status, keyword, offset, limit);
     }
 

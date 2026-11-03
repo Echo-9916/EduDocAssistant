@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** B-06 Tika 提取：docx 标题栈与 pdf 页码（程序生成样本，不放二进制 fixture）。 */
@@ -94,6 +95,17 @@ class TikaTextExtractorTest {
         assertTrue(blocks.stream().anyMatch(b -> b.text().contains("SECOND PAGE TEXT")));
         assertEquals(2, blocks.stream().mapToInt(TextBlock::pageNo).max().orElse(0),
                 "第二页块页码应为 2，实际: " + blocks);
+    }
+
+    @Test
+    void rejectsSpoofedExtensionByDetectedContentType(@TempDir Path tmp) throws Exception {
+        // 1103 审查 S5：纯文本改名 .pdf —— 会话可过（自报值），提取必须按真实探测类型拒绝
+        Path fake = tmp.resolve("fake.pdf");
+        Files.write(fake, "just plain text, not a pdf at all".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        java.io.IOException e = assertThrows(java.io.IOException.class,
+                () -> new TikaTextExtractor().extract(fake, "fake.pdf"));
+        assertTrue(e.getMessage().contains("实际类型"), e.getMessage());
     }
 
     private static void heading(XWPFDocument doc, String style, String text) {

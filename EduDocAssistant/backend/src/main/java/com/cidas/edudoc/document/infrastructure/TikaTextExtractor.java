@@ -16,13 +16,23 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Tika 文本提取：段落（p）为块，h1–h6 维护章节栈，页边界来自 div.page（PDFBox）或换页符。
  * 老式 .doc 结构识别较弱（POI HWPF），headingPath 允许为空（风险 R7）。
+ * 1103 审查 S5：解析后按 Tika 真实探测的 Content-Type 复验（客户端自报值不可信）；
+ * 提取文本设上限，防嵌套容器/内容爆炸（20MB 容器 ≠ 20MB 文本）。
  */
 @Component
 public class TikaTextExtractor {
+
+    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    private static final int MAX_TEXT_CHARS = 8_000_000;
 
     private final AutoDetectParser parser = new AutoDetectParser();
 
@@ -34,6 +44,11 @@ public class TikaTextExtractor {
             parser.parse(in, collector, metadata);
         } catch (SAXException | TikaException e) {
             throw new IOException("文档解析失败：" + e.getMessage(), e);
+        }
+        String detected = metadata.get(Metadata.CONTENT_TYPE);
+        if (detected == null
+                || !ALLOWED_CONTENT_TYPES.contains(detected.split(";")[0].strip().toLowerCase(Locale.ROOT))) {
+            throw new IOException("文件实际类型不在支持范围：" + detected);
         }
         return collector.blocks();
     }
@@ -67,9 +82,16 @@ public class TikaTextExtractor {
             }
         }
 
+        private long totalChars;
+
         @Override
         public void characters(char[] ch, int start, int length) {
             if (mode != null) {
+                totalChars += length;
+                if (totalChars > MAX_TEXT_CHARS) {
+                    // 内容爆炸中止解析（SAX 异常沿 extract 转 IOException → worker 置 FAILED）
+                    throw new IllegalStateException("提取文本超过上限 " + MAX_TEXT_CHARS + " 字符");
+                }
                 current.append(ch, start, length);
             }
         }

@@ -3,6 +3,7 @@ package com.cidas.edudoc.document.application.impl;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
+import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.document.application.DocumentQueryService;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
@@ -24,14 +25,20 @@ public class DocumentQueryServiceImpl implements DocumentQueryService {
     @Override
     public PageResult<Summary> list(ListQuery query) {
         String ownerId = AuthContext.require().userId();
+        // 1103 审查 S2：HEXTORAW 前在入口拒绝非 hex，杜绝 Oracle 异常塌缩为 500
+        if (query.courseId() != null && !query.courseId().isBlank() && !Ids.isHex16(query.courseId())) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "courseId 格式不合法");
+        }
         int page = query.page() == null || query.page() < 1 ? 1 : query.page();
         int pageSize = clampPageSize(query.pageSize());
+        // 1103 审查 S3：offset 用 long 计算，超大页码不再溢出回退首页
+        long offset = (long) (page - 1) * pageSize;
         String keyword = escapeLike(query.keyword());
         long total = documentRepository.count(ownerId, query.courseId(), query.docType(),
                 query.status(), keyword);
         List<Summary> items = total == 0 ? List.of()
                 : documentRepository.page(ownerId, query.courseId(), query.docType(), query.status(),
-                        keyword, (page - 1) * pageSize, pageSize).stream()
+                        keyword, offset, pageSize).stream()
                 .map(DocumentQueryServiceImpl::toSummary)
                 .toList();
         return new PageResult<>(items, total, page, pageSize);
@@ -39,7 +46,7 @@ public class DocumentQueryServiceImpl implements DocumentQueryService {
 
     @Override
     public Detail detail(String documentId) {
-        if (!com.cidas.edudoc.common.persistence.Ids.isHex16(documentId)) {
+        if (!Ids.isHex16(documentId)) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文档 ID 格式不合法");
         }
         String ownerId = AuthContext.require().userId();

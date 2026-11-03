@@ -14,6 +14,8 @@ public enum ErrorCode {
     ACL_DENIED(40302, HttpStatus.FORBIDDEN, "文档 ACL 拒绝"),
     SHARE_LINK_EXPIRED(40303, HttpStatus.FORBIDDEN, "共享链接过期或撤销"),
     NOT_FOUND(40401, HttpStatus.NOT_FOUND, "资源不存在或不可见"),
+    // 1103 审查 S1 整改新增：§5.1 字典未含 405 码位，框架异常塌缩为 500 不可接受，按同构规则补位
+    METHOD_NOT_ALLOWED(40501, HttpStatus.METHOD_NOT_ALLOWED, "请求方法不允许"),
     CONFLICT(40901, HttpStatus.CONFLICT, "版本或并发冲突"),
     DUPLICATE(40902, HttpStatus.CONFLICT, "重复提交或幂等键冲突"),
     FILE_TOO_LARGE(41301, HttpStatus.PAYLOAD_TOO_LARGE, "文件超过 20MB"),

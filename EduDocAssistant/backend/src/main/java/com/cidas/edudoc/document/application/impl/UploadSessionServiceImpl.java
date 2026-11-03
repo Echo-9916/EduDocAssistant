@@ -25,7 +25,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -54,7 +53,8 @@ public class UploadSessionServiceImpl implements UploadSessionService {
         requireSupportedFile(upload);
         String courseId = requireCourse(principal, upload.courseId());
 
-        String sessionId = UUID.randomUUID().toString().replace("-", "");
+        // 1103 审查 S11：与文档 id 同源走 Ids.hex16（大写），objectKey 两段 hex 大小写一致
+        String sessionId = com.cidas.edudoc.common.persistence.Ids.hex16();
         String objectKey = buildObjectKey(principal.userId(), sessionId, upload.fileName());
         UploadSession session = new UploadSession(sessionId, principal.userId(), courseId, title,
                 documentType, upload.fileName(), upload.sizeBytes(), upload.mimeType(), objectKey,

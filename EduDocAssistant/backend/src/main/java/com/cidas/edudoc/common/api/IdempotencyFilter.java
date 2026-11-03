@@ -1,5 +1,7 @@
 package com.cidas.edudoc.common.api;
 
+import com.cidas.edudoc.common.security.AuthContext;
+import com.cidas.edudoc.common.security.UserPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -13,7 +15,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Set;
 
-/** 写请求（POST/PUT/PATCH/DELETE）校验 Idempotency-Key：缺失 40001，重复 40902。认证接口无需幂等。 */
+/**
+ * 写请求（POST/PUT/PATCH/DELETE）校验 Idempotency-Key：缺失 40001，重复 40902。认证接口无需幂等。
+ * 键作用域 = 认证主体 + 方法 + 路径（1103 审查 S4，Stripe/IETF 惯例）：跨用户、跨端点互不顶替。
+ */
 @Component
 @RequiredArgsConstructor
 public class IdempotencyFilter extends OncePerRequestFilter {
@@ -34,12 +39,18 @@ public class IdempotencyFilter extends OncePerRequestFilter {
                 writeError(response, ErrorCode.BAD_REQUEST, "写请求缺少 " + HEADER);
                 return;
             }
-            if (!idempotencyStore.tryAcquire(key)) {
+            if (!idempotencyStore.tryAcquire(scopedKey(request, key))) {
                 writeError(response, ErrorCode.DUPLICATE, ErrorCode.DUPLICATE.defaultMessage());
                 return;
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private String scopedKey(HttpServletRequest request, String key) {
+        UserPrincipal principal = AuthContext.get();
+        String userId = principal == null ? "-" : principal.userId();
+        return userId + ":" + request.getMethod() + ":" + request.getRequestURI() + ":" + key;
     }
 
     private static boolean isWrite(String method) {

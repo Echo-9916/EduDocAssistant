@@ -20,4 +20,13 @@
         WHERE bucket_name = #{bucketName} AND object_key = #{objectKey} AND status = 'A'
     </select>
 
+    <select id="selectById" resultType="com.cidas.edudoc.document.infrastructure.OssObject">
+        SELECT RAWTOHEX(id) AS id, bucket_name AS bucketName, region, object_key AS objectKey,
+               object_version_id AS objectVersionId, etag, content_hash AS contentHash,
+               size_bytes AS sizeBytes, mime_type AS mimeType, encryption_type AS encryptionType,
+               object_role AS objectRole
+        FROM edudoc_oss_object
+        WHERE id = HEXTORAW(#{idHex})
+    </select>
+
 </mapper>

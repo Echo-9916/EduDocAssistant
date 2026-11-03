@@ -19,4 +19,8 @@ public class DocumentVersionRepository {
     public Optional<DocumentVersion> findBySourceObject(String sourceObjectIdHex) {
         return Optional.ofNullable(mapper.selectBySourceObject(sourceObjectIdHex));
     }
+
+    public Optional<DocumentVersion> findById(String idHex) {
+        return Optional.ofNullable(mapper.selectById(idHex));
+    }
 }

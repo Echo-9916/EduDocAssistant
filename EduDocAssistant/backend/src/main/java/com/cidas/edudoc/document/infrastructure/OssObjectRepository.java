@@ -19,4 +19,8 @@ public class OssObjectRepository {
     public Optional<OssObject> findByObject(String bucketName, String objectKey) {
         return Optional.ofNullable(mapper.selectByObject(bucketName, objectKey));
     }
+
+    public Optional<OssObject> findById(String idHex) {
+        return Optional.ofNullable(mapper.selectById(idHex));
+    }
 }

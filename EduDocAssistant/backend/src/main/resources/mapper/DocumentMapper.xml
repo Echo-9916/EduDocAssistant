@@ -25,4 +25,70 @@
         UPDATE edudoc_document SET status = #{status} WHERE id = HEXTORAW(#{documentId})
     </update>
 
+    <sql id="listWhere">
+        WHERE d.owner_id = HEXTORAW(#{ownerId})
+        <choose>
+            <when test="status != null and status != ''">AND d.status = #{status}</when>
+            <otherwise>AND d.status != 'DELETED'</otherwise>
+        </choose>
+        <if test="courseId != null and courseId != ''">AND d.course_id = HEXTORAW(#{courseId})</if>
+        <if test="docType != null and docType != ''">AND d.doc_type = #{docType}</if>
+        <if test="keyword != null and keyword != ''">
+            AND UPPER(d.title) LIKE '%' || UPPER(#{keyword}) || '%' ESCAPE '\'
+        </if>
+    </sql>
+
+    <select id="selectPage" resultType="com.cidas.edudoc.document.infrastructure.DocumentViewRow">
+        SELECT RAWTOHEX(d.id) AS id, RAWTOHEX(d.owner_id) AS ownerId, d.title,
+               d.doc_type AS docType, d.status, RAWTOHEX(d.course_id) AS courseId,
+               c.course_name AS courseName, o.size_bytes AS sizeBytes, o.mime_type AS mimeType,
+               v.version_no AS versionNo,
+               TO_CHAR(d.create_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS createTime,
+               TO_CHAR(d.update_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS updateTime
+        FROM edudoc_document d
+        LEFT JOIN edudoc_document_version v ON v.id = d.current_version_id
+        LEFT JOIN edudoc_oss_object o ON o.id = v.source_object_id
+        LEFT JOIN edudoc_course c ON c.id = d.course_id
+        <include refid="listWhere"/>
+        ORDER BY d.update_time DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*)
+        FROM edudoc_document d
+        <include refid="listWhere"/>
+    </select>
+
+    <select id="selectDetail" resultType="com.cidas.edudoc.document.infrastructure.DocumentViewRow">
+        SELECT RAWTOHEX(d.id) AS id, RAWTOHEX(d.owner_id) AS ownerId, d.title,
+               d.doc_type AS docType, d.status, RAWTOHEX(d.course_id) AS courseId,
+               c.course_name AS courseName, o.size_bytes AS sizeBytes, o.mime_type AS mimeType,
+               v.version_no AS versionNo, RAWTOHEX(v.id) AS versionId,
+               RAWTOHEX(d.current_version_id) AS currentVersionId, v.content_hash AS contentHash,
+               (SELECT COUNT(*) FROM edudoc_document_chunk mc WHERE mc.document_version_id = v.id) AS chunkCount,
+               TO_CHAR(d.create_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS createTime,
+               TO_CHAR(d.update_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS updateTime,
+               TO_CHAR(d.deleted_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS deletedAt,
+               TO_CHAR(d.purge_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS purgeAt
+        FROM edudoc_document d
+        LEFT JOIN edudoc_document_version v ON v.id = d.current_version_id
+        LEFT JOIN edudoc_oss_object o ON o.id = v.source_object_id
+        LEFT JOIN edudoc_course c ON c.id = d.course_id
+        WHERE d.id = HEXTORAW(#{documentId})
+    </select>
+
+    <update id="softDelete">
+        UPDATE edudoc_document
+        SET status = 'DELETED', deleted_at = SYSTIMESTAMP,
+            purge_at = SYSTIMESTAMP + NUMTODSINTERVAL(30, 'DAY')
+        WHERE id = HEXTORAW(#{documentId}) AND status != 'DELETED'
+    </update>
+
+    <update id="restore">
+        UPDATE edudoc_document
+        SET status = #{status}, deleted_at = NULL, purge_at = NULL
+        WHERE id = HEXTORAW(#{documentId}) AND status = 'DELETED'
+    </update>
+
 </mapper>

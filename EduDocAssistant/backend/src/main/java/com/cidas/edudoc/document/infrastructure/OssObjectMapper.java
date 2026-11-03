@@ -9,4 +9,6 @@ public interface OssObjectMapper {
     int insert(@Param("object") OssObject object);
 
     OssObject selectByObject(@Param("bucketName") String bucketName, @Param("objectKey") String objectKey);
+
+    OssObject selectById(@Param("idHex") String idHex);
 }

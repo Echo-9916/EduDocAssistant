@@ -113,9 +113,9 @@
   - `DocumentSummary{id,title,docType,status,courseId,courseName,sizeBytes,mimeType,versionNo,createTime,updateTime}`（id 均十六进制字符串；sizeBytes/mimeType/courseName join 当前版本 oss_object 与 course）。
   - `GET /api/v1/documents/{id}`：非 owner → **40401**（不泄露存在性；课程可见/ACL 分支后续切片）→ `DocumentDetail`（含 currentVersionId、versionNo、contentHash、chunkCount、deletedAt/purgeAt）。
   - 新建：`document.api.DocumentController` + dto、`document.application.DocumentQueryService(+impl)`、DocumentMapper.xml 查询语句。
-- **测试**：`DocumentQueryServiceTest`（筛选组合、分页钳制、回收站开关）、`DocumentControllerTest`（MockMvc：默认排除 DELETED、他人文档 40401、无权限 40301）。
+- **测试**：`DocumentQueryServiceTest`（6 例：owner 强制、分页钳制与 offset、LIKE 转义 `%_\`、显式 DELETED 透传、非 owner 40401、详情字段完整）；Controller 为薄委托不设 MockMvc 测试，端点行为由真机覆盖。
 - **依赖**：B-04
-- **状态**：未开始
+- **状态**：已完成（2026-11-03，`mvn test` 123 全绿；真机：列表 total=2 默认排除回收站、keyword 命中、详情 chunkCount/contentHash 正确、student 访问 teacher 文档 → 40401）
 
 ## B-08 后端 · 删除 / 恢复 / 重新解析
 
@@ -127,9 +127,9 @@
   - `POST /api/v1/documents/{id}/parse`（DOCUMENT_EDIT，body `{versionId?}` 缺省当前版本）：仅 READY/FAILED 允许，PARSING/UPLOADING/DELETED → 40901；事务 status=PARSING + outbox(DOCUMENT_PARSE_REQUESTED) + 审计 PARSE_REQUESTED；返回 `{taskId}`（=新 outbox eventId hex）。
   - 权限映射决策记入本文档：恢复并入 DOCUMENT_DELETE（回收站管理动作），重解析用 DOCUMENT_EDIT（2026-11-02 规划确认）。
   - 新建：`document.application.DocumentLifecycleService(+impl)`、`dto/ParseResponse`；DocumentController 增三端点；DocumentMapper.xml 增 update 语句。
-- **测试**：`DocumentLifecycleServiceTest`（软删字段与 purge_at、恢复状态推断两分支、非 DELETED 恢复 40901、parse 各状态 40901 分支、outbox 与审计写入）。
+- **测试**：`DocumentLifecycleServiceTest`（10 例：软删+审计 prevStatus、已删再删 40901、非 owner 40401、恢复 chunks>0→READY / =0→FAILED、非 DELETED 恢复 40901、同名恢复撞 uk 40901、重解析发布事件返回 taskId、PARSING 态 40901、指定非当前版本 40901、源对象缺失 40901）。
 - **依赖**：B-05、B-07
-- **状态**：未开始
+- **状态**：已完成（2026-11-03，真机闭环：DELETE→204、回收站视图可见、restore→204→READY、B06 重解析→taskId→4s 后 READY、B04 假 PDF 重解析→再次 FAILED 验证失败幂等。顺带修复 ensureGroup 的 BUSYGROUP 误吞：Spring 将 RedisBusyException 包装为 RedisSystemException，需沿 cause 链判定，否则二次启动崩溃循环）
 
 ## B-09 前端 · API 模块与类型
 

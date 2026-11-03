@@ -18,4 +18,12 @@
         WHERE v.source_object_id = HEXTORAW(#{sourceObjectIdHex})
     </select>
 
+    <select id="selectById" resultType="com.cidas.edudoc.document.infrastructure.DocumentVersion">
+        SELECT RAWTOHEX(v.id) AS id, RAWTOHEX(v.document_id) AS documentId, v.version_no AS versionNo,
+               v.version_type AS versionType, RAWTOHEX(v.source_object_id) AS sourceObjectId,
+               RAWTOHEX(v.editor_id) AS editorId, v.content_hash AS contentHash, v.version_status AS versionStatus
+        FROM edudoc_document_version v
+        WHERE v.id = HEXTORAW(#{idHex})
+    </select>
+
 </mapper>

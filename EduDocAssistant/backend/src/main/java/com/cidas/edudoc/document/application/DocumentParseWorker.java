@@ -86,15 +86,25 @@ public class DocumentParseWorker {
         }
     }
 
-    /** XGROUP CREATE ... MKSTREAM 幂等：组已存在（BUSYGROUP）视为成功。 */
+    /** XGROUP CREATE ... MKSTREAM 幂等：组已存在（BUSYGROUP）视为成功——注意异常被 Spring 包装，需沿 cause 链找。 */
     private void ensureGroup() {
         try {
             redis.opsForStream().createGroup(properties.streamKey(), ReadOffset.from("0"), properties.group());
         } catch (Exception e) {
-            if (!String.valueOf(e.getMessage()).contains("BUSYGROUP")) {
+            if (!isBusyGroup(e)) {
                 throw e;
             }
         }
+    }
+
+    private static boolean isBusyGroup(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof io.lettuce.core.RedisBusyException
+                    || String.valueOf(t.getMessage()).contains("BUSYGROUP")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void consumeLoop(String consumerName) {

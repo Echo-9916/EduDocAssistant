@@ -1,0 +1,641 @@
+{
+  "info": {
+    "name": "EduDocAssistant 文档接入接口",
+    "description": "文档接入切片（B-01~B-08）手动测试集合，与 docs/test/DocumentTest.md 配套。导入 Apifox 后：\n\n【前置】后端已启动（mvn spring-boot:run，需 EDUDOC_OSS_ACCESS_KEY_ID/SECRET 环境变量）、Redis 与 Oracle 容器在跑、Bucket CORS 已配（Apifox 本机直传也走 OSS 域名，来源限制若只配了 localhost:5173 不影响非浏览器客户端）。\n\n【用法】按文件夹顺序执行：\n1. 「1 登录与课程」→ 自动写入 token/studentToken/opsToken/courseId。\n2. 「2 上传会话」→ 成功请求自动写入 sessionId/objectKey/bucket/ossHost/STS 三件套，并现场生成唯一 title（避免同名冲突）。\n3. 「3 直传 OSS」→ pre-request 脚本自动做 OSS V1 签名，Body 是集合变量 pdfBody 里内嵌的 583 字节真 PDF（纯 ASCII）。\n4. 「4 完成回调」→ 先跑三个反例（不影响会话状态或会自动回置 OPEN），再跑「complete 正确」自动写入 documentId/versionId；SHA-256 由脚本现场计算。\n5. 「5 解析与详情」→ 详情轮询至 READY（一般 1~3 秒）。\n6. 「6/7」列表、回收站与重解析。\n\n【观测】Redis：XLEN edudoc:stream:document-parse、XPENDING … cg-document-parse（首列应为 0）；Oracle：SELECT status FROM edudoc_document / COUNT(*) FROM edudoc_document_chunk。\n\n【幂等】写接口都带 Idempotency-Key（{{$guid}} 每次运行自动换新）；「同 key 重放」两个请求演示 40902，必须先 A 后 B。\n\n错误码：40001 参数 · 40101/40102 认证 · 40301 权限 · 40401 不存在/非本人 · 40901 冲突 · 40902 幂等重放 · 41301 超 20MB · 41501 类型不支持 · 42201 解析失败。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "token", "value": "" },
+    { "key": "studentToken", "value": "" },
+    { "key": "opsToken", "value": "" },
+    { "key": "courseId", "value": "" },
+    { "key": "title", "value": "" },
+    { "key": "size", "value": "583" },
+    { "key": "sessionId", "value": "" },
+    { "key": "objectKey", "value": "" },
+    { "key": "bucket", "value": "" },
+    { "key": "ossHost", "value": "" },
+    { "key": "stsAccessKeyId", "value": "" },
+    { "key": "stsAccessKeySecret", "value": "" },
+    { "key": "stsSecurityToken", "value": "" },
+    { "key": "contentHash", "value": "" },
+    { "key": "documentId", "value": "" },
+    { "key": "versionId", "value": "" },
+    { "key": "idemKey", "value": "" },
+    { "key": "sessionId2", "value": "" },
+    { "key": "objectKey2", "value": "" },
+    { "key": "stsAccessKeyId2", "value": "" },
+    { "key": "stsAccessKeySecret2", "value": "" },
+    { "key": "stsSecurityToken2", "value": "" },
+    { "key": "pdfBody", "value": "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n4 0 obj\n<< /Length 53 >>\nstream\nBT /F1 24 Tf 72 700 Td (B06 REAL PDF PARSED OK) Tj ET\nendstream\nendobj\n5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000227 00000 n \n0000000330 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n400\n%%EOF\n" }
+  ],
+  "item": [
+    {
+      "name": "1 登录与课程",
+      "item": [
+        {
+          "name": "登录（teacher）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.token) { pm.collectionVariables.set('token', res.data.token); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"teacher\",\n  \"password\": \"Cidas@123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"] },
+            "description": "预期 200；自动写入集合变量 token。"
+          },
+          "response": []
+        },
+        {
+          "name": "登录（student）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.token) { pm.collectionVariables.set('studentToken', res.data.token); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"student\",\n  \"password\": \"Cidas@123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"] },
+            "description": "预期 200；自动写入 studentToken（用于 40401 越权用例）。"
+          },
+          "response": []
+        },
+        {
+          "name": "登录（ops）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.token) { pm.collectionVariables.set('opsToken', res.data.token); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"ops\",\n  \"password\": \"Cidas@123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"] },
+            "description": "预期 200；自动写入 opsToken（OPS 无 DOCUMENT_CREATE，用于 40301 用例）。"
+          },
+          "response": []
+        },
+        {
+          "name": "课程列表",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.length) { pm.collectionVariables.set('courseId', res.data[0].id); }"
+            ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/courses", "host": ["{{baseUrl}}"], "path": ["api", "v1", "courses"] },
+            "description": "预期 200，teacher 返回 CS101/MATH201 两门；自动写入 courseId=CS101。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 上传会话",
+      "item": [
+        {
+          "name": "创建会话（成功）",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "const pdf = pm.collectionVariables.get('pdfBody');",
+              "pm.collectionVariables.set('size', String(pdf.length));",
+              "pm.collectionVariables.set('title', 'apifox-' + Date.now());"
+            ] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data) {",
+              "  pm.collectionVariables.set('sessionId', res.data.sessionId);",
+              "  pm.collectionVariables.set('objectKey', res.data.objectKey);",
+              "  pm.collectionVariables.set('bucket', res.data.bucket);",
+              "  const ep = (res.data.endpoint || '').replace(/^https?:\\/\\//, '');",
+              "  pm.collectionVariables.set('ossHost', res.data.bucket + '.' + ep);",
+              "  if (res.data.sts) {",
+              "    pm.collectionVariables.set('stsAccessKeyId', res.data.sts.accessKeyId);",
+              "    pm.collectionVariables.set('stsAccessKeySecret', res.data.sts.accessKeySecret);",
+              "    pm.collectionVariables.set('stsSecurityToken', res.data.sts.securityToken);",
+              "  }",
+              "}"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"title\": \"{{title}}\",\n  \"fileName\": \"apifox.pdf\",\n  \"size\": {{size}},\n  \"mimeType\": \"application/pdf\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "预期 HTTP 201：sessionId/objectKey/STS 临时凭据（900s）。size/title 由脚本按内嵌 PDF 现场生成，title 带时间戳避免同名冲突。自动写入会话与 STS 变量。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-超 20MB（41301）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"title\": \"big\",\n  \"fileName\": \"big.pdf\",\n  \"size\": 22020096,\n  \"mimeType\": \"application/pdf\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "预期 41301 文件超过 20MB 上限。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-txt 类型（41501）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"title\": \"t\",\n  \"fileName\": \"a.txt\",\n  \"size\": 10,\n  \"mimeType\": \"text/plain\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "预期 41501 仅支持 Word(.doc/.docx) 与 PDF 文件。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-教师未绑课程（40001）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"t\",\n  \"fileName\": \"a.pdf\",\n  \"size\": 10,\n  \"mimeType\": \"application/pdf\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "预期 40001 教师上传须绑定课程。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-缺幂等键（40001）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"title\": \"t\",\n  \"fileName\": \"a.pdf\",\n  \"size\": 10,\n  \"mimeType\": \"application/pdf\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "预期 40001 写请求缺少 Idempotency-Key（过滤器层拦截）。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-OPS 无创建权限（40301）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{opsToken}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"t\",\n  \"fileName\": \"a.pdf\",\n  \"size\": 10,\n  \"mimeType\": \"application/pdf\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "预期 40301（OPS 角色无 DOCUMENT_CREATE）。需先跑「登录（ops）」。"
+          },
+          "response": []
+        },
+        {
+          "name": "同 key 重放 A（首次 201）",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "pm.collectionVariables.set('idemKey', 'replay-' + Date.now());"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{idemKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"title\": \"dup-{{$timestamp}}\",\n  \"fileName\": \"a.pdf\",\n  \"size\": 10,\n  \"mimeType\": \"application/pdf\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "与 B 组成幂等重放对：本请求把 key 写入集合变量 idemKey。预期 201。"
+          },
+          "response": []
+        },
+        {
+          "name": "同 key 重放 B（40902）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{idemKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"title\": \"dup2\",\n  \"fileName\": \"a.pdf\",\n  \"size\": 10,\n  \"mimeType\": \"application/pdf\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "必须在 A 之后执行。预期 40902 幂等键已使用（Redis 存储，重启不丢）。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3 直传 OSS（STS 签名）",
+      "item": [
+        {
+          "name": "PUT 直传（模拟浏览器）",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "const sk = pm.collectionVariables.get('stsAccessKeySecret');",
+              "const token = pm.collectionVariables.get('stsSecurityToken');",
+              "const bucket = pm.collectionVariables.get('bucket');",
+              "const key = pm.collectionVariables.get('objectKey');",
+              "const date = new Date().toUTCString();",
+              "const ct = 'application/pdf';",
+              "const sts = token ? ('x-oss-security-token:' + token + '\\n') : '';",
+              "const str = 'PUT\\n\\n' + ct + '\\n' + date + '\\n' + sts + '/' + bucket + '/' + key;",
+              "const sig = CryptoJS.enc.Base64.stringify(CryptoJS.HmacSHA1(str, sk));",
+              "pm.variables.set('ossDate', date);",
+              "pm.variables.set('ossSig', sig);"
+            ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Date", "value": "{{ossDate}}" },
+              { "key": "Content-Type", "value": "application/pdf" },
+              { "key": "x-oss-security-token", "value": "{{stsSecurityToken}}" },
+              { "key": "Authorization", "value": "OSS {{stsAccessKeyId}}:{{ossSig}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{{pdfBody}}", "options": { "raw": { "language": "text" } } },
+            "url": { "raw": "https://{{ossHost}}/{{objectKey}}", "protocol": "https", "host": ["{{ossHost}}"], "path": ["{{objectKey}}"] },
+            "description": "预期 HTTP 200 + ETag 响应头。OSS V1 签名由 pre-request 脚本用 STS 临时凭据现算；Body 为内嵌真 PDF（583 字节，与会话 size 一致）。若 403 多为 STS 过期（900s）——重跑「创建会话（成功）」再试。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4 完成回调",
+      "item": [
+        {
+          "name": "反例-会话不存在（40401）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"contentHash\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions/no-such-session/complete", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions", "no-such-session", "complete"] },
+            "description": "预期 40401 上传会话不存在或已过期。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-hash 格式非法（40001）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"contentHash\": \"nothex\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions/{{sessionId}}/complete", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions", "{{sessionId}}", "complete"] },
+            "description": "预期 40001 contentHash 须为 64 位十六进制 SHA-256。不影响会话状态。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-hash 不符（40901，会话回 OPEN）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"contentHash\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions/{{sessionId}}/complete", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions", "{{sessionId}}", "complete"] },
+            "description": "预期 40901 内容摘要校验失败（服务端实算为准）；会话自动回置 OPEN，可继续跑正确用例。需先完成「3 直传」。"
+          },
+          "response": []
+        },
+        {
+          "name": "complete 正确（201）",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "const pdf = pm.collectionVariables.get('pdfBody');",
+              "pm.collectionVariables.set('contentHash', CryptoJS.SHA256(pdf).toString());"
+            ] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.documentId) {",
+              "  pm.collectionVariables.set('documentId', res.data.documentId);",
+              "  pm.collectionVariables.set('versionId', res.data.versionId);",
+              "}"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"etag\": \"\",\n  \"contentHash\": \"{{contentHash}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions/{{sessionId}}/complete", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions", "{{sessionId}}", "complete"] },
+            "description": "预期 HTTP 201：{documentId,versionId}。服务端流程：CAS 锁会话→headObject 校大小→实算 SHA-256→单事务五写（oss_object/document=PARSING/version/outbox）+审计。自动写入 documentId/versionId。"
+          },
+          "response": []
+        },
+        {
+          "name": "业务重放（新 key，同 documentId）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"etag\": \"\",\n  \"contentHash\": \"{{contentHash}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions/{{sessionId}}/complete", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions", "{{sessionId}}", "complete"] },
+            "description": "预期 200 且返回与上次完全相同的 documentId/versionId（会话 COMPLETED 重放，业务幂等）。对比两次响应验证。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5 同名冲突（完整三连）",
+      "item": [
+        {
+          "name": "创建会话（同名）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data) {",
+              "  pm.collectionVariables.set('sessionId2', res.data.sessionId);",
+              "  pm.collectionVariables.set('objectKey2', res.data.objectKey);",
+              "  if (res.data.sts) {",
+              "    pm.collectionVariables.set('stsAccessKeyId2', res.data.sts.accessKeyId);",
+              "    pm.collectionVariables.set('stsAccessKeySecret2', res.data.sts.accessKeySecret);",
+              "    pm.collectionVariables.set('stsSecurityToken2', res.data.sts.securityToken);",
+              "  }",
+              "}"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"title\": \"{{title}}\",\n  \"fileName\": \"apifox2.pdf\",\n  \"size\": {{size}},\n  \"mimeType\": \"application/pdf\",\n  \"docType\": \"COURSEWARE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions"] },
+            "description": "复用第一个文档的 title+courseId（uk_document_1 维度）。会话创建本身预期 201（冲突在 complete 才暴露）。"
+          },
+          "response": []
+        },
+        {
+          "name": "直传 2",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "const sk = pm.collectionVariables.get('stsAccessKeySecret2');",
+              "const token = pm.collectionVariables.get('stsSecurityToken2');",
+              "const bucket = pm.collectionVariables.get('bucket');",
+              "const key = pm.collectionVariables.get('objectKey2');",
+              "const date = new Date().toUTCString();",
+              "const ct = 'application/pdf';",
+              "const sts = token ? ('x-oss-security-token:' + token + '\\n') : '';",
+              "const str = 'PUT\\n\\n' + ct + '\\n' + date + '\\n' + sts + '/' + bucket + '/' + key;",
+              "const sig = CryptoJS.enc.Base64.stringify(CryptoJS.HmacSHA1(str, sk));",
+              "pm.variables.set('ossDate2', date);",
+              "pm.variables.set('ossSig2', sig);"
+            ] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Date", "value": "{{ossDate2}}" },
+              { "key": "Content-Type", "value": "application/pdf" },
+              { "key": "x-oss-security-token", "value": "{{stsSecurityToken2}}" },
+              { "key": "Authorization", "value": "OSS {{stsAccessKeyId2}}:{{ossSig2}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{{pdfBody}}", "options": { "raw": { "language": "text" } } },
+            "url": { "raw": "https://{{ossHost}}/{{objectKey2}}", "protocol": "https", "host": ["{{ossHost}}"], "path": ["{{objectKey2}}"] },
+            "description": "预期 200。"
+          },
+          "response": []
+        },
+        {
+          "name": "complete（同名 40901）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"etag\": \"\",\n  \"contentHash\": \"{{contentHash}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/upload-sessions/{{sessionId2}}/complete", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "upload-sessions", "{{sessionId2}}", "complete"] },
+            "description": "预期 40901 同名文档已存在或位于回收站，请恢复或等待清理（uk_document_1=owner+title+course，2026-11-02 决策）。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6 解析与详情",
+      "item": [
+        {
+          "name": "详情（轮询至 READY）",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}"] },
+            "description": "complete 后 status 先为 PARSING，解析 worker 消费后转 READY（单页实测约 0.5s，隔 2 秒重发本请求即可）。READY 后 chunkCount≥1、contentHash 前 8 位与直传文件一致。DB 核查：SELECT * FROM edudoc_document_chunk；审计：PARSE_SUCCEEDED。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-他人文档（40401）",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{studentToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}"] },
+            "description": "预期 40401（非 owner 不泄露存在性）。需先跑「登录（student）」。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-非法 ID（40001）",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/xyz", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "xyz"] },
+            "description": "预期 40001 文档 ID 格式不合法（2026-11-03 回归修复项：此前会 50001）。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7 列表查询",
+      "item": [
+        {
+          "name": "默认列表（排除回收站）",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents"] },
+            "description": "预期 200：items 按 update_time 倒序、只含本人文档、不含 DELETED；字段含 courseName/sizeBytes/versionNo。"
+          },
+          "response": []
+        },
+        {
+          "name": "keyword 命中",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents?keyword={{title}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents"], "query": [ { "key": "keyword", "value": "{{title}}" } ] },
+            "description": "预期 total=1（本次会话创建的文档）。"
+          },
+          "response": []
+        },
+        {
+          "name": "LIKE 元字符转义",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents?keyword=50%25_x", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents"], "query": [ { "key": "keyword", "value": "50%_x" } ] },
+            "description": "预期 200 total=0（% 与 _ 被转义为字面量，不炸不当通配符）。"
+          },
+          "response": []
+        },
+        {
+          "name": "pageSize 钳制",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents?pageSize=500", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents"], "query": [ { "key": "pageSize", "value": "500" } ] },
+            "description": "预期 200 且返回 pageSize=100（上限钳制）。"
+          },
+          "response": []
+        },
+        {
+          "name": "按课程过滤",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents?courseId={{courseId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents"], "query": [ { "key": "courseId", "value": "{{courseId}}" } ] },
+            "description": "预期 200，只含绑定 CS101 的文档。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8 回收站与重解析",
+      "item": [
+        {
+          "name": "删除（204）",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}"] },
+            "description": "预期 HTTP 204 无响应体。软删：status=DELETED、purge_at=+30 天；OSS 对象保留。审计 DOCUMENT_DELETED（detail 含 prevStatus）。"
+          },
+          "response": []
+        },
+        {
+          "name": "回收站视图",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents?status=DELETED", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents"], "query": [ { "key": "status", "value": "DELETED" } ] },
+            "description": "预期 200：刚删的文档出现在 items（status=DELETED）。"
+          },
+          "response": []
+        },
+        {
+          "name": "恢复（204）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/restore", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "restore"] },
+            "description": "预期 204。恢复状态按当前版本有无分块推断（有 chunks→READY）。审计 DOCUMENT_RESTORED。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-再恢复（40901）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/restore", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "restore"] },
+            "description": "预期 40901 文档不在回收站。"
+          },
+          "response": []
+        },
+        {
+          "name": "重新解析（200 taskId）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/parse", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "parse"] },
+            "description": "预期 200 data.taskId（32 位 hex，= outbox eventId）。文档转 PARSING，数秒后回 READY（详情轮询验证）。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例-PARSING 中重解析（40901）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/parse", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "parse"] },
+            "description": "紧跟上一请求立刻执行（1 秒内）预期 40901 当前状态不允许重新解析；若 worker 已完成解析则返回 200，属时序正常现象。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

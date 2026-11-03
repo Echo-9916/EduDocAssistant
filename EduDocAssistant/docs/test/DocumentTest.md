@@ -1,6 +1,7 @@
 # 文档接入接口 · 手动测试说明
 
 > 覆盖 02 切片 B-01~B-08 后端接口（课程查询、上传会话、complete 建档、解析闭环、文档查询、回收站与重解析）。结构与 [AuthTest.md](AuthTest.md) 同源，便于脱离 Apifox 手工验证。
+> Apifox 可直接导入 [apifox/document-access.postman_collection.json](apifox/document-access.postman_collection.json)：8 组 35 个请求含全部反例；登录/课程/会话变量自动串联，STS 直传由 pre-request 脚本现场做 OSS V1 签名，Body 内嵌 583 字节真 PDF（SHA-256=01cb9afc…，脚本现算 contentHash），按文件夹顺序执行即可走完上传→解析→查询→回收站→重解析全链路。
 > **回归基线**：2026-11-03 全量回归 **32/32 通过**（含全部反例），`mvn test` 125 全绿。
 
 ## 环境与前置

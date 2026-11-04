@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.ai.infrastructure.QaMapper">
+
+    <insert id="insertSession">
+        INSERT INTO edudoc_qa_session (id, document_id, user_id, title, status)
+        VALUES (HEXTORAW(#{session.id}), HEXTORAW(#{session.documentId}),
+            HEXTORAW(#{session.userId}), #{session.title, jdbcType=VARCHAR}, #{session.status})
+    </insert>
+
+    <select id="selectSessionById" resultType="com.cidas.edudoc.ai.infrastructure.QaSession">
+        SELECT RAWTOHEX(s.id) AS id, RAWTOHEX(s.document_id) AS documentId,
+               RAWTOHEX(s.user_id) AS userId, s.title, s.status
+        FROM edudoc_qa_session s
+        WHERE s.id = HEXTORAW(#{idHex})
+    </select>
+
+    <select id="selectActiveSession" resultType="com.cidas.edudoc.ai.infrastructure.QaSession">
+        SELECT * FROM (
+            SELECT RAWTOHEX(s.id) AS id, RAWTOHEX(s.document_id) AS documentId,
+                   RAWTOHEX(s.user_id) AS userId, s.title, s.status
+            FROM edudoc_qa_session s
+            WHERE s.document_id = HEXTORAW(#{documentIdHex}) AND s.user_id = HEXTORAW(#{userIdHex})
+              AND s.status = 'A'
+            ORDER BY s.create_time DESC
+        ) WHERE ROWNUM = 1
+    </select>
+
+    <select id="selectSessionsByDocument" resultType="com.cidas.edudoc.ai.infrastructure.QaSession">
+        SELECT * FROM (
+            SELECT RAWTOHEX(s.id) AS id, RAWTOHEX(s.document_id) AS documentId,
+                   RAWTOHEX(s.user_id) AS userId, s.title, s.status
+            FROM edudoc_qa_session s
+            WHERE s.document_id = HEXTORAW(#{documentIdHex}) AND s.user_id = HEXTORAW(#{userIdHex})
+            ORDER BY s.create_time DESC
+        ) WHERE ROWNUM &lt;= 50
+    </select>
+
+    <insert id="insertMessages">
+        INSERT INTO edudoc_qa_message (id, session_id, role, content_text, ai_task_id, sequence_no, status)
+        <foreach collection="messages" item="m" separator=" UNION ALL ">
+            SELECT HEXTORAW(#{m.id}), HEXTORAW(#{m.sessionId}), #{m.role},
+                #{m.contentText, jdbcType=CLOB}, HEXTORAW(#{m.aiTaskId, jdbcType=VARCHAR}),
+                #{m.sequenceNo}, #{m.status}
+            FROM DUAL
+        </foreach>
+    </insert>
+
+    <select id="selectMaxSequence" resultType="java.lang.Integer">
+        SELECT MAX(sequence_no) FROM edudoc_qa_message WHERE session_id = HEXTORAW(#{sessionIdHex})
+    </select>
+
+    <select id="selectMessages" resultType="com.cidas.edudoc.ai.infrastructure.QaMessage">
+        SELECT RAWTOHEX(m.id) AS id, RAWTOHEX(m.session_id) AS sessionId, m.role,
+               m.content_text AS contentText, RAWTOHEX(m.ai_task_id) AS aiTaskId,
+               m.sequence_no AS sequenceNo, m.status
+        FROM edudoc_qa_message m
+        WHERE m.session_id = HEXTORAW(#{sessionIdHex})
+        ORDER BY m.sequence_no
+    </select>
+
+</mapper>

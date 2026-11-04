@@ -48,7 +48,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RequiredArgsConstructor
 public class EmbedWorker {
 
-    static final String EMBED_PROFILE_CODE = "EMB_BGE_M3";
+    public static final String EMBED_PROFILE_CODE = "EMB_BGE_M3";
 
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
@@ -230,7 +230,7 @@ public class EmbedWorker {
     }
 
     /** 向量 → TO_VECTOR 可解析的 `[a,b,…]` 字符串（Float.toString 精确往返）。 */
-    static String toVectorLiteral(float[] vector) {
+    public static String toVectorLiteral(float[] vector) {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < vector.length; i++) {
             if (i > 0) {

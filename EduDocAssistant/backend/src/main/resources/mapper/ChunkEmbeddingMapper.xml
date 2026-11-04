@@ -51,6 +51,21 @@
         WHERE document_version_id = HEXTORAW(#{versionIdHex}) AND index_status != 'READY'
     </select>
 
+    <!-- 版本内 topK 检索：维度与 topK 均为 Java 侧校验后的 int 内插（绑定变量不被 TO_VECTOR/FETCH FIRST 接受） -->
+    <select id="searchByVersion" resultType="com.cidas.edudoc.ai.infrastructure.ChunkEmbeddingRepository$SearchHit">
+        SELECT chunkId, contentText, pageNo, charStart, charEnd, distance FROM (
+            SELECT RAWTOHEX(c.id) AS chunkId, c.content_text AS contentText,
+                   c.page_no AS pageNo, c.char_start AS charStart, c.char_end AS charEnd,
+                   VECTOR_DISTANCE(e.embedding, TO_VECTOR(#{vectorText}, ${dimension}, FLOAT32), COSINE) AS distance
+            FROM edudoc_chunk_embedding e
+            JOIN edudoc_document_chunk c ON c.id = e.chunk_id
+            WHERE c.document_version_id = HEXTORAW(#{versionIdHex})
+              AND c.index_status = 'READY' AND e.embedding_status = 'READY'
+              AND e.model_profile_id = HEXTORAW(#{profileIdHex})
+            ORDER BY distance
+        ) WHERE ROWNUM &lt;= ${topK}
+    </select>
+
     <update id="markChunksReady">
         UPDATE edudoc_document_chunk SET index_status = 'READY'
         WHERE index_status = 'PENDING' AND id IN

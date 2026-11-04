@@ -44,6 +44,19 @@ public class ChunkEmbeddingRepository {
         return mapper.selectVersionChunks(versionIdHex);
     }
 
+    /** 检索命中（向量距离升序）。 */
+    public record SearchHit(String chunkId, String contentText, Integer pageNo,
+                            Integer charStart, Integer charEnd, double distance) {
+    }
+
+    public List<SearchHit> searchByVersion(String versionIdHex, String profileIdHex,
+                                           String vectorText, int dimension, int topK) {
+        if (dimension <= 0 || dimension > 4096 || topK <= 0 || topK > 50) {
+            throw new IllegalArgumentException("非法检索参数：dimension=" + dimension + " topK=" + topK);
+        }
+        return mapper.searchByVersion(versionIdHex, profileIdHex, vectorText, dimension, topK);
+    }
+
     public int countNotReady(String versionIdHex) {
         return mapper.countNotReady(versionIdHex);
     }

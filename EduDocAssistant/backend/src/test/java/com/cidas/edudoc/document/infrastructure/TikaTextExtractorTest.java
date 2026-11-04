@@ -121,6 +121,36 @@ class TikaTextExtractorTest {
         assertTrue(e.getMessage().contains("实际类型"), e.getMessage());
     }
 
+    @Test
+    void surrogateTextSurvivesExtractAndChunkRoundTrip() throws Exception {
+        // C-01：含代理对文本的提取-分块贯通例——块文本=全文闭区间切片、相邻块连续、代理对不切断
+        Path file = dir.resolve("surrogate.docx");
+        try (XWPFDocument doc = new XWPFDocument(); var out = Files.newOutputStream(file)) {
+            paragraph(doc, "开篇段落 😀 emoji 结尾");
+            paragraph(doc, "尾段 𠮷 生僻字 tail");
+            doc.write(out);
+        }
+
+        List<com.cidas.edudoc.document.domain.TextBlock> blocks = extractor.extract(file, "surrogate.docx");
+        String full = String.join("\n", blocks.stream()
+                .map(b -> b.text() == null ? "" : b.text().strip())
+                .filter(t -> !t.isEmpty())
+                .toList());
+        List<com.cidas.edudoc.document.domain.Chunk> chunks =
+                new com.cidas.edudoc.document.domain.ChunkingService(20).chunk(blocks);
+
+        assertTrue(!chunks.isEmpty(), "贯通例必须产出分块");
+        assertEquals(0, chunks.get(0).charStart());
+        int prevEnd = -1;
+        for (var c : chunks) {
+            assertEquals(prevEnd + 1, c.charStart(), "块间连续: chunkNo=" + c.chunkNo());
+            assertEquals(full.substring(c.charStart(), c.charEnd() + 1), c.text(),
+                    "块文本=全文切片: chunkNo=" + c.chunkNo());
+            prevEnd = c.charEnd();
+        }
+        assertEquals(full.length() - 1, prevEnd, "末块覆盖到文尾");
+    }
+
     private static void heading(XWPFDocument doc, String style, String text) {
         XWPFParagraph paragraph = doc.createParagraph();
         paragraph.setStyle(style);

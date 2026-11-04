@@ -12,6 +12,7 @@ describe('契约常量与后端对齐（防漂移）', () => {
       ACL_DENIED: 40302,
       SHARE_LINK_EXPIRED: 40303,
       NOT_FOUND: 40401,
+      METHOD_NOT_ALLOWED: 40501,
       CONFLICT: 40901,
       DUPLICATE: 40902,
       FILE_TOO_LARGE: 41301,

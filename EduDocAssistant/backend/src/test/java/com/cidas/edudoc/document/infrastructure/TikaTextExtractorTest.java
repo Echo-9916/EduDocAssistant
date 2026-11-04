@@ -98,6 +98,19 @@ class TikaTextExtractorTest {
     }
 
     @Test
+    void acceptsRtfContentNamedAsLegacyDoc(@TempDir Path tmp) throws Exception {
+        // 1103 复审 N1：Word 另存 RTF 是 .doc 的历史合法内容，判据必须与扩展名放行层一致
+        Path rtf = tmp.resolve("legacy.doc");
+        Files.write(rtf, "{\\rtf1\\ansi\\deff0 {\\fonttbl{\\f0 Times New Roman;}}\\pard HELLO RTF BODY\\par}".getBytes(
+                java.nio.charset.StandardCharsets.US_ASCII));
+
+        List<TextBlock> blocks = extractor.extract(rtf, "legacy.doc");
+
+        assertTrue(blocks.stream().anyMatch(b -> b.text().contains("HELLO RTF BODY")),
+                "RTF 应被接受并提取文本，blocks=" + blocks);
+    }
+
+    @Test
     void rejectsSpoofedExtensionByDetectedContentType(@TempDir Path tmp) throws Exception {
         // 1103 审查 S5：纯文本改名 .pdf —— 会话可过（自报值），提取必须按真实探测类型拒绝
         Path fake = tmp.resolve("fake.pdf");

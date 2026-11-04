@@ -28,11 +28,22 @@ import java.util.Set;
 @Component
 public class TikaTextExtractor {
 
+    /**
+     * 与扩展名放行层判据对齐（1103 复审 N1 决策：扩接受，不预拒）：
+     * .doc/.docx 的历史合法内容就是 rtf / Word 另存 HTML / Word2003 XML / OLE2·OOXML 泛型容器；
+     * 纯文本（text/plain）仍拒绝——伪装扩展名不是 Word 家族产物。
+     */
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
             "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    private static final int MAX_TEXT_CHARS = 8_000_000;
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/x-tika-msoffice",
+            "application/x-tika-ooxml",
+            "application/rtf",
+            "text/html",
+            "text/xml",
+            "application/xml");
+    private static final int MAX_TEXT_CHARS = 8_000_000; // ponytail: 上限按 400 万字 ≈200 万 token，超过即视为内容爆炸
 
     private final AutoDetectParser parser = new AutoDetectParser();
 
@@ -86,12 +97,13 @@ public class TikaTextExtractor {
 
         @Override
         public void characters(char[] ch, int start, int length) {
+            // 1103 复审 N5：上限无条件累计（含元素外文本）；IllegalStateException 非受检，
+            // 原样穿透 extract()，由 worker catch(Exception) 兜住置 FAILED（行为正确，上一版注释写错）
+            totalChars += length;
+            if (totalChars > MAX_TEXT_CHARS) {
+                throw new IllegalStateException("提取文本超过上限 " + MAX_TEXT_CHARS + " 字符");
+            }
             if (mode != null) {
-                totalChars += length;
-                if (totalChars > MAX_TEXT_CHARS) {
-                    // 内容爆炸中止解析（SAX 异常沿 extract 转 IOException → worker 置 FAILED）
-                    throw new IllegalStateException("提取文本超过上限 " + MAX_TEXT_CHARS + " 字符");
-                }
                 current.append(ch, start, length);
             }
         }

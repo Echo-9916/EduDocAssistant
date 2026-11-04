@@ -82,7 +82,7 @@ curl -s -H "Authorization: Bearer $TT" http://localhost:8080/api/v1/courses
 无需调接口。观测：complete 后 `edudoc_outbox_event` 出现 `DOCUMENT_PARSE_REQUESTED`(NEW)；调度器 ≤1s 投 Stream 并置 PUBLISHED；worker 消费 → Tika 提取分块 → 文档转 **READY**，`edudoc_document_chunk` 落库（chunk_no/heading_path/page_no/char_start/char_end/token_count/content_hash/index_status=PENDING），审计 `PARSE_SUCCEEDED`。30 页以内文档应在 60s 预算内（实测单页 0.5s）。
 
 - **失败分支**：损坏文件 → 文档 FAILED + 审计 `PARSE_FAILED(42201)`；重试走 §7 重新解析
-- **内容伪装防御**（1103 审查 S5 整改）：纯文本改名 `.pdf` 上传——会话/直传/建档均通过（自报值只做初筛），但解析时按 **Tika 真实探测的 Content-Type 复验**（允许 pdf/msword/OOXML word），不符 → FAILED + 审计；提取文本另有 8M 字符上限防内容爆炸
+- **内容伪装防御**（1103 审查 S5 + 复审 N1 校准）：纯文本改名 `.pdf` 上传——会话/直传/建档均通过（自报值只做初筛），但解析时按 **Tika 真实探测的 Content-Type 复验**。允许集合与扩展名层判据同源：pdf、msword、OOXML word、`x-tika-msoffice/x-tika-ooxml`（OLE2/zip 泛型容器）、`application/rtf`、`text/html`、`text|application/xml`（Word 另存产物——`.doc` 的历史合法内容，**RTF 改名 legacy.doc 实测 READY**）；`text/plain` 等伪装仍 FAILED + 审计。提取文本另有 8M 字符上限防内容爆炸（无条件累计，含元素外文本）
 
 ```bash
 curl -s -H "Authorization: Bearer $TT" "http://localhost:8080/api/v1/documents/$DOCID" | grep -o '"status":"[A-Z]*"'

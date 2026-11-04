@@ -178,8 +178,12 @@ public class DocumentParseWorker {
             if (chunks.isEmpty()) {
                 throw new IllegalStateException("文档无可提取文本（空文档或扫描件）");
             }
-            parseTxService.writeSuccess(documentId, versionId, chunks);
-            log.info("解析成功 documentId={} versionId={} chunks={}", documentId, versionId, chunks.size());
+            if (parseTxService.writeSuccess(documentId, versionId, chunks)) {
+                log.info("解析成功 documentId={} versionId={} chunks={}", documentId, versionId, chunks.size());
+            } else {
+                // 1103 复审 N4：回写被守卫跳过时不谎报成功
+                log.info("提取完成但回写被跳过（文档已不在 PARSING）documentId={} chunks={}", documentId, chunks.size());
+            }
         } finally {
             Files.deleteIfExists(temp);
         }

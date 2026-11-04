@@ -223,6 +223,20 @@ P3 顺手项:S6 SDK 异常原文只进日志、客户端回固定文案;S7 审�
 
 遗留(随 B-09/B-10/B-13 处理):S10 分块 offset 在硬切+跨块合并时与 `\n` 连接符有细微漂移、代理对可能被切断(ai 域用 offset 做引用定位前须修);`RbacLifecycleIntegrationTest` 默认 `mvn test` 静默 0 项的可观测性;40501 码位需回填《详细设计说明书》§5.1 字典(docs/design 为复刻,Word 源文件侧同步)。
 
+## 复审整改记录（1103 第二轮报告,2026-11-04 处置）
+
+复审结论"整改有效,待 N1 处置后即可放行"。处置结果——`mvn test` 134 全绿 + 真机探针 **42/42**:
+
+| 项 | 处置 |
+| --- | --- |
+| **N1(P2)** 类型白名单过窄、两层判据不一致 | **决策:扩接受,不预拒**(浏览器直传架构下会话层看不到内容,预拒需拆 B-04 事务边界;存量 Word 另存文件不应突然不可用)。白名单 +6:rtf、text/html、text|application/xml、x-tika-msoffice/x-tika-ooxml 泛型容器——与"扩展名 .doc/.docx 放行"判据同源;text/plain 仍拒。补 `acceptsRtfContentNamedAsLegacyDoc` 单测(等价 N1 的 legacy.doc 场景);真机:RTF 改名 .doc → **READY**、纯文本伪装 .pdf → **FAILED** 双探针通过。真实 OLE2 二进制 .doc 本环境仍无法程序构造,留 B-13 用户样本(e2e 步骤 8)覆盖 |
+| **N2(P3)** 40501 未回填设计字典 | `docs/design/详细设计说明书.md` §5.1 表 5-1 已补 40501 行(含回填标注);`ErrorCodeTest.countMatchesDesignDictionary` 语义恢复一致(20)。Word 源文件(上一级 05_系统设计)待用户侧同步,复刻件已先行 |
+| **N3(P3)** 映射有测试、分发无测试 | **接受遗留**(复审报告列为可随 B-13 处理):实机 52+42 项已端到端证明分发正确;MockMvc 切片(需 Security 链装配)留 B-13 一并补 |
+| **N4(P3)** 回写跳过仍记"解析成功" | `writeSuccess/writeFailure` 返回 boolean,worker 按实际结果分支记日志;新增 `DocumentParseTxServiceImplTest` 3 例(守卫跳过返回 false 且不动分块/不留审计) |
+| **N5(P3)** 提取上限注释与实现不符 | 注释修正(IllegalStateException 非受检、原样穿透由 worker 兜底);`totalChars` 改无条件累计(含元素外文本) |
+| **N6(P3)** 真库 IT 静默 0 项 | assumption 跳过前显式 `[IT-SKIP]` stderr 告警,凭据缺失/Oracle 不可达两处都打;"全绿≠真库覆盖"不再无声 |
+| **N7(P3)** 分块 offset 漂移 | 维持遗留口径(ai 域用 offset 前须修),复审已确认接受 |
+
 ## 风险与已知债务
 
 | # | 事项 | 处理 |

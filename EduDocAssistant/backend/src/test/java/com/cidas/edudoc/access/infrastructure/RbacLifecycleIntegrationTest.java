@@ -47,11 +47,17 @@ class RbacLifecycleIntegrationTest {
 
     @BeforeAll
     static void setUp() throws Exception {
+        // 1103 复审 N6：跳过不再是无声 Tests run: 0，显式告警防止"全绿"被误读为真库路径已覆盖
+        if (USER == null || PASS == null) {
+            System.err.println("[IT-SKIP] RbacLifecycleIntegrationTest 未执行：需注入 "
+                    + "EDUDOC_DB_USERNAME/EDUDOC_DB_PASSWORD，本轮全绿不含真库 RBAC 路径覆盖");
+        }
         Assumptions.assumeTrue(USER != null && PASS != null,
                 "未显式注入 EDUDOC_DB_USERNAME/EDUDOC_DB_PASSWORD，跳过 RBAC 生命周期集成测试");
         try {
             setupConn = java.sql.DriverManager.getConnection(URL, USER, PASS);
         } catch (Exception e) {
+            System.err.println("[IT-SKIP] RbacLifecycleIntegrationTest Oracle 不可达，真库路径未覆盖: " + e.getMessage());
             Assumptions.abort("Oracle 不可达，跳过 RBAC 生命周期集成测试: " + e.getMessage());
         }
         Configuration configuration = new Configuration();

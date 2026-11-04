@@ -11,7 +11,7 @@
 - **OSS 环境变量**（用户级，不入仓）：`EDUDOC_OSS_ACCESS_KEY_ID` / `EDUDOC_OSS_ACCESS_KEY_SECRET`；bucket=`cidas-oss-bucket`，region=`cn-beijing`，RAM 角色 `edudoc-upload`
 - **鉴权头**：`Authorization: Bearer <token>`（登录返回的 `data.token`）
 - **幂等键**：所有写接口必须带 `Idempotency-Key`（缺失 40001；同 key 重放 40902）。键作用域 = **认证主体 + 方法 + 路径**（1103 审查 S4 整改），跨用户、跨端点使用相同 key 互不顶替。**业务重试必须换新 key**——幂等过滤器防双击，业务幂等靠上传会话状态机（详见 §3 说明）
-- **框架异常契约**（1103 审查 S1 整改，不再塌缩为 500/50001）：未匹配路由 → 404/40401；方法不允许（如 `DELETE /courses`）→ 405/**40501**（整改新增码位，需同步设计文档 §5.1 字典）；Content-Type 不支持 → 415/41501；畸形 JSON / 参数类型错误（`page=abc`）/ 缺必填参数 → 400/40001
+- **框架异常契约**（1103 审查 S1 整改，不再塌缩为 500/50001）：未匹配路由 → 404/40401；方法不允许（如 `DELETE /courses`，须带幂等键，否则先被 40001 拦截）→ 405/**40501**（已回填设计文档 §5.1 与接口契约速查）；Content-Type 不支持 → 415/41501；畸形 JSON / 参数类型错误（`page=abc`）/ 缺必填参数 → 400/40001
 - **种子数据**：账号见 AuthTest.md；课程 2 门（CS101 教师授课+学生选课、MATH201 仅教师），启动时 `SeedDataRunner` 幂等写入
 - **测试样本**：结构完整的 PDF（可用 `GET /` 前的 `gen_pdf.py` 方式生成；**纯文本改后缀的假 PDF 会被解析置 FAILED**，属预期）
 - **观测命令**：
@@ -135,3 +135,4 @@ curl -s -H "Authorization: Bearer $TT" "http://localhost:8080/api/v1/documents/$
 - **首轮（2026-11-03 上午）**：32 项全过。发现并修复：非法 hex 文档 ID 曾触发 `HEXTORAW` 异常返回 50001 → 入口校验 40001（`Ids.isHex16`）。
 - **1103 审查整改复验（2026-11-03）**：**41/41 通过**（`mvn test` 130 全绿）。新增探针全部通过：courseId 非 hex → 40001；未匹配路由 → 404/40401；`DELETE /courses` → 405/40501；`page=abc`、畸形 JSON → 400/40001；跨用户同幂等键不再互相顶替；`page=2147483647` 返回空页；纯文本伪装 `.pdf` 建档后经真实类型复验置 FAILED。整改清单：S1 框架异常分支、S2 courseId 入口校验、S3 分页 offset long 化、S4 幂等键作用域（主体+方法+路径）、S5 Tika 内容类型复验+提取上限、S6 SDK 异常原文只进日志、S7 审计序列化失败告警、S8 parts 契约注释纠偏、S9 JSON_SERIALIZE 上限注释、S11 sessionId 统一大写 hex、P3② consumer 名补 pid、P5 解析回写加 `status='PARSING'` 守卫。
 - **B-13 端到端联调（2026-11-04）**：headless 脚本（Node + ali-oss，真实 STS 直传 + OSS + Redis + Oracle）**21/21 通过**，含 SQL 落库核查。关键实测：30 页 PDF complete 201 → **1.1s 转 READY**（P-04 预算 60s 内）；≥5MB multipart → READY 5.2s；chunk 落库 15 行（`char_start/end` 连续、`token_count`≈600、`index_status=PENDING`、`heading_path` 空属预期）；outbox `DOCUMENT_PARSE_REQUESTED → PUBLISHED`（retry_count=0）；审计链完整 `UPLOAD_COMPLETED → PARSE_SUCCEEDED → DOCUMENT_DELETED → DOCUMENT_RESTORED → PARSE_REQUESTED → PARSE_SUCCEEDED`。**发现并修复 B-10 缺陷**：前端 ali-oss 误用 `region`（`cn-beijing`）拼错直传域名，改 `endpoint`（见 §2 口径）；`ossUpload.test.ts` 补断言。遗留：真实 OLE2 二进制 `.doc` 本环境无法程序构造，待用户样本（e2e 步骤 8）；断网续传（checkpoint 存 localStorage）为浏览器交互，需 DevTools 手工验证。
+- **1104 符合性审查整改复验（2026-11-04）**：后端零改动；前端补状态筛选（P2-1）、上传弹窗成功后自动关闭并清空+重试跳过已 done 项（P2-2）、`ErrorCode` 补 40501（P3-1）——`pnpm test` 78 全绿、`pnpm build` 通过。e2e 重跑 **21/21**（≥5MB multipart 4.2s 转 READY）。

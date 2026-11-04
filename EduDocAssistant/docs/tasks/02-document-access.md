@@ -51,7 +51,7 @@
 - **需求/设计/原型引用**：详细设计 §3.1.2 上传流程、§3.1.3 `POST /upload-sessions`、§4.3 表单校验；概要 §5.4（会话返回 STS/objectKey 前缀/过期时间）；需求 §5.1.1（≤20MB、Word/PDF、多文件）。
 - **现状**：document 域空壳（package-info.java）；无任何上传接口。
 - **验收标准**：
-  - `POST /api/v1/documents/upload-sessions`，`@RequirePermission(DOCUMENT_CREATE)`，入参 `{courseId?,title,fileName,size,mimeType,docType}` → 201 `{sessionId,objectKey,expiration,sts:{accessKeyId,accessKeySecret,securityToken,expiration},region,bucket}`；写接口自动被 `IdempotencyFilter` 覆盖。
+  - `POST /api/v1/documents/upload-sessions`，`@RequirePermission(DOCUMENT_CREATE)`，入参 `{courseId?,title,fileName,size,mimeType,docType}` → 201 `{sessionId,objectKey,expiration,sts:{accessKeyId,accessKeySecret,securityToken,expiration},region,bucket,endpoint}`；写接口自动被 `IdempotencyFilter` 覆盖。（1104 审查 P3-5 回填：`region` 是阿里云地域名 `cn-beijing`、`endpoint` 是 OSS 端点 `https://oss-cn-beijing.aliyuncs.com`，两者分离；直传必须用 `endpoint`，ali-oss 的 `region` 选项期待端点前缀 `oss-cn-beijing`，误用会拼出错误域名——B-13 实测发现，见 `4f982f5`。）
   - 校验：size>20MB → 41301；扩展名 + mimeType 双重校验仅 .doc/.docx/.pdf → 41501；title 1–200 去首尾空格；courseId 提供时校验成员身份（教师须为该课程 TEACHER/ASSISTANT 成员或 course.teacher_id，学生须为成员）→ 40301。教师端 courseId 必填、学生端可空（course_id 为 NULL 时 Oracle 复合唯一索引不生效，学生无课程文档天然不撞 `uk_document_1`）。
   - objectKey = `{prefix}/{yyyyMM}/{userIdHex}/{sessionId}-{清洗文件名}`；文件名去路径分隔符/控制字符（概要 §7.1 防注入）。
   - 会话存 Redis（无数据库表，概要 §2.2）：key `edudoc:upsession:{sessionId}`，TTL=session-ttl-minutes，value JSON `{sessionId,ownerUserIdHex,courseIdHex|null,title,docType,fileName,sizeBytes,mimeType,objectKey,status:OPEN|COMPLETING|COMPLETED,completedDocumentIdHex|null,completedVersionIdHex|null,createdAt}`。
@@ -149,8 +149,8 @@
 - **验收标准**：
   - 安装 `ali-oss`（^6，缺类型则补 `@types/ali-oss`）；不自研 OSS V4 签名。
   - 新建 `web/src/upload/ossUpload.ts`：`sha256Hex(file)` 用 `crypto.subtle.digest`；`uploadToOss(session,sts,file,onProgress)`——<5MB `client.put`，≥5MB `client.multipartUpload`（partSize 1MB、parallel 3、headers 带 Content-Type 与 x-oss-meta-sha256）。
-  - 断点续传（2026-11-02 用户决策入本切片）：checkpoint 存 `localStorage['edudoc-ckpt-'+sessionId]`，重传时读出传入，成功后清除；`parts` 清单从 checkpoint.uploadedParts 取传 complete。
-- **测试**：`ossUpload.test.ts`（7 例：校验放行/拒绝四类、小文件 put 带 STS 凭证、multipart 阈值分流、checkpoint 成功清除/失败留存、sha256 已知向量）。
+  - 断点续传（2026-11-02 用户决策入本切片）：checkpoint 存 `localStorage['edudoc-ckpt-'+sessionId]`，重传时读出传入，成功后清除；`parts` 清单**不回传**——1103 审查 S8 已决策服务端接收但不校验、不落库、完整性判定不依赖回读（head+实算 SHA-256 已覆盖），complete 只传 `{contentHash}`（1104 审查 P3-3 同步口径）。
+- **测试**：`ossUpload.test.ts`（6 例：校验放行/拒绝两组、小文件 put 带 STS 凭证与 endpoint、multipart 阈值分流+checkpoint 成功清除、checkpoint 失败留存、sha256 已知向量；1104 审查 P3-3 由"7 例"修正为实数）。
 - **依赖**：B-09
 - **状态**：已完成（2026-11-04，ali-oss 6.23.0 + @types；实现差异：put 无进度回调（ali-oss 类型不含 progress），小文件完成即 100%）
 
@@ -163,9 +163,9 @@
   - 轮询：列表存在 UPLOADING/PARSING 行时 3s `setInterval` 重拉当前页，全部终态即停，卸载/视图切换清理定时器（`// ponytail: 单机轮询够用，并发大了换 SSE`）。
   - 新建 `pages/DocumentUploadModal.tsx`：Upload.Dragger 多文件（逐个会话串行上传）；前端校验扩展名+MIME+≤20MB（§4.3 文案）；表单：标题（默认文件名去扩展名可改）、课程（教师必填/学生可选）、类型下拉（必填；SRS「默认自动识别」不可实现，默认留空，差异记入本文档待评审）；每文件独立进度条与错误态；流程 createUploadSession→sha256→直传→complete→关 Modal 刷新列表；失败保留输入不回空白页。
   - 新建 `pages/DocumentDetailDrawer.tsx`：元数据 + 当前版本（versionNo/contentHash 前 8 位）+ chunkCount + 重新解析/删除入口；不做预览页（排除项）。
-- **测试**：`Documents.test.tsx`（5 例：列表渲染+文字徽标+教师课程列、学生无课程列、回收站切换与恢复、FAILED 重解析、轮询启停 fake timers 只断言调用计数）、`DocumentUploadModal.test.tsx`（4 例:txt 拦截、未选类型/教师未绑课拦截、单文件全流程）、`DocumentDetailDrawer.test.tsx`（3 例）。
+- **测试**：`Documents.test.tsx`（6 例：列表渲染+文字徽标+教师课程列、学生无课程列、回收站切换与恢复、FAILED 重解析、状态筛选透传（1104 P2-1）、轮询启停 fake timers 只断言调用计数）、`DocumentUploadModal.test.tsx`（5 例:txt 拦截、未选类型/教师未绑课拦截、单文件全流程、全部成功自动关闭并清空（1104 P2-2））、`DocumentDetailDrawer.test.tsx`（3 例）。
 - **依赖**：B-09、B-10
-- **状态**：已完成（2026-11-04。实现要点:多文件时标题逐文件取自身文件名防撞 uk_document_1，标题输入框仅单文件生效；antd beforeUpload 每文件回调一次，只收当前文件防重复添加；轮询用 params useMemo 去重）
+- **状态**：已完成（2026-11-04，1104 审查整改补齐：状态筛选 Select（我的文档模式，回收站强制 DELETED 并清筛选态）、上传全部成功后自动关窗+清空、重试跳过已 done 项防撞 40901。原实现要点:多文件时标题逐文件取自身文件名防撞 uk_document_1，标题输入框仅单文件生效；antd beforeUpload 每文件回调一次，只收当前文件防重复添加；轮询用 params useMemo 去重）
 
 ## B-12 前端 · 教师端接线与路由
 
@@ -236,6 +236,25 @@ P3 顺手项:S6 SDK 异常原文只进日志、客户端回固定文案;S7 审�
 | **N5(P3)** 提取上限注释与实现不符 | 注释修正(IllegalStateException 非受检、原样穿透由 worker 兜底);`totalChars` 改无条件累计(含元素外文本) |
 | **N6(P3)** 真库 IT 静默 0 项 | assumption 跳过前显式 `[IT-SKIP]` stderr 告警,凭据缺失/Oracle 不可达两处都打;"全绿≠真库覆盖"不再无声 |
 | **N7(P3)** 分块 offset 漂移 | 维持遗留口径(ai 域用 offset 前须修),复审已确认接受 |
+
+## 1104 符合性审查整改记录(2026-11-04 处置)
+
+来源:`docs/review/1104-document-access符合性与可提交性审查报告.md`,结论"有条件通过",2 项 P2 + 8 项 P3。
+
+| 项 | 处置 |
+| --- | --- |
+| **P2-1** 列表缺状态筛选 | `Documents.tsx` 补「按状态筛选」Select(解析中/就绪/失败,allowClear=全部),仅我的文档模式显示;回收站强制 `status=DELETED` 且切视图时清筛选态防互相污染;选中即重置 page=1。补测试「状态筛选透传且重置页码」 |
+| **P2-2** 上传弹窗状态残留/成功不关窗 | `DocumentUploadModal.tsx`:全部成功(complete 回执全 done)→ `reset()` 清空 items/title/courseId/docType 并 `onClose()`;循环跳过已 done 项——部分失败后点重试不再重传已建档文件撞 40901;失败项按规格保留。补测试「全部成功后自动关闭并清空,重开为空」 |
+| **P3-1** 前端 ErrorCode 缺 40501 | `types.ts` 补 `METHOD_NOT_ALLOWED: 40501`,`types.test.ts` 精确断言同步(20 项与后端枚举一致) |
+| **P3-2** `/courses` 未回填契约速查 | `docs/design/接口契约速查.md` 新增 §5 文档域接口表(8 端点含 `/courses`,标契约外辅助接口+权限点+幂等键+直传用 endpoint 口径);§2 错误码表补 40501 行 |
+| **P3-3** B-10 验收口径不一致 | 任务文档 B-10:parts 改「不回传」(S8 决策同步),测试 7 例修正为实数 6 例(1104 后 +1 为 endpoint 断言并入) |
+| **P3-4** DocumentTest 40501 说明过期 | 改「已回填设计文档 §5.1 与接口契约速查」,并补注 `DELETE /courses` 不带幂等键先 40001 的预期顺序 |
+| **P3-5** B-03 响应缺 endpoint | 任务文档 B-03 验收行补 `endpoint`,写明 region(地域名)与 endpoint(OSS 端点)分离及 ali-oss 误用后果(引 `4f982f5`) |
+| **P3-6** 真库 IT 默认 0 项 | **接受现状**:本仓库暂无 CI,`[IT-SKIP]` 告警(N6)已保证不静默;接入 CI 时以独立 profile 强制凭据,记入本行即为提醒 |
+| **P3-7** 分块 offset 漂移/代理对切断 | **维持遗留**(S10/N7 口径不变):ai 域做引用定位前必须改 code-point 安全切分并把连接符计入 offset,本切片无消费方 |
+| **P3-8** 真实 OLE2 `.doc`/断网续传 | **遗留待用户**:样本 `.doc` 走一次全链路;Chrome DevTools offline 做「传一半断网→恢复续传」并记录 checkpoint 与最终 READY |
+
+复验(2026-11-04):`pnpm test` **78 全绿**（Documents 6、UploadModal 5、ossUpload 6 含新断言）、`pnpm build`（tsc --noEmit+vite）通过、B-13 headless e2e 重跑 **21/21**（≥5MB 4.2s READY）；后端本轮零改动，维持 `mvn test` 135 全绿基线。
 
 ## 启动健壮性修复(1104,前端联调时发现)
 

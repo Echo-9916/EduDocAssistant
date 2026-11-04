@@ -47,7 +47,7 @@ interface Props {
 export default function Documents({ role }: Props) {
   const [view, setView] = useState<'mine' | 'trash'>('mine')
   const [courses, setCourses] = useState<CourseView[]>([])
-  const [filters, setFilters] = useState<{ courseId?: string; type?: string; keyword?: string }>({})
+  const [filters, setFilters] = useState<{ courseId?: string; type?: string; status?: string; keyword?: string }>({})
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [data, setData] = useState<PageResult<DocumentSummary>>({ items: [], total: 0, page: 1, pageSize: 20 })
@@ -60,7 +60,8 @@ export default function Documents({ role }: Props) {
 
   const params = useMemo<DocumentListParams>(
     () => ({
-      ...(view === 'trash' ? { status: 'DELETED' } : {}),
+      // 回收站模式强制 DELETED；我的文档模式下状态筛选可选（1104 审查 P2-1）
+      status: view === 'trash' ? 'DELETED' : filters.status || undefined,
       courseId: filters.courseId || undefined,
       type: filters.type || undefined,
       keyword: filters.keyword || undefined,
@@ -133,6 +134,8 @@ export default function Documents({ role }: Props) {
           value={view}
           onChange={(v) => {
             setView(v as 'mine' | 'trash')
+            // 回收站只看 DELETED，切视图时清掉状态筛选避免互相污染
+            setFilters((f) => ({ ...f, status: undefined }))
             setPage(1)
           }}
           options={[
@@ -162,6 +165,22 @@ export default function Documents({ role }: Props) {
           }}
           options={Object.entries(DOC_TYPE_LABEL).map(([value, label]) => ({ value, label }))}
         />
+        {view === 'mine' && (
+          <Select
+            allowClear
+            placeholder="按状态筛选"
+            style={{ width: 140 }}
+            value={filters.status}
+            onChange={(v) => {
+              setFilters((f) => ({ ...f, status: v }))
+              setPage(1)
+            }}
+            options={(['PARSING', 'READY', 'FAILED'] as const).map((value) => ({
+              value,
+              label: STATUS_META[value].label,
+            }))}
+          />
+        )}
         <Input.Search
           allowClear
           placeholder="搜索标题"

@@ -68,6 +68,16 @@ describe('Documents', () => {
     expect(await screen.findByText('解析失败')).toBeTruthy()
   })
 
+  it('状态筛选透传 status 且重置页码（1104 审查 P2-1）', async () => {
+    render(<Documents role="STUDENT" />)
+    await screen.findByText('第一课件')
+    fireEvent.mouseDown(screen.getByText('按状态筛选'))
+    fireEvent.click(await screen.findByText('解析中', { selector: '.ant-select-item-option-content' }))
+    await waitFor(() =>
+      expect(listDocuments).toHaveBeenCalledWith(expect.objectContaining({ status: 'PARSING', page: 1 })),
+    )
+  })
+
   it('存在 PARSING 行时轮询，全部终态后停止', async () => {
     // fake timers 下不用 RTL 的 findBy/waitFor（内部计时器同被 mock 会死锁），只断言调用计数
     vi.useFakeTimers()

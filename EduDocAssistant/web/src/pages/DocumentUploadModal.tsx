@@ -55,6 +55,13 @@ export default function DocumentUploadModal({ open, role, courses, onClose, onUp
   const patch = (index: number, part: Partial<FileItem>) =>
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...part } : it)))
 
+  const reset = () => {
+    setItems([])
+    setTitle('')
+    setCourseId(undefined)
+    setDocType(undefined)
+  }
+
   const submit = async () => {
     if (!items.length) {
       message.warning('请先选择文件')
@@ -70,7 +77,13 @@ export default function DocumentUploadModal({ open, role, courses, onClose, onUp
     }
     setRunning(true)
     let anyDone = false
+    let remaining = 0
     for (let i = 0; i < items.length; i++) {
+      // 重试只跑未完成项,已 done 的跳过——防部分失败后重传已建档文件撞 40901(1104 审查 P2-2)
+      if (items[i].status === 'done') {
+        remaining++
+        continue
+      }
       const { file } = items[i]
       // 多文件时标题逐文件取自身文件名，避免撞 uk_document_1（owner+课程+标题）
       const fileTitle = items.length === 1 && title.trim() ? title.trim() : file.name.replace(/\.[^.]+$/, '')
@@ -89,12 +102,18 @@ export default function DocumentUploadModal({ open, role, courses, onClose, onUp
         await completeUpload(session.sessionId, { contentHash })
         patch(i, { status: 'done', percent: 100 })
         anyDone = true
+        remaining++
       } catch (e) {
         patch(i, { status: 'error', error: getErrorMessage(e) })
       }
     }
     setRunning(false)
     if (anyDone) onUploaded()
+    if (remaining === items.length) {
+      // 全部成功:自动关窗并清空,重开是干净弹窗(1104 审查 P2-2;失败项按规格保留)
+      reset()
+      onClose()
+    }
   }
 
   return (

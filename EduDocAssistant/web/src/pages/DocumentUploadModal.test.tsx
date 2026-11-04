@@ -21,11 +21,14 @@ function pdf(name = 'a.pdf'): File {
   return new File(['pdf-bytes'], name, { type: 'application/pdf' })
 }
 
-function renderModal(role: 'STUDENT' | 'TEACHER' = 'STUDENT', onUploaded = vi.fn()) {
-  render(
-    <DocumentUploadModal open role={role} courses={courses} onClose={vi.fn()} onUploaded={onUploaded} />,
+function renderModal(role: 'STUDENT' | 'TEACHER' = 'STUDENT', onUploaded = vi.fn(), onClose = vi.fn()) {
+  const ui = (
+    <DocumentUploadModal open role={role} courses={courses} onClose={onClose} onUploaded={onUploaded} />
   )
-  return onUploaded
+  const { rerender } = render(ui)
+  return { onUploaded, onClose, rerender: (next?: Partial<{ open: boolean }>) => rerender(
+    <DocumentUploadModal open={next?.open ?? true} role={role} courses={courses} onClose={onClose} onUploaded={onUploaded} />,
+  ) }
 }
 
 function addFile(file: File) {
@@ -73,7 +76,7 @@ describe('DocumentUploadModal', () => {
   })
 
   it('学生单文件全流程：会话→sha→直传→complete→onUploaded', async () => {
-    const onUploaded = renderModal()
+    const m = renderModal()
     addFile(pdf())
     await chooseDocType('论文')
     fireEvent.click(screen.getByText('开始上传'))
@@ -84,7 +87,20 @@ describe('DocumentUploadModal', () => {
     })
     expect(uploadToOss).toHaveBeenCalled()
     expect(completeUpload).toHaveBeenCalledWith('S1', { contentHash: 'HASH' })
-    expect(onUploaded).toHaveBeenCalled()
-    expect(await screen.findByText('完成')).toBeTruthy()
+    expect(m.onUploaded).toHaveBeenCalled()
+  })
+
+  it('全部成功后自动关闭并清空，重开为空（1104 审查 P2-2）', async () => {
+    const m = renderModal()
+    addFile(pdf())
+    await chooseDocType('论文')
+    fireEvent.click(screen.getByText('开始上传'))
+
+    await waitFor(() => expect(m.onClose).toHaveBeenCalled())
+    m.rerender()
+    expect(screen.queryByText('a.pdf')).toBeNull()
+    fireEvent.click(screen.getByText('开始上传'))
+    expect(await screen.findByText('请先选择文件')).toBeTruthy()
+    expect(createUploadSession).toHaveBeenCalledTimes(1) // 残留输入未被二次提交
   })
 })

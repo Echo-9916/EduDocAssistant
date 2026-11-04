@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.ai.infrastructure.ChunkEmbeddingMapper">
+
+    <!-- 重解析清理：删该版本全部分块的向量行（FK 无级联，必须先于删块执行） -->
+    <delete id="deleteByVersion">
+        DELETE FROM edudoc_chunk_embedding
+        WHERE chunk_id IN (SELECT id FROM edudoc_document_chunk
+                           WHERE document_version_id = HEXTORAW(#{versionIdHex}))
+    </delete>
+
+    <select id="selectPendingChunks" resultType="com.cidas.edudoc.ai.infrastructure.ChunkEmbeddingRepository$PendingChunk">
+        SELECT RAWTOHEX(c.id) AS chunkId, c.chunk_no AS chunkNo, c.content_text AS contentText
+        FROM edudoc_document_chunk c
+        WHERE c.document_version_id = HEXTORAW(#{versionIdHex}) AND c.index_status = 'PENDING'
+        ORDER BY c.chunk_no
+    </select>
+
+    <!-- 单批 MERGE：重投按 (chunk_id, model_profile_id) uk 覆盖写；维度以列为准（Java 侧先校验） -->
+    <update id="upsertBatch">
+        MERGE INTO edudoc_chunk_embedding tgt
+        USING (
+            <foreach collection="vectors" item="v" separator=" UNION ALL ">
+                SELECT HEXTORAW(#{v.chunkIdHex}) AS chunk_id,
+                       HEXTORAW(#{modelProfileIdHex}) AS model_profile_id,
+                       #{v.embeddingText} AS embedding_text,
+                       SYS_GUID() AS new_id
+                FROM DUAL
+            </foreach>
+        ) src
+        ON (tgt.chunk_id = src.chunk_id AND tgt.model_profile_id = src.model_profile_id)
+        WHEN MATCHED THEN UPDATE
+            SET tgt.embedding = TO_VECTOR(src.embedding_text, ${dimension}, FLOAT32),
+                tgt.embedding_status = 'READY'
+        WHEN NOT MATCHED THEN INSERT (id, chunk_id, model_profile_id, embedding, embedding_status)
+            VALUES (src.new_id, src.chunk_id, src.model_profile_id,
+                    TO_VECTOR(src.embedding_text, ${dimension}, FLOAT32), 'READY')
+    </update>
+
+    <update id="markChunksReady">
+        UPDATE edudoc_document_chunk SET index_status = 'READY'
+        WHERE index_status = 'PENDING' AND id IN
+        <foreach collection="chunkIdsHex" item="id" open="(" separator="," close=")">
+            HEXTORAW(#{id})
+        </foreach>
+    </update>
+
+</mapper>

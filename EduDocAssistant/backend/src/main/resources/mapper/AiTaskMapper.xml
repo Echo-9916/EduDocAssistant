@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.ai.infrastructure.AiTaskMapper">
+
+    <sql id="taskColumns">
+        RAWTOHEX(t.id) AS id, RAWTOHEX(t.document_id) AS documentId,
+        RAWTOHEX(t.document_version_id) AS documentVersionId, t.task_type AS taskType,
+        t.status, t.priority, RAWTOHEX(t.model_profile_id) AS modelProfileId,
+        JSON_SERIALIZE(t.request_payload RETURNING CLOB) AS requestPayload,
+        RAWTOHEX(t.requested_by) AS requestedBy, t.progress, t.idempotency_key AS idempotencyKey,
+        t.error_code AS errorCode, t.retry_count AS retryCount
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO edudoc_ai_task (id, document_id, document_version_id, task_type, status, priority,
+            model_profile_id, request_payload, requested_by, progress, idempotency_key, retry_count)
+        VALUES (HEXTORAW(#{task.id}), HEXTORAW(#{task.documentId}), HEXTORAW(#{task.documentVersionId}),
+            #{task.taskType}, #{task.status}, #{task.priority},
+            HEXTORAW(#{task.modelProfileId, jdbcType=VARCHAR}),
+            CAST(#{task.requestPayload} AS JSON), HEXTORAW(#{task.requestedBy}),
+            #{task.progress}, #{task.idempotencyKey, jdbcType=VARCHAR}, #{task.retryCount})
+    </insert>
+
+    <select id="selectById" resultType="com.cidas.edudoc.ai.infrastructure.AiTask">
+        SELECT <include refid="taskColumns"/>
+        FROM edudoc_ai_task t
+        WHERE t.id = HEXTORAW(#{idHex})
+    </select>
+
+    <select id="selectByIdempotencyKey" resultType="com.cidas.edudoc.ai.infrastructure.AiTask">
+        SELECT <include refid="taskColumns"/>
+        FROM edudoc_ai_task t
+        WHERE t.idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="selectActive" resultType="com.cidas.edudoc.ai.infrastructure.AiTask">
+        SELECT * FROM (
+            SELECT <include refid="taskColumns"/>
+            FROM edudoc_ai_task t
+            WHERE t.document_version_id = HEXTORAW(#{versionIdHex}) AND t.task_type = #{taskType}
+              AND t.requested_by = HEXTORAW(#{requestedByHex})
+              AND t.status IN ('QUEUED', 'RUNNING')
+            ORDER BY t.create_time
+        ) WHERE ROWNUM = 1
+    </select>
+
+    <update id="casStart">
+        UPDATE edudoc_ai_task SET status = 'RUNNING', started_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{idHex}) AND status = 'QUEUED'
+    </update>
+
+    <update id="updateProgress">
+        UPDATE edudoc_ai_task SET progress = #{progress}
+        WHERE id = HEXTORAW(#{idHex}) AND status = 'RUNNING'
+    </update>
+
+    <update id="markSucceeded">
+        UPDATE edudoc_ai_task SET status = 'SUCCEEDED', progress = 100, finished_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{idHex}) AND status = 'RUNNING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE edudoc_ai_task SET status = 'FAILED', error_code = #{errorCode}, finished_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{idHex}) AND status = 'RUNNING'
+    </update>
+
+    <update id="cancelQueued">
+        UPDATE edudoc_ai_task SET status = 'CANCELED', finished_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{idHex}) AND status = 'QUEUED'
+    </update>
+
+    <update id="cancelRunning">
+        UPDATE edudoc_ai_task SET status = 'CANCELED', finished_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{idHex}) AND status = 'RUNNING'
+    </update>
+
+    <update id="incrementRetry">
+        UPDATE edudoc_ai_task SET retry_count = retry_count + 1
+        WHERE id = HEXTORAW(#{idHex})
+    </update>
+
+</mapper>

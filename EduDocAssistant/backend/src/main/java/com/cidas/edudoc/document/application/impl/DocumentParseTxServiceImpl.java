@@ -1,6 +1,8 @@
 package com.cidas.edudoc.document.application.impl;
 
 import com.cidas.edudoc.access.application.AuditService;
+import com.cidas.edudoc.ai.application.EmbeddingCleanupService;
+import com.cidas.edudoc.common.outbox.OutboxEventRepository;
 import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.document.application.DocumentParseTxService;
 import com.cidas.edudoc.document.domain.Chunk;
@@ -23,6 +25,8 @@ public class DocumentParseTxServiceImpl implements DocumentParseTxService {
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository chunkRepository;
     private final AuditService auditService;
+    private final OutboxEventRepository outboxEventRepository;
+    private final EmbeddingCleanupService embeddingCleanupService;
 
     @Override
     @Transactional
@@ -31,12 +35,16 @@ public class DocumentParseTxServiceImpl implements DocumentParseTxService {
         if (documentRepository.markStatusIfParsing(documentId, "READY") == 0) {
             return false;
         }
+        // C-03：重解析换块前同事务清旧向量行（fk 无级联，旧向量随旧块物理删除——见任务台账裁决）
+        embeddingCleanupService.deleteByVersion(versionId);
         chunkRepository.deleteByVersion(versionId);
         chunkRepository.insertAll(chunks.stream()
                 .map(chunk -> new DocumentChunk(Ids.hex16(), versionId, chunk.chunkNo(),
                         chunk.headingPath(), chunk.pageNo(), chunk.charStart(), chunk.charEnd(),
                         chunk.text(), chunk.tokenCount(), chunk.contentHash(), "PENDING"))
                 .toList());
+        outboxEventRepository.publish("DOCUMENT_VERSION", versionId, "DOCUMENT_EMBED_REQUESTED",
+                Map.of("schemaVersion", 1, "documentId", documentId, "versionId", versionId));
         auditService.record("PARSE_SUCCEEDED", "DOCUMENT", documentId, documentId, "200",
                 Map.of("versionId", versionId, "chunkCount", chunks.size()));
         return true;

@@ -53,6 +53,13 @@ edudoc:
     max-retry: 5
     stream-keys:
       DOCUMENT_PARSE_REQUESTED: edudoc:stream:document-parse
+      DOCUMENT_EMBED_REQUESTED: edudoc:stream:document-embed
+  embed:
+    enabled: true
+    concurrency: 2
+    batch-size: 25
+    stream-key: edudoc:stream:document-embed
+    group: cg-document-embed
   parse:
     enabled: true
     concurrency: 2

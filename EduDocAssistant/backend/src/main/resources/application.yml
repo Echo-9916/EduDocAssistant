@@ -54,6 +54,14 @@ edudoc:
     stream-keys:
       DOCUMENT_PARSE_REQUESTED: edudoc:stream:document-parse
       DOCUMENT_EMBED_REQUESTED: edudoc:stream:document-embed
+      AI_TASK_REQUESTED: edudoc:stream:ai-task
+  ai-task:
+    enabled: true
+    concurrency: 2
+    stream-key: edudoc:stream:ai-task
+    group: cg-ai-task
+    timeout-seconds: 60
+    group-chars: 6000
   embed:
     enabled: true
     concurrency: 2

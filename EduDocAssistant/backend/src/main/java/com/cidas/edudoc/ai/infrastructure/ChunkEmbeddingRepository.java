@@ -34,4 +34,17 @@ public class ChunkEmbeddingRepository {
     /** 块 + 向量字符串（[a,b,…] 形态，TO_VECTOR 绑定用）。 */
     public record ChunkVector(String chunkIdHex, String embeddingText) {
     }
+
+    /** 版本分块读视图（生成/检索/预览共用）。 */
+    public record VersionChunk(String chunkId, int chunkNo, Integer pageNo,
+                               Integer charStart, Integer charEnd, String contentText, String indexStatus) {
+    }
+
+    public List<VersionChunk> selectVersionChunks(String versionIdHex) {
+        return mapper.selectVersionChunks(versionIdHex);
+    }
+
+    public int countNotReady(String versionIdHex) {
+        return mapper.countNotReady(versionIdHex);
+    }
 }

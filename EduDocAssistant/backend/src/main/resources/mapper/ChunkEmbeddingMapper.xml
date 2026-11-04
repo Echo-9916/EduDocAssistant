@@ -37,6 +37,20 @@
                     TO_VECTOR(src.embedding_text, ${dimension}, FLOAT32), 'READY')
     </update>
 
+    <select id="selectVersionChunks" resultType="com.cidas.edudoc.ai.infrastructure.ChunkEmbeddingRepository$VersionChunk">
+        SELECT RAWTOHEX(c.id) AS chunkId, c.chunk_no AS chunkNo, c.page_no AS pageNo,
+               c.char_start AS charStart, c.char_end AS charEnd,
+               c.content_text AS contentText, c.index_status AS indexStatus
+        FROM edudoc_document_chunk c
+        WHERE c.document_version_id = HEXTORAW(#{versionIdHex})
+        ORDER BY c.chunk_no
+    </select>
+
+    <select id="countNotReady" resultType="int">
+        SELECT COUNT(*) FROM edudoc_document_chunk
+        WHERE document_version_id = HEXTORAW(#{versionIdHex}) AND index_status != 'READY'
+    </select>
+
     <update id="markChunksReady">
         UPDATE edudoc_document_chunk SET index_status = 'READY'
         WHERE index_status = 'PENDING' AND id IN

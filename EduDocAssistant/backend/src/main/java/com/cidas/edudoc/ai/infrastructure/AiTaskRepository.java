@@ -39,8 +39,9 @@ public class AiTaskRepository {
         return mapper.casStart(idHex) == 1;
     }
 
-    public void updateProgress(String idHex, int progress) {
-        mapper.updateProgress(idHex, progress);
+    /** 返回 false 表示任务已不在 RUNNING（被取消或已终态），worker 据此中止。 */
+    public boolean updateProgress(String idHex, int progress) {
+        return mapper.updateProgress(idHex, progress) == 1;
     }
 
     public boolean markSucceeded(String idHex) {

@@ -16,7 +16,23 @@ spring:
 
 edudoc:
   ai-service:
-    base-url: http://localhost:8000
+    base-url: ${EDUDOC_AI_SERVICE_BASE_URL:http://localhost:8000}
+    # 服务间共享密钥只走环境变量；缺失时 AI 调用 50301 干净降级，不炸启动
+    internal-token: ${EDUDOC_AI_INTERNAL_TOKEN:}
+    short-timeout-ms: 10000
+    long-timeout-ms: 60000
+    answer-timeout-ms: 4200
+  ai:
+    llm:
+      model: ${EDUDOC_AI_LLM_MODEL:Pro/moonshotai/Kimi-K2-Instruct}
+      temperature: 0.3
+    embedding:
+      model: ${EDUDOC_AI_EMBEDDING_MODEL:BAAI/bge-m3}
+      dimension: 1024
+    rerank:
+      model: ${EDUDOC_AI_RERANK_MODEL:BAAI/bge-reranker-v2-m3}
+  qa:
+    evidence-threshold: 0.35
   oss:
     endpoint: ${EDUDOC_OSS_ENDPOINT:https://oss-cn-beijing.aliyuncs.com}
     region: ${EDUDOC_OSS_REGION:cn-beijing}

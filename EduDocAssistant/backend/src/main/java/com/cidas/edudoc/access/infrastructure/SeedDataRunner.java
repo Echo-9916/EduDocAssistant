@@ -1,5 +1,6 @@
 package com.cidas.edudoc.access.infrastructure;
 
+import com.cidas.edudoc.ai.infrastructure.AiModelProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -22,6 +23,7 @@ public class SeedDataRunner implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
+    private final AiModelProperties aiModelProperties;
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
@@ -30,6 +32,36 @@ public class SeedDataRunner implements ApplicationRunner {
                 StandardCharsets.UTF_8);
         seed(parse(csv));
         seedCourses();
+        seedAiModelProfiles();
+    }
+
+    /** C-02 模型档案：三条 profile 幂等 seed（LLM_MAIN / EMB_BGE_M3 / RERANK_BGE_V2），不存明文密钥。 */
+    void seedAiModelProfiles() {
+        seedProfile("LLM_MAIN", "LLM", aiModelProperties.llm().model(),
+                "edudoc.ai.llm.base-url", null, null,
+                "{\"temperature\":" + aiModelProperties.llm().temperature() + ",\"maxTokens\":2000}");
+        seedProfile("EMB_BGE_M3", "EMBEDDING", aiModelProperties.embedding().model(),
+                "edudoc.ai.embedding.base-url", aiModelProperties.embedding().dimension(), "COSINE",
+                "{\"batchMax\":25}");
+        seedProfile("RERANK_BGE_V2", "RERANK", aiModelProperties.rerank().model(),
+                "edudoc.ai.rerank.base-url", null, null, null);
+    }
+
+    private void seedProfile(String code, String providerType, String modelName, String endpointConfigKey,
+                             Integer dimension, String metricType, String profileJson) {
+        Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM edudoc_ai_model_profile WHERE profile_code = ?",
+                Integer.class, code);
+        if (exists != null && exists > 0) {
+            log.info("模型档案已存在，跳过：{}", code);
+            return;
+        }
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_ai_model_profile (profile_code, provider_type, model_name,"
+                        + " endpoint_config_key, embedding_dimension, metric_type, status, profile_json)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, 'A', ?)",
+                code, providerType, modelName, endpointConfigKey, dimension, metricType, profileJson);
+        log.info("模型档案已创建：{}（{}，模型 {}）", code, providerType, modelName);
     }
 
     /** 种子课程：teacher 授两门课，student 仅选 CS101（用于课程范围与列表筛选联调）。 */

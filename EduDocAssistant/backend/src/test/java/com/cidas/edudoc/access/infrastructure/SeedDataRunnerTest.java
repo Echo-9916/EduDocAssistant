@@ -17,6 +17,13 @@ import static org.mockito.Mockito.when;
 
 class SeedDataRunnerTest {
 
+    private static com.cidas.edudoc.ai.infrastructure.AiModelProperties models() {
+        return new com.cidas.edudoc.ai.infrastructure.AiModelProperties(
+                new com.cidas.edudoc.ai.infrastructure.AiModelProperties.Llm("Kimi-K2", 0.3),
+                new com.cidas.edudoc.ai.infrastructure.AiModelProperties.Embedding("bge-m3", 1024),
+                new com.cidas.edudoc.ai.infrastructure.AiModelProperties.Rerank("bge-reranker-v2-m3"));
+    }
+
     @Test
     void seedsNewAccountWithEncodedPasswordAndRole() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
@@ -25,7 +32,7 @@ class SeedDataRunnerTest {
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("student"))).thenReturn(0);
         when(jdbc.queryForObject(anyString(), eq(String.class), eq("student"))).thenReturn("HEX1");
 
-        new SeedDataRunner(jdbc, encoder).seed(List.of(
+        new SeedDataRunner(jdbc, encoder, models()).seed(List.of(
                 new SeedDataRunner.SeedAccount("student", "学生测试", "STUDENT", "A", "Cidas@123")));
 
         verify(jdbc).update(startsWith("INSERT INTO edudoc_user"), eq("student"), eq("学生测试"), eq("HASH"), eq("A"));
@@ -35,7 +42,7 @@ class SeedDataRunnerTest {
     @Test
     void seedsNewCourseOnceAndSkipsExisting() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        SeedDataRunner runner = new SeedDataRunner(jdbc, mock(PasswordEncoder.class));
+        SeedDataRunner runner = new SeedDataRunner(jdbc, mock(PasswordEncoder.class), models());
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("CS101"), eq("2026-FALL"))).thenReturn(0);
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("MATH201"), eq("2026-FALL"))).thenReturn(1);
         when(jdbc.queryForObject(anyString(), eq(String.class), eq("teacher"))).thenReturn("HT");
@@ -57,7 +64,7 @@ class SeedDataRunnerTest {
         PasswordEncoder encoder = mock(PasswordEncoder.class);
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("student"))).thenReturn(1);
 
-        new SeedDataRunner(jdbc, encoder).seed(List.of(
+        new SeedDataRunner(jdbc, encoder, models()).seed(List.of(
                 new SeedDataRunner.SeedAccount("student", "学生测试", "STUDENT", "A", "Cidas@123")));
 
         verify(jdbc, never()).update(anyString(), any(Object[].class));

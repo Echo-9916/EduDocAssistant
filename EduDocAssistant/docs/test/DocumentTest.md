@@ -46,6 +46,7 @@ curl -s -H "Authorization: Bearer $TT" http://localhost:8080/api/v1/courses
   ```
 
 - **预期返回**：HTTP 201，`data={sessionId,objectKey,bucket,region,endpoint,sts:{accessKeyId,accessKeySecret,securityToken,expiration}}`；STS 有效期 900s，inline policy 精确到单 objectKey
+- **⚠ 直传端点口径（B-13 联调发现并修复）**：`region` 是「阿里云地域」`cn-beijing`，`endpoint` 才是 OSS 端点 `https://oss-cn-beijing.aliyuncs.com`。ali-oss 的 `region` 选项期待的是端点前缀 `oss-cn-beijing`——传 `cn-beijing` 会拼成 `{bucket}.cn-beijing.aliyuncs.com`（DNS 解析失败）。前端已改为 `endpoint: session.endpoint` 构造客户端，手工/脚本直传同理（详见 §3）
 - **反例**：
 
   | 场景 | 预期 |
@@ -133,3 +134,4 @@ curl -s -H "Authorization: Bearer $TT" "http://localhost:8080/api/v1/documents/$
 
 - **首轮（2026-11-03 上午）**：32 项全过。发现并修复：非法 hex 文档 ID 曾触发 `HEXTORAW` 异常返回 50001 → 入口校验 40001（`Ids.isHex16`）。
 - **1103 审查整改复验（2026-11-03）**：**41/41 通过**（`mvn test` 130 全绿）。新增探针全部通过：courseId 非 hex → 40001；未匹配路由 → 404/40401；`DELETE /courses` → 405/40501；`page=abc`、畸形 JSON → 400/40001；跨用户同幂等键不再互相顶替；`page=2147483647` 返回空页；纯文本伪装 `.pdf` 建档后经真实类型复验置 FAILED。整改清单：S1 框架异常分支、S2 courseId 入口校验、S3 分页 offset long 化、S4 幂等键作用域（主体+方法+路径）、S5 Tika 内容类型复验+提取上限、S6 SDK 异常原文只进日志、S7 审计序列化失败告警、S8 parts 契约注释纠偏、S9 JSON_SERIALIZE 上限注释、S11 sessionId 统一大写 hex、P3② consumer 名补 pid、P5 解析回写加 `status='PARSING'` 守卫。
+- **B-13 端到端联调（2026-11-04）**：headless 脚本（Node + ali-oss，真实 STS 直传 + OSS + Redis + Oracle）**21/21 通过**，含 SQL 落库核查。关键实测：30 页 PDF complete 201 → **1.1s 转 READY**（P-04 预算 60s 内）；≥5MB multipart → READY 5.2s；chunk 落库 15 行（`char_start/end` 连续、`token_count`≈600、`index_status=PENDING`、`heading_path` 空属预期）；outbox `DOCUMENT_PARSE_REQUESTED → PUBLISHED`（retry_count=0）；审计链完整 `UPLOAD_COMPLETED → PARSE_SUCCEEDED → DOCUMENT_DELETED → DOCUMENT_RESTORED → PARSE_REQUESTED → PARSE_SUCCEEDED`。**发现并修复 B-10 缺陷**：前端 ali-oss 误用 `region`（`cn-beijing`）拼错直传域名，改 `endpoint`（见 §2 口径）；`ossUpload.test.ts` 补断言。遗留：真实 OLE2 二进制 `.doc` 本环境无法程序构造，待用户样本（e2e 步骤 8）；断网续传（checkpoint 存 localStorage）为浏览器交互，需 DevTools 手工验证。

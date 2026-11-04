@@ -195,7 +195,7 @@
   - `mvn test` + `pnpm test` + `tsc --noEmit` + `pnpm build` 全绿；提交按 `type(scope)` 分次，全绿后本地提交留 message 给用户确认，审查/复审通过后推送。
 - **测试**：e2e 冒烟清单（单测已分散到 B-01~B-12）
 - **依赖**：B-06、B-07、B-08、B-11、B-12
-- **状态**：未开始
+- **状态**：已完成（2026-11-04。headless 端到端 **21/21** 通过 + SQL 落库核查，`mvn test` 135 全绿、`pnpm test` 76 全绿、`pnpm build`（tsc+vite）通过。30 页 PDF complete 201 → **1.1s READY**（P-04 ≤60s）、≥5MB multipart → READY 5.2s、chunk 15 行、outbox PUBLISHED、审计六段链完整、反例 41301/41501/40901/40401 全中。**发现并修复 B-10 缺陷**：ali-oss 误用 `region`（阿里云地域 `cn-beijing`）而非 `endpoint`（OSS 端点），直传拼成 `{bucket}.cn-beijing.aliyuncs.com` DNS 解析失败；已改 `endpoint` 并补 `ossUpload.test.ts` 断言。**遗留待用户样本**：真实 OLE2 二进制 `.doc`（e2e 步骤 8，本环境无法程序构造）；断网续传为浏览器交互（DevTools offline 手工验证））
 
 ## 建议执行顺序
 

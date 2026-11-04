@@ -9,13 +9,17 @@
 | `requirements/` | 需求陈述说明书、需求规格说明书、原型需求合规检查 |
 | `design/` | 概要设计、详细设计、数据库设计、页面设计与图层规范 |
 | `prototype/` | 三端可交互 HTML、预览图、Figma 配置与 81 屏逐屏索引 |
-| `tasks/` | 任务相关文档占位，当前为空 |
+| `tasks/` | 任务文档：foundation、auth、document 垂直切片 |
+| `test/` | 接口手动测试说明（AuthTest / DocumentTest）与 Apifox 集合 |
+| `review/` | 各切片代码审查与整改复审报告 |
 
 ## 快速导航
 
 - [需求文档](requirements/README.md)
 - [系统设计](design/README.md)
 - [页面原型](prototype/README.md)
+- [任务文档](tasks/README.md)
+- [手动测试](test/DocumentTest.md)
 
 ## 当前基线
 

@@ -26,7 +26,7 @@
   - 连接符计入偏移：块间以 `\n` 连接时，下一块 `char_start` 含前导连接符位；文档级不变量：**同版本按 chunk_no 排序后首块 char_start=0、相邻块 char_end+1=后块 char_start（连接符语义一致）**。
   - 存量重生成：修复后 `POST /{id}/parse` 重解析即产出正确偏移；不做历史数据迁移（本环境测试文档全量重灌，正式环境尚无真实用户数据，任务文档记录该前提）。
 - **测试**：`ChunkingServiceTest` 改断言：代理对（`😀`、生僻字 `𠮷`）不切断、连接符偏移连续、单块硬切连续；`TikaTextExtractorTest` 增补含代理对文本的提取-分块贯通例。
-- **依赖**：无 | **状态**：未开始
+- **依赖**：无 | **状态**：已完成
 
 ## C-02 模型配置档案 + 服务间客户端
 
@@ -37,7 +37,7 @@
   - 新建 `ai.infrastructure.AiServiceClient`：RestClient 调 ai-service 内部接口，超时分级（embed/retrieve 短、生成类长）、透传 `X-Trace-Id`、服务间鉴权头 `X-Internal-Token`（`EDUDOC_AI_INTERNAL_TOKEN` 环境变量，缺失时 AI 接口 50301 干净降级——沿用 1104 启动健壮性教训，客户端 Bean 不得炸启动）；ai-service 不可达 → 50201 可重试。
   - `ai.application` 定义 `AiGateway` 接口（embed/summarize/extractKeypoints/answer/polish/rerank），Impl 在 infrastructure（红线：HTTP 客户端只在 infrastructure）。
 - **测试**：`AiModelProfileSeedTest`（幂等）、`AiServiceClientTest`（mock：超时映射 50201/50401、token 头、trace 透传、缺 token 启动不炸）。
-- **依赖**：无 | **状态**：未开始
+- **依赖**：无 | **状态**：已完成
 
 ## C-03 向量化流水线（Outbox → Stream → EmbedWorker）
 
@@ -49,7 +49,7 @@
   - 幂等：消息重投按 (chunk_id, model_profile_id) uk 覆盖写；`EMBED` 任务行入 `edudoc_ai_task`（task_type=EMBED）记录进度与失败（retry_count 复用）。
   - 观测：`redis-cli XLEN/XPENDING`、`SELECT index_status, COUNT(*) … GROUP BY`。
 - **测试**：`EmbedWorkerTest`（mock AiGateway：批量切分、维度不符整批 FAILED、重投幂等、STALE→READY）；`ChunkEmbeddingRepositoryIT` 风格真库向量往返（TO_VECTOR→VECTOR_DISTANCE 自检，沿用 `[IT-SKIP]` 告警先例）。
-- **依赖**：C-02 | **状态**：未开始
+- **依赖**：C-02 | **状态**：已完成
 
 ## C-04 AI 任务编排 + 摘要链路（含结果导出最小实现）
 
@@ -63,14 +63,14 @@
   - 导出最小实现：`GET /api/v1/ai-results/{id}/export?format=txt|docx`——txt 前端可自产，此端点服务 docx（POI XWPF：标题+段落+引用脚注），`Content-Disposition` 文件名含文档标题；**ponytail 标注**：export 域切片落地后迁出。
   - 超时：单任务预算 60s（`ai.task-timeout-seconds` 配置），worker 超预算置 FAILED(50401)。
 - **测试**：`AiTaskOrchestratorTest`（UT-08 活跃去重、40901 未就绪、权限 40301、非 owner 40401）、`AiTaskWorkerTest`（状态机 CAS、取消竞争、分组进度、非法引用丢弃）、`AiResultExportTest`（docx 生成可读、含引用、不越权）。
-- **依赖**：C-03 | **状态**：未开始
+- **依赖**：C-03 | **状态**：已完成
 
 ## C-05 要点提取任务
 
 - **引用**：REQ-11（≥5 条、按文档顺序、每条可定位）、表 3-4 keypoints。
 - **验收标准**：`POST /documents/{id}/keypoints`（AI_KEYPOINT）复用 C-04 编排（task_type=KEYPOINT）；ai-service 返回 JSON 数组（text + chunkId + 可选 char 建议），后端按引用 chunk 的 char_start **重排为文档顺序**、截断非法引用；条数 <5 时在 structured_json 标记 `under_min`（不判失败，UI 提示）。结果渲染与导出复用摘要通道（result_type=KEYPOINT）。
 - **测试**：`KeypointHandlerTest`（乱序入参重排、非法 chunkId 丢弃、under_min 标记）。
-- **依赖**：C-04 | **状态**：未开始
+- **依赖**：C-04 | **状态**：已完成
 
 ## C-06 问答：检索、证据阈值与拒答（同步链路）
 
@@ -82,7 +82,7 @@
   - 连续追问：请求可带 `history` 由服务端自动取会话最近 6 条消息拼 prompt（前端不传历史，防注入）。
   - 超时预算 5s：ai-service answer 客户端 timeout=4.2s，超时→消息 FAILED(50401)、HTTP 504 契约、不写伪造答案（§7.2「问答超时」端到端口径）。
 - **测试**：`QaAnswerServiceTest`（阈值拒答不调生成 UT-09、非法引用 UT-10、rerank 降级、history 拼接、REFUSED 双消息与 sequence_no）、`QaControllerTest`（校验、40301/40401）。
-- **依赖**：C-03、C-04（任务表与审计复用）| **状态**：未开始
+- **依赖**：C-03、C-04（任务表与审计复用）| **状态**：已完成
 
 ## C-07 润色：段落对照、采纳成版与撤销
 
@@ -93,14 +93,14 @@
   - 撤销：`decision` 支持 `REVERT`——`current_version_id` 回拨至该行 `document_version_id`（版本行保留历史），仅允许撤销**最近一次**未撤销的采纳（否则 40901），审计 `POLISH_REVERTED`。
   - 采纳后文档转 PARSING？——**否**：派生 .txt 走简化解析（文本即结构：按段落成块，跳过 Tika），与解析 worker 复用分块+向量化通道（新 outbox `DOCUMENT_EMBED_REQUESTED` 自然衔接待 C-03 组件），文档 READY 前预览与问答读旧版本内容（current_version 指向策略见风险表 R3）。
 - **测试**：`PolishServiceTest`（段落校验、采纳成版五写、REVERT 仅最近一次、并发采纳 40901、REJECT 不动版本）。
-- **依赖**：C-03、C-04 | **状态**：未开始
+- **依赖**：C-03、C-04 | **状态**：已完成
 
 ## C-08 预览结构树端点
 
 - **引用**：§3.1.3 `GET /documents/{id}/preview`（预览对象或结构树；本切片按 D2 取「结构树」语义）、§5.1.2（预览确认内容结构）。
 - **验收标准**：`GET /api/v1/documents/{id}/preview?versionId=`（DOCUMENT_READ，versionId 仅允许当前版本，同 02 parse 口径）→ 200 `{documentId,versionId,versionNo,blocks:[{chunkId,chunkNo,headingPath,pageNo,charStart,charEnd,text}]}`，blocks 按 chunk_no 排序；文本视图数据源即此端点，一次全量返回（20MB 上限内分块总量可控，`// ponytail: 超长文换分页`）。
 - **测试**：`DocumentPreviewServiceTest`（owner 40401、非当前版本 40901、块序与偏移断言含 C-01 不变量）。
-- **依赖**：C-01 | **状态**：未开始
+- **依赖**：C-01 | **状态**：已完成
 
 ## C-09 ai-service · 六类内部接口与模型适配层
 
@@ -112,7 +112,7 @@
   - `X-Internal-Token` 校验（401）；`X-Trace-Id` 透传进日志；提示模板集中在 `app/prompts.py`（`prompt_version` 常量随结果返回，供 `edudoc_ai_result.prompt_version`）。
   - 启动：`uvicorn app.main:app --port 8000` 写入 README；`.venv` 已有，`uv sync` 补 httpx/pytest。
 - **测试**：pytest（httpx mock 传输层）：embed 批量对齐、answer 引用标记解析、阈值外 JSON 坏输出重试与结构化错误、token 校验 401、超时映射；`python -m pytest` 进验收命令。
-- **依赖**：C-02 契约对齐（可并行开发，凭据到位后联调）| **状态**：未开始
+- **依赖**：C-02 契约对齐（可并行开发，凭据到位后联调）| **状态**：已完成
 
 ## C-10 前端 · API 模块 + 预览页（文本阅读视图）
 

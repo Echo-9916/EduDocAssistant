@@ -11,6 +11,7 @@ import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -29,8 +30,27 @@ import java.util.Optional;
 public class OssStorageAdapter {
 
     private final OssProperties properties;
-    private final com.aliyun.sts20150401.Client stsClient;
-    private final OSS ossClient;
+    private final ObjectProvider<com.aliyun.sts20150401.Client> stsProvider;
+    private final ObjectProvider<OSS> ossProvider;
+
+    /** 凭据缺失只影响 OSS 相关接口（50301 可读文案），不炸启动（1104 前端联调发现的设计缺陷）。 */
+    private void requireConfigured() {
+        if (properties.accessKeyId() == null || properties.accessKeyId().isBlank()) {
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "OSS 未配置：请设置环境变量 EDUDOC_OSS_ACCESS_KEY_ID / EDUDOC_OSS_ACCESS_KEY_SECRET 后重启",
+                    false, Map.of());
+        }
+    }
+
+    private com.aliyun.sts20150401.Client stsClient() {
+        requireConfigured();
+        return stsProvider.getObject();
+    }
+
+    private OSS ossClient() {
+        requireConfigured();
+        return ossProvider.getObject();
+    }
 
     public UploadCredentials issueUploadCredentials(String objectKey, String roleSessionName) {
         String policy = """
@@ -39,6 +59,7 @@ public class OssStorageAdapter {
                 "oss:CompleteMultipartUpload","oss:AbortMultipartUpload","oss:ListParts"],
                 "Resource":"acs:oss:*:*:%s/%s"}]}"""
                 .formatted(properties.bucket(), objectKey);
+        var stsClient = stsClient();
         try {
             AssumeRoleResponse response = stsClient.assumeRole(new AssumeRoleRequest()
                     .setRoleArn(properties.roleArn())
@@ -57,6 +78,7 @@ public class OssStorageAdapter {
 
     /** 对象头校验（complete 回调第一步）：不存在返回空，服务端不可用抛 50301。 */
     public Optional<ObjectInfo> headObject(String objectKey) {
+        var ossClient = ossClient();
         try {
             ObjectMetadata meta = ossClient.getObjectMetadata(properties.bucket(), objectKey);
             return Optional.of(new ObjectInfo(meta.getContentLength(), meta.getETag(),
@@ -77,6 +99,7 @@ public class OssStorageAdapter {
 
     /** 流式实算对象 SHA-256（小写 hex，20MB 上限内单机可接受）。 */
     public String sha256Of(String objectKey) {
+        var ossClient = ossClient();
         try (OSSObject object = ossClient.getObject(properties.bucket(), objectKey);
              InputStream in = object.getObjectContent()) {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -95,6 +118,7 @@ public class OssStorageAdapter {
 
     /** 对象下载到本地临时文件（解析 worker 用，防 20MB 堆内膨胀）。 */
     public void downloadTo(String objectKey, java.nio.file.Path target) {
+        var ossClient = ossClient();
         try {
             ossClient.getObject(new com.aliyun.oss.model.GetObjectRequest(properties.bucket(), objectKey),
                     target.toFile());

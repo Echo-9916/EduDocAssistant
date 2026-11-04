@@ -60,7 +60,9 @@ export async function uploadToOss(
   onProgress?: (percent: number) => void,
 ): Promise<void> {
   const client = new OSS({
-    region: session.region,
+    // 用 endpoint 而非 region：后端 region 是「阿里云地域」cn-beijing，ali-oss 的 region 却是
+    // OSS 端点前缀 oss-cn-beijing，直传会拼成 {bucket}.cn-beijing.aliyuncs.com（DNS 解析失败）
+    endpoint: session.endpoint,
     accessKeyId: session.sts.accessKeyId,
     accessKeySecret: session.sts.accessKeySecret,
     stsToken: session.sts.securityToken,

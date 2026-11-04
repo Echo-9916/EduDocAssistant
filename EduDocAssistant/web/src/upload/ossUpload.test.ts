@@ -28,7 +28,7 @@ const session: UploadSessionResult = {
   sessionId: 'S1',
   objectKey: 'edudoc/uploads/202611/U1/S1-a.pdf',
   bucket: 'b',
-  region: 'oss-cn-beijing',
+  region: 'cn-beijing',
   endpoint: 'https://oss-cn-beijing.aliyuncs.com',
   sts: { accessKeyId: 'AK', accessKeySecret: 'SK', securityToken: 'T', expiration: 'x' },
 }
@@ -60,10 +60,14 @@ describe('uploadToOss', () => {
     localStorage.clear()
   })
 
-  it('小文件走 put 且带 STS 凭证', async () => {
+  it('小文件走 put 且带 STS 凭证与正确 endpoint（B-13 发现：region 会拼错域名）', async () => {
     h.put.mockResolvedValue({})
     await uploadToOss(session, file('a.pdf', 'application/pdf', 1024))
-    expect(h.opts).toMatchObject({ accessKeyId: 'AK', stsToken: 'T', bucket: 'b', secure: true })
+    expect(h.opts).toMatchObject({
+      accessKeyId: 'AK', stsToken: 'T', bucket: 'b', secure: true,
+      endpoint: 'https://oss-cn-beijing.aliyuncs.com',
+    })
+    expect(h.opts).not.toHaveProperty('region')
     expect(h.put).toHaveBeenCalledTimes(1)
     expect(h.multipartUpload).not.toHaveBeenCalled()
   })

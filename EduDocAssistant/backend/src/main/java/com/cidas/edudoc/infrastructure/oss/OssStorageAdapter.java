@@ -130,6 +130,24 @@ public class OssStorageAdapter {
     }
 
     /** 浏览器直传所需的全部信息（STS 临时凭据 + 目标对象位置）。 */
+    /** 服务端小对象写入（D3 派生 .txt）：私有桶 text/plain，SDK 异常原文只进日志（S6 口径）。 */
+    public ObjectInfo putText(String objectKey, String content) {
+        byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ObjectMetadata meta = new ObjectMetadata();
+        meta.setContentType("text/plain; charset=utf-8");
+        meta.setContentLength(bytes.length);
+        try {
+            var result = ossClient().putObject(properties.bucket(), objectKey,
+                    new java.io.ByteArrayInputStream(bytes), meta);
+            log.info("派生对象写入 objectKey={} size={}", objectKey, bytes.length);
+            return new ObjectInfo(bytes.length, result.getETag(), result.getVersionId(), "SSE-OSS");
+        } catch (OSSException | com.aliyun.oss.ClientException e) {
+            log.error("派生对象写入失败 objectKey={}", objectKey, e);
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "OSS 派生对象写入失败", true, Map.of());
+        }
+    }
+
     public record UploadCredentials(String accessKeyId, String accessKeySecret, String securityToken,
                                     String expiration, String bucket, String region, String endpoint) {
     }

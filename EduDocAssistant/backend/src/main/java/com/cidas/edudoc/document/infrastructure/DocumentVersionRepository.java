@@ -23,4 +23,14 @@ public class DocumentVersionRepository {
     public Optional<DocumentVersion> findById(String idHex) {
         return Optional.ofNullable(mapper.selectById(idHex));
     }
+
+    /** 当前最大版本号（无版本返回 0）。 */
+    public int maxVersionNo(String documentIdHex) {
+        Integer max = mapper.selectMaxVersionNo(documentIdHex);
+        return max == null ? 0 : max;
+    }
+
+    public Optional<DocumentVersion> findByDocumentAndVersionNo(String documentIdHex, int versionNo) {
+        return Optional.ofNullable(mapper.selectByDocumentAndVersionNo(documentIdHex, versionNo));
+    }
 }

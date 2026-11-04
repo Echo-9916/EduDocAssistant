@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.ai.infrastructure.PolishResultMapper">
+
+    <sql id="columns">
+        RAWTOHEX(p.id) AS id, RAWTOHEX(p.document_id) AS documentId,
+        RAWTOHEX(p.document_version_id) AS documentVersionId, RAWTOHEX(p.user_id) AS userId,
+        RAWTOHEX(p.ai_task_id) AS aiTaskId, p.source_text AS sourceText,
+        p.polished_text AS polishedText, p.accepted_text AS acceptedText, p.decision
+    </sql>
+
+    <insert id="insertBatch">
+        INSERT INTO edudoc_polish_result (id, document_id, document_version_id, user_id, ai_task_id,
+            source_text, polished_text, decision)
+        <foreach collection="rows" item="r" separator=" UNION ALL ">
+            SELECT HEXTORAW(#{r.id}), HEXTORAW(#{r.documentId}), HEXTORAW(#{r.documentVersionId}),
+                HEXTORAW(#{r.userId}), HEXTORAW(#{r.aiTaskId}),
+                #{r.sourceText, jdbcType=CLOB}, #{r.polishedText, jdbcType=CLOB}, #{r.decision}
+            FROM DUAL
+        </foreach>
+    </insert>
+
+    <select id="selectById" resultType="com.cidas.edudoc.ai.infrastructure.PolishResult">
+        SELECT <include refid="columns"/>
+        FROM edudoc_polish_result p
+        WHERE p.id = HEXTORAW(#{idHex})
+    </select>
+
+    <select id="selectLatestApplied" resultType="com.cidas.edudoc.ai.infrastructure.PolishResult">
+        SELECT * FROM (
+            SELECT <include refid="columns"/>
+            FROM edudoc_polish_result p
+            WHERE p.document_id = HEXTORAW(#{documentIdHex}) AND p.decision IN ('ACCEPT', 'PARTIAL')
+            ORDER BY p.update_time DESC, p.create_time DESC
+        ) WHERE ROWNUM = 1
+    </select>
+
+    <update id="updateDecision">
+        UPDATE edudoc_polish_result
+        SET decision = #{decision},
+            accepted_text = #{acceptedText, jdbcType=CLOB}
+        WHERE id = HEXTORAW(#{idHex})
+        <if test="expectPending">AND decision = 'PENDING'</if>
+    </update>
+
+</mapper>

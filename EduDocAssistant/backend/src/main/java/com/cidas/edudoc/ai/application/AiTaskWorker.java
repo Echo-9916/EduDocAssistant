@@ -175,6 +175,7 @@ public class AiTaskWorker {
         try {
             switch (task.getTaskType()) {
                 case "SUMMARY" -> handleSummary(task, beganAt);
+                case "KEYPOINT" -> handleKeypoint(task, beganAt);
                 default -> aiTaskRepository.markFailed(taskId, "50001");
             }
         } catch (CidasBusinessException e) {
@@ -255,6 +256,87 @@ public class AiTaskWorker {
                         "promptVersion", promptVersion == null ? "" : promptVersion,
                         "elapsedMs", (System.nanoTime() - beganAt) / 1_000_000,
                         "inputTokens", inputTokens, "outputTokens", outputTokens));
+    }
+
+    /** C-05 要点：分组提取 → 非法 chunkId 丢弃 → 按引用块 char_start 重排为文档顺序 → <5 条标记 underMin。 */
+    private void handleKeypoint(AiTask task, long beganAt) {
+        List<VersionChunk> chunks = embeddingRepository.selectVersionChunks(task.getDocumentVersionId());
+        if (chunks.isEmpty()) {
+            throw new CidasBusinessException(ErrorCode.MODEL_FAILED, "版本无分块，无法提取要点");
+        }
+        Map<String, VersionChunk> validChunks = citationService.indexByVersion(chunks);
+        List<List<VersionChunk>> groups = groupChunks(chunks, properties.groupChars());
+        List<AiGateway.Keypoint> raw = new ArrayList<>();
+        String model = null;
+        String promptVersion = null;
+        int inputTokens = 0;
+        int outputTokens = 0;
+        for (int i = 0; i < groups.size(); i++) {
+            checkBudget(beganAt);
+            AiGateway.KeypointOutcome outcome = aiGateway.extractKeypoints(groups.get(i).stream()
+                    .map(c -> new SourceChunk(c.chunkId(), c.contentText())).toList());
+            raw.addAll(outcome.keypoints());
+            if (outcome.model() != null) {
+                model = outcome.model();
+            }
+            if (outcome.promptVersion() != null) {
+                promptVersion = outcome.promptVersion();
+            }
+            if (outcome.usage() != null) {
+                inputTokens += outcome.usage().inputTokens() == null ? 0 : outcome.usage().inputTokens();
+                outputTokens += outcome.usage().outputTokens() == null ? 0 : outcome.usage().outputTokens();
+            }
+            int progress = 5 + (int) ((i + 1) * 90.0 / groups.size());
+            if (!aiTaskRepository.updateProgress(task.getId(), Math.min(progress, 99))) {
+                log.info("要点任务已被取消，静默丢弃：taskId={}", task.getId());
+                return;
+            }
+        }
+        checkBudget(beganAt);
+
+        record OrderedKeypoint(VersionChunk chunk, AiGateway.Keypoint keypoint) {
+        }
+        List<OrderedKeypoint> kept = raw.stream()
+                .filter(k -> k.chunkId() != null && validChunks.containsKey(k.chunkId()))
+                .map(k -> new OrderedKeypoint(validChunks.get(k.chunkId()), k))
+                .sorted(java.util.Comparator
+                        .comparingInt((OrderedKeypoint o) -> o.chunk().charStart() == null
+                                ? Integer.MAX_VALUE : o.chunk().charStart())
+                        .thenComparingInt(o -> o.chunk().chunkNo()))
+                .toList();
+        boolean underMin = kept.size() < 5; // 不判失败，UI 提示（REQ-11 口径）
+        List<AiCitation> citations = new ArrayList<>();
+        List<Map<String, Object>> views = new ArrayList<>();
+        String resultId = Ids.hex16();
+        int rank = 1;
+        StringBuilder content = new StringBuilder();
+        for (OrderedKeypoint o : kept) {
+            VersionChunk chunk = o.chunk();
+            citations.add(new AiCitation(Ids.hex16(), resultId, chunk.chunkId(), chunk.pageNo(),
+                    chunk.charStart(), chunk.charEnd(),
+                    AiResultRepository.clipQuote(chunk.contentText()), rank));
+            content.append(rank).append(". ").append(o.keypoint().text()).append('\n');
+            views.add(Map.of("text", o.keypoint().text(), "chunkId", chunk.chunkId(),
+                    "charStart", chunk.charStart() == null ? -1 : chunk.charStart()));
+            rank++;
+        }
+        Map<String, Object> structuredMap = new java.util.LinkedHashMap<>();
+        structuredMap.put("keypoints", views);
+        structuredMap.put("underMin", underMin);
+        String structured = writeJson(structuredMap);
+        AiResult result = new AiResult(resultId, task.getId(), "KEYPOINT", content.toString(),
+                structured, model == null ? "unknown" : model,
+                promptVersion == null ? "unknown" : promptVersion,
+                inputTokens == 0 ? null : inputTokens, outputTokens == 0 ? null : outputTokens);
+        if (!resultTxService.completeTask(result, citations)) {
+            log.info("要点任务写回竞争落败（已取消），丢弃结果：taskId={}", task.getId());
+            return;
+        }
+        auditService.record("AI_TASK_SUCCEEDED", "AI_TASK", task.getId(), task.getDocumentId(), "200",
+                Map.of("taskType", "KEYPOINT", "model", model == null ? "" : model,
+                        "promptVersion", promptVersion == null ? "" : promptVersion,
+                        "elapsedMs", (System.nanoTime() - beganAt) / 1_000_000,
+                        "keypointCount", kept.size(), "underMin", underMin));
     }
 
     /** 按 chunk 序累计字符数 ≤groupChars 分组；单块超限自成一组（chunk_size 1500 下不发生）。 */

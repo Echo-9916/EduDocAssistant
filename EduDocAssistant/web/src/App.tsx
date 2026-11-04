@@ -8,10 +8,17 @@ import AccountRestricted from './pages/AccountRestricted'
 import ForgotPassword from './pages/ForgotPassword'
 import Forbidden from './pages/Forbidden'
 import SectionPlaceholder from './pages/SectionPlaceholder'
+import Documents from './pages/Documents'
 import Demo from './pages/Demo'
 import { roleNav, rolePath } from './routes'
 import type { NavItem } from './routes'
 import type { RoleCodeValue } from './api/types'
+
+/** B-12：nav key → 真实页面映射；未接线的 key 仍走占位（其余切片逐个替换）。 */
+export function pageOf(role: RoleCodeValue, item: NavItem) {
+  if (item.key === 'documents') return <Documents role={role} />
+  return <SectionPlaceholder title={item.label} />
+}
 
 function Home() {
   const { user } = useAuth()
@@ -50,7 +57,7 @@ export default function App() {
             >
               <Route index element={<Navigate to={nav[0].key} replace />} />
               {nav.map((item) => {
-                const element = <SectionPlaceholder title={item.label} />
+                const element = pageOf(role, item)
                 return (
                   <Route
                     key={item.key}

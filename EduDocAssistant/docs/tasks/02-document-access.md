@@ -138,9 +138,9 @@
 - **验收标准**：
   - 新建 `web/src/api/documents.ts`：`listDocuments(params)` / `createUploadSession(req)` / `completeUpload(sessionId,req)` / `getDocument(id)` / `deleteDocument(id)` / `restoreDocument(id)` / `reparseDocument(id,versionId?)` / `listCourses()`；全部复用 http.ts，不改既有封装。
   - `api/types.ts` 增 `DocType`（COURSEWARE/HOMEWORK/THESIS/REPORT）与 `DocStatus`（UPLOADING/PARSING/READY/FAILED/DELETED）常量及 Summary/Detail 类型。
-- **测试**：`documents.test.ts`（参数拼装、路径、解包）。
+- **测试**：`documents.test.ts`（3 例：list 参数透传、路径、写接口 body/路径全量）。
 - **依赖**：B-03/B-04/B-07/B-08 契约固定（可先行按契约开发）
-- **状态**：未开始
+- **状态**：已完成（2026-11-04，types.ts 增 DocType/DocStatus 常量与 Summary/Detail/CourseView/UploadSessionResult 类型，字段以后端实测响应为准）
 
 ## B-10 前端 · OSS 直传封装（含断点续传）
 
@@ -150,9 +150,9 @@
   - 安装 `ali-oss`（^6，缺类型则补 `@types/ali-oss`）；不自研 OSS V4 签名。
   - 新建 `web/src/upload/ossUpload.ts`：`sha256Hex(file)` 用 `crypto.subtle.digest`；`uploadToOss(session,sts,file,onProgress)`——<5MB `client.put`，≥5MB `client.multipartUpload`（partSize 1MB、parallel 3、headers 带 Content-Type 与 x-oss-meta-sha256）。
   - 断点续传（2026-11-02 用户决策入本切片）：checkpoint 存 `localStorage['edudoc-ckpt-'+sessionId]`，重传时读出传入，成功后清除；`parts` 清单从 checkpoint.uploadedParts 取传 complete。
-- **测试**：`ossUpload.test.ts`（mock ali-oss：put/multipart 分流阈值、progress 回调、checkpoint 存取清除、sha256 十六进制正确性）。
+- **测试**：`ossUpload.test.ts`（7 例：校验放行/拒绝四类、小文件 put 带 STS 凭证、multipart 阈值分流、checkpoint 成功清除/失败留存、sha256 已知向量）。
 - **依赖**：B-09
-- **状态**：未开始
+- **状态**：已完成（2026-11-04，ali-oss 6.23.0 + @types；实现差异：put 无进度回调（ali-oss 类型不含 progress），小文件完成即 100%）
 
 ## B-11 前端 · 我的文档页 + 上传 Modal + 详情 Drawer（学生/教师共用）
 
@@ -163,9 +163,9 @@
   - 轮询：列表存在 UPLOADING/PARSING 行时 3s `setInterval` 重拉当前页，全部终态即停，卸载/视图切换清理定时器（`// ponytail: 单机轮询够用，并发大了换 SSE`）。
   - 新建 `pages/DocumentUploadModal.tsx`：Upload.Dragger 多文件（逐个会话串行上传）；前端校验扩展名+MIME+≤20MB（§4.3 文案）；表单：标题（默认文件名去扩展名可改）、课程（教师必填/学生可选）、类型下拉（必填；SRS「默认自动识别」不可实现，默认留空，差异记入本文档待评审）；每文件独立进度条与错误态；流程 createUploadSession→sha256→直传→complete→关 Modal 刷新列表；失败保留输入不回空白页。
   - 新建 `pages/DocumentDetailDrawer.tsx`：元数据 + 当前版本（versionNo/contentHash 前 8 位）+ chunkCount + 重新解析/删除入口；不做预览页（排除项）。
-- **测试**：`Documents.test.tsx`（渲染/筛选/分页/搜索参数、状态徽标、轮询启停 fake timers、删除恢复调用、FAILED 重解析）、`DocumentUploadModal.test.tsx`（校验拦截、多文件流程 mock ossUpload、失败保留输入）、`DocumentDetailDrawer.test.tsx`。
+- **测试**：`Documents.test.tsx`（5 例：列表渲染+文字徽标+教师课程列、学生无课程列、回收站切换与恢复、FAILED 重解析、轮询启停 fake timers 只断言调用计数）、`DocumentUploadModal.test.tsx`（4 例:txt 拦截、未选类型/教师未绑课拦截、单文件全流程）、`DocumentDetailDrawer.test.tsx`（3 例）。
 - **依赖**：B-09、B-10
-- **状态**：未开始
+- **状态**：已完成（2026-11-04。实现要点:多文件时标题逐文件取自身文件名防撞 uk_document_1，标题输入框仅单文件生效；antd beforeUpload 每文件回调一次，只收当前文件防重复添加；轮询用 params useMemo 去重）
 
 ## B-12 前端 · 教师端接线与路由
 
@@ -174,9 +174,9 @@
 - **验收标准**：
   - `App.tsx` 增 `pageOf` 映射：`documents` → `<Documents role=…/>`（学生/教师各自 role），其余 key 仍走占位；routes.ts 不动。
   - 教师端差异：课程列显示、上传课程必填、课程筛选来自所授课程；「课程共享文档」不入本切片（依赖 ACL 域）。
-- **测试**：扩展 `routes.test.ts` 或 App 路由级测试：`/student/documents`、`/teacher/documents` 渲染真实页面而非占位；无权限仍走 403 逻辑。
+- **测试**：`App.pageOf.test.tsx`（2 例：documents key 渲染真实页面非占位、未接线 key 走占位）。路由级 403 逻辑由既有 `RequireAuth.test.tsx` 覆盖，routes.ts 未改动无需重测。
 - **依赖**：B-11
-- **状态**：未开始
+- **状态**：已完成（2026-11-04，App.tsx 增导出 `pageOf(role,item)`；教师差异在 Documents/UploadModal 内以 role prop 分支）
 
 ## B-13 联调 · 端到端文档闭环 + 测试文档
 

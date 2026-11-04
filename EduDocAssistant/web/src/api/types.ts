@@ -69,6 +69,27 @@ export const RoleCode = {
 } as const
 export type RoleCodeValue = (typeof RoleCode)[keyof typeof RoleCode]
 
+/** 文档类型（edudoc_document.doc_type） */
+export const DocType = {
+  COURSEWARE: 'COURSEWARE',
+  HOMEWORK: 'HOMEWORK',
+  THESIS: 'THESIS',
+  REPORT: 'REPORT',
+} as const
+export type DocTypeValue = (typeof DocType)[keyof typeof DocType]
+
+/** 文档状态（edudoc_document.status；UPLOADING 仅前端会话态，后端建档即 PARSING） */
+export const DocStatus = {
+  UPLOADING: 'UPLOADING',
+  PARSING: 'PARSING',
+  READY: 'READY',
+  FAILED: 'FAILED',
+  SUBMITTED: 'SUBMITTED',
+  ARCHIVED: 'ARCHIVED',
+  DELETED: 'DELETED',
+} as const
+export type DocStatusValue = (typeof DocStatus)[keyof typeof DocStatus]
+
 /** 权限点编码（04_seed.sql） */
 export const PermissionCode = {
   DOCUMENT_READ: 'DOCUMENT_READ',

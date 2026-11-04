@@ -27,4 +27,9 @@ public class DocumentChunkRepository {
     public int countByVersion(String versionIdHex) {
         return mapper.countByVersion(versionIdHex);
     }
+
+    /** 版本全部分块（chunk_no 升序）：预览结构树数据源。 */
+    public List<DocumentChunk> selectAllByVersion(String versionIdHex) {
+        return mapper.selectAllByVersion(versionIdHex);
+    }
 }

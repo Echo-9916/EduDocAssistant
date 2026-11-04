@@ -22,4 +22,15 @@
         SELECT COUNT(*) FROM edudoc_document_chunk WHERE document_version_id = HEXTORAW(#{versionIdHex})
     </select>
 
+    <select id="selectAllByVersion" resultType="com.cidas.edudoc.document.infrastructure.DocumentChunk">
+        SELECT RAWTOHEX(c.id) AS id, RAWTOHEX(c.document_version_id) AS documentVersionId,
+               c.chunk_no AS chunkNo, c.heading_path AS headingPath, c.page_no AS pageNo,
+               c.char_start AS charStart, c.char_end AS charEnd,
+               c.content_text AS contentText, c.token_count AS tokenCount,
+               c.content_hash AS contentHash, c.index_status AS indexStatus
+        FROM edudoc_document_chunk c
+        WHERE c.document_version_id = HEXTORAW(#{versionIdHex})
+        ORDER BY c.chunk_no
+    </select>
+
 </mapper>

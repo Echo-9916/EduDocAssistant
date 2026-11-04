@@ -7,6 +7,7 @@ import com.cidas.edudoc.common.security.RequirePermission;
 import com.cidas.edudoc.document.api.dto.ParseRequest;
 import com.cidas.edudoc.document.api.dto.ParseResponse;
 import com.cidas.edudoc.document.application.DocumentLifecycleService;
+import com.cidas.edudoc.document.application.DocumentPreviewService;
 import com.cidas.edudoc.document.application.DocumentQueryService;
 import com.cidas.edudoc.document.application.DocumentQueryService.Detail;
 import com.cidas.edudoc.document.application.DocumentQueryService.ListQuery;
@@ -31,6 +32,15 @@ public class DocumentController {
 
     private final DocumentQueryService documentQueryService;
     private final DocumentLifecycleService documentLifecycleService;
+    private final DocumentPreviewService documentPreviewService;
+
+    @GetMapping("/{documentId}/preview")
+    @RequirePermission(PermissionCode.DOCUMENT_READ)
+    public ApiResponse<DocumentPreviewService.Preview> preview(
+            @PathVariable("documentId") String documentId,
+            @RequestParam(name = "versionId", required = false) String versionId) {
+        return ApiResponse.ok(documentPreviewService.preview(documentId, versionId));
+    }
 
     @GetMapping
     @RequirePermission(PermissionCode.DOCUMENT_READ)

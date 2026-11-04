@@ -13,4 +13,6 @@ public interface DocumentChunkMapper {
     int deleteByVersion(@Param("versionIdHex") String versionIdHex);
 
     int countByVersion(@Param("versionIdHex") String versionIdHex);
+
+    java.util.List<DocumentChunk> selectAllByVersion(@Param("versionIdHex") String versionIdHex);
 }

@@ -35,13 +35,13 @@
         ) WHERE ROWNUM = 1
     </select>
 
-    <select id="selectAppliedVersionIds" resultType="string">
-        SELECT JSON_VALUE(d.detail_json, '$.versionId')
-        FROM edudoc_audit_log d
-        WHERE d.action_type = 'POLISH_APPLIED'
-          AND JSON_VALUE(d.detail_json, '$.polishId') = #{polishId}
-        ORDER BY d.create_time
-    </select>
+    <update id="updateDecisionApplied">
+        UPDATE edudoc_polish_result
+        SET decision = #{decision},
+            accepted_text = #{acceptedText, jdbcType=CLOB},
+            document_version_id = HEXTORAW(#{replacedVersionIdHex})
+        WHERE id = HEXTORAW(#{idHex}) AND decision = 'PENDING'
+    </update>
 
     <update id="updateDecision">
         UPDATE edudoc_polish_result

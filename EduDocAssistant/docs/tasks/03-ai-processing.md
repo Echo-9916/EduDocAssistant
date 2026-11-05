@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | D1 | 真实模型接入 | OpenAI 兼容适配层，推荐硅基流动 SiliconFlow 一路凭据：对话模型 + `BAAI/bge-m3` 嵌入（恰好 1024 维，匹配 `edudoc_chunk_embedding.VECTOR(1024)` 列）+ `bge-reranker-v2-m3`。API Key 由用户经环境变量提供，不入仓 |
 | D2 | 预览页形态 = 文本阅读视图 | 按已解析分块（text + heading_path + page_no + char 区间）渲染可读视图，页码锚点；引用回跳=滚动至对应块并高亮 char_start~char_end。02 排除的预览页由本切片补上（不做 pdf.js 原样渲染） |
-| D3 | 润色采纳落地物 = 派生全文 .txt 对象 | 以解析文本为底、替换被采纳段落，生成派生 oss_object（**角色落字典值 PARSED**，`ck_oss_role` 无 DERIVED——概念名与列值解耦，1105 审查确认）→ `version_type=EDIT` 新版本；撤销=当前 EDIT 版本弹栈、`current_version_id` 回拨前一版本（版本行保留，不违不可变红线；撤销前经 POLISH_APPLIED 审计回溯校验当前版本确由该行最近一次采纳产生，「撤销→重采纳」孤儿链显式 40901 拒绝——**1105 审查 P2/C07 整改后口径**，单次链下与「回拨至 document_version_id」等价）；docx 写回属协作编辑域，不做 |
+| D3 | 润色采纳落地物 = 派生全文 .txt 对象 | 以解析文本为底、替换被采纳段落，生成派生 oss_object（**角色落字典值 PARSED**，`ck_oss_role` 无 DERIVED——概念名与列值解耦，1105 审查确认）→ `version_type=EDIT` 新版本；**采纳时把被替换版本回写 `polish_result.document_version_id`，撤销=回拨至该行（D3 原公式在链式/孤儿场景逐行正确——1105 冒烟复测以 version_no-1 弹栈会弹进孤儿版本后修正）**，仅允许撤销最近一次未撤销的采纳（否则 40901），版本行保留不违不可变红线；docx 写回属协作编辑域，不做 |
 
 ## 不属本切片
 
@@ -78,7 +78,7 @@
 - **现状**：表空；前端无问答面板。
 - **验收标准**：
   - `POST /qa/sessions` `{documentId, title?}`（AI_QA + READ）→ 201 会话（owner 唯一，uk 无则按 (document_id,user_id) 复用活跃会话口径由服务层保证，状态 A/C 支持归档重建）；`GET /qa/sessions?documentId=` 历史回看（5.1.3 历史记录要求）。
-  - `POST /qa/sessions/{id}/messages` `{question}`（1-1000 字符，§4.3 校验）：同步执行——question→`AiGateway.embed`→`RetrievalService`（`VECTOR_DISTANCE(e, TO_VECTOR(?), 1, COSINE)` 走版本内 topK=6，SQL 全在 mapper.xml）→ `rerank`（未配置 RERANK profile 或调用失败 → **降级按向量序 take(4)**，`// ponytail` 标注）→ `evidenceScore = 1 - min(distance)` 与 `edudoc.qa.evidence-threshold`（默认 0.35，配置可调——物理世界校准口）比对 → 不足：qa_message(REFUSED)×2（USER+ASSISTANT），200 返回拒答结构（**拒答是业务成功**，状态机口径 §3.2.1）；足够：`answer`（evidence-only prompt，maxTokens=900）→ CitationService 校验 chunkId 属本版本且引用文本与分块内容可核对（前 20 字符包含即可，防漂移放大）→ 全部非法→REFUSED（UT-10）→ 落库 ASSISTANT 消息（ai_task_id=同步建的 QA 任务行，供 token 统计与审计）+ citations，`sequence_no` 会话内自增（uk_qa_message_1）。
+  - `POST /qa/sessions/{id}/messages` `{question}`（1-1000 字符，§4.3 校验）：同步执行——question→`AiGateway.embed`→`RetrievalService`（`VECTOR_DISTANCE(e, TO_VECTOR(?), 1, COSINE)` 走版本内 topK=6，SQL 全在 mapper.xml）→ `rerank`（未配置 RERANK profile 或调用失败 → **降级按向量序 take(4)**，`// ponytail` 标注）→ `evidenceScore = max(0, 1 - min(distance)/2)`（余弦距离值域 [0,2] 归一为 [0,1] 相似度——1105 冒烟复测修正：旧式 `1-min(d)` 在 d>0.65 时恒低于阈值致全线拒答）与 `edudoc.qa.evidence-threshold`（默认 0.60，真机校准：同文≈0.94/改写≈0.78/文档外≈0.50-0.59；配置可调——物理世界校准口）比对 → 不足：qa_message(REFUSED)×2（USER+ASSISTANT），200 返回拒答结构（**拒答是业务成功**，状态机口径 §3.2.1）；足够：`answer`（evidence-only prompt，maxTokens=900）→ CitationService 校验 chunkId 属本版本且引用文本与分块内容可核对（前 20 字符包含即可，防漂移放大）→ 全部非法→REFUSED（UT-10）→ 落库 ASSISTANT 消息（ai_task_id=同步建的 QA 任务行，供 token 统计与审计）+ citations，`sequence_no` 会话内自增（uk_qa_message_1）。
   - 连续追问：请求可带 `history` 由服务端自动取会话最近 6 条消息拼 prompt（前端不传历史，防注入）。
   - 超时预算 5s：ai-service answer 客户端 timeout=4.2s，超时→消息 FAILED(50401)、HTTP 504 契约、不写伪造答案（§7.2「问答超时」端到端口径）。
 - **测试**：`QaAnswerServiceTest`（阈值拒答不调生成 UT-09、非法引用 UT-10、rerank 降级、history 拼接、REFUSED 双消息与 sequence_no）、`QaControllerTest`（校验、40301/40401）。

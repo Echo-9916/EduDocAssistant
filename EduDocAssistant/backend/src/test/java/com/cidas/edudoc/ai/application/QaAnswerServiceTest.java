@@ -90,6 +90,11 @@ class QaAnswerServiceTest {
         return new SearchHit(id, text, 1, 0, 9, distance);
     }
 
+    /** 归一相似度口径（score=max(0,1-d/2)）下与阈值 0.35 等价的原始距离值。 */
+    private static double distForScore(double score) {
+        return 2.0 * (1.0 - score);
+    }
+
     private void givenHits(SearchHit... hits) {
         when(embeddingRepository.searchByVersion(eq(VERSION), eq(PROFILE_ID), anyString(), eq(1024), eq(6)))
                 .thenReturn(List.of(hits));
@@ -97,8 +102,8 @@ class QaAnswerServiceTest {
 
     @Test
     void lowEvidenceScoreRefusesWithoutGeneration() {
-        // UT-09：1 - min(0.9)=0.1 < 0.35 → REFUSED，不调生成
-        givenHits(hit("H1", 0.9, "无关内容"), hit("H2", 0.95, "无关内容2"));
+        // UT-09：score=1-min(d)/2=0.1 < 0.35 → REFUSED，不调生成
+        givenHits(hit("H1", distForScore(0.1), "无关内容"), hit("H2", distForScore(0.05), "无关内容2"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.empty());
 
         QaService.AskResult result = service.ask(SESSION_ID, "文档外问题？");
@@ -112,7 +117,7 @@ class QaAnswerServiceTest {
 
     @Test
     void refuseWriteCarriesUserQuestionAndNoTask() {
-        givenHits(hit("H1", 0.9, "无关"));
+        givenHits(hit("H1", distForScore(0.1), "无关"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.empty());
 
         service.ask(SESSION_ID, "问题？");

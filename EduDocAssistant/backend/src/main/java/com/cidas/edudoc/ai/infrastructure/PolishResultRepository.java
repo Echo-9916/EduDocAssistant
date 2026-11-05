@@ -32,12 +32,13 @@ public class PolishResultRepository {
         return mapper.updateDecision(idHex, decision, acceptedText, true) == 1;
     }
 
-    public void updateDecision(String idHex, String decision, String acceptedText) {
-        mapper.updateDecision(idHex, decision, acceptedText, false);
+    /** 采纳专用条件更新：同时把被替换版本回写 document_version_id（撤销目标）。 */
+    public boolean updateDecisionApplied(String idHex, String decision, String acceptedText,
+                                         String replacedVersionIdHex) {
+        return mapper.updateDecisionApplied(idHex, decision, acceptedText, replacedVersionIdHex) == 1;
     }
 
-    /** 该行采纳产生的版本 ID 链（审计回溯，撤销校验用）。 */
-    public List<String> findAppliedVersionIds(String polishIdHex) {
-        return mapper.selectAppliedVersionIds(polishIdHex);
+    public void updateDecision(String idHex, String decision, String acceptedText) {
+        mapper.updateDecision(idHex, decision, acceptedText, false);
     }
 }

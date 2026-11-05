@@ -92,11 +92,11 @@ watch -n2 "curl -s -H \"Authorization: Bearer $TT\" http://localhost:8080/api/v1
 
 - `POST /api/v1/qa/sessions`（AI_QA）body `{documentId,title?}` → **201** `data={sessionId,documentId,title,status:"A"}`；同 (文档,用户) 已有活跃会话 → **复用返回同一 sessionId**（服务层保证，无 uk）；文档非 READY → 40901
 - `GET /api/v1/qa/sessions?documentId=` → 本人该文档会话列表（历史回看，≤50）
-- `POST /api/v1/qa/sessions/{sessionId}/messages` body `{question}`（**1-1000 字符**，空白 → 40001）→ 同步执行 §3.2.2 算法：embed → `VECTOR_DISTANCE` 版本内 **topK=6** → rerank **take(4)**（RERANK 档案缺失/调用失败 → **降级向量序**，R2）→ `evidenceScore = 1 - min(distance)` vs **阈值 0.35**（`edudoc.qa.evidence-threshold` 校准口）→
+- `POST /api/v1/qa/sessions/{sessionId}/messages` body `{question}`（**1-1000 字符**，空白 → 40001）→ 同步执行 §3.2.2 算法：embed → `VECTOR_DISTANCE` 版本内 **topK=6** → rerank **take(4)**（RERANK 档案缺失/调用失败 → **降级向量序**，R2）→ `evidenceScore = max(0, 1 - min(distance)/2)`（余弦距离 [0,2] 归一，1105 冒烟校准：同文≈0.94/改写≈0.78/文档外≈0.50-0.59）vs **阈值 0.60**（`edudoc.qa.evidence-threshold` 校准口）→
   - **不足/无命中** → 200 `{status:"REFUSED", answer:"未在文档中找到依据，无法回答该问题。"}`（**拒答是业务成功**；USER+ASSISTANT 双消息落库，status=REFUSED）
   - **足够** → evidence-only 生成（maxTokens=900、提示收敛 150 字）→ 引用硬校验（chunkId ∈ 本证据集，quote 前 20 字符可核对）→ **全部非法 → REFUSED**（UT-10）→ 200 `{status:"READY",answer,citations[{chunkId,pageNo,charStart,charEnd,quoteText}]}`；同事务落 QA 任务行（token 统计）+ `ai_result(ANSWER)` + citations + 双消息（sequenceNo 会话内自增）
   - **连续追问**：服务端自动取会话最近 6 条 READY 消息拼 prompt（前端不传历史，防注入）
-- **超时口径（P-05）**：客户端预算 4.8s（`edudoc.ai-service.answer-timeout-ms`）/ai-service 侧 4.6s；超预算 → ASSISTANT 落 **FAILED** 消息 + HTTP **504**/50401，**不写伪造答案**；50201 同理 502
+- **超时口径（P-05，1105 审查 P1-3 整改后）**：**端到端统一预算** `edudoc.qa.budget-ms=5000` 作 deadline，剩余时间逐段传给 embed/rerank/answer（answer 客户端上限 4.8s、ai-service 侧 4.6s）；预算耗尽或段超时 → ASSISTANT 落 **FAILED** 消息 + HTTP **504**/50401，**不写伪造答案**；50201 同理 502
 - **反例**：非本人会话 → 40401；空/超长问题 → 40001；归档会话提问 → 40901
 
 ```bash
@@ -116,7 +116,7 @@ curl -s -X POST -H "Authorization: Bearer $TT" -H 'Content-Type: application/jso
 - `POST /api/v1/polish/{polishId}/decision` body `{decision,acceptedText?}`：
   - `ACCEPT`（用润色文本）/`PARTIAL`（**必须带 acceptedText**，空 → 40001）→ 单事务「成版五写」：读当前版本文块拼接全文 → **indexOf 替换目标段**（链式采纳基于最新版重放，防并发覆盖；目标段不在当前版本 → **40901**）→ OSS 派生 `.txt`（角色落字典值 **PARSED**，`ck_oss_role` 无 DERIVED，D3 名词仅概念）→ EDIT 新版本（version_no+1）→ current 前移 → 简化解析（按段落成块，跳 Tika）同事务补发向量化 → 200 `{versionId,versionNo,documentStatus}`；并发撞 `uk(document_id,version_no)` → **40901**（非 50001）；审计 `POLISH_APPLIED`
   - `REJECT` → 仅记状态，不动版本
-  - `REVERT` → **裁决**（表无 REVERT 决策值，零 DDL）：仅**最近一次未撤销采纳**可撤（经 POLISH_APPLIED 审计回溯校验当前版本确由该行产生；「撤销→重采纳→再撤销」的同族孤儿链显式 40901 拒绝而非弹错版本）；current 弹回前一版本、决策回写 PENDING（**还原可重润**）、审计 `POLISH_REVERTED`、版本行全保留（不可变红线不破）
+  - `REVERT` → **裁决**（表无 REVERT 决策值，零 DDL）：采纳时被替换的版本 ID 已回写 `polish_result.document_version_id`，撤销=直接回拨至该行（D3 公式，链式/孤儿场景逐行正确）；仅**最近一次未撤销采纳**可撤（否则 40901）、目标已=current（重复撤销）40901、决策回写 PENDING（**还原可重润**）、审计 `POLISH_REVERTED` 与回拨同事务、版本行全保留（不可变红线不破）
 - **反例**：非本人行 → 40401；已决策行再决策 → 40901；PENDING 行 REVERT → 40901；文档非 READY → 40901
 
 ```bash

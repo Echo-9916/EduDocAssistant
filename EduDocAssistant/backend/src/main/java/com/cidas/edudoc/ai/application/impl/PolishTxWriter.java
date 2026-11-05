@@ -64,10 +64,15 @@ public class PolishTxWriter {
                 java.util.Map.of("polishId", polishId, "restoredVersionId", previousVersionId));
     }
 
-    /** @param derivedObject 已写入 OSS 的派生对象登记行（网络写入在事务外完成） */
+    /**
+     * @param derivedObject 已写入 OSS 的派生对象登记行（网络写入在事务外完成）
+     * @param replacedVersionId 采纳时被替换的版本 ID——回写到 polish_result.document_version_id，
+     *                          撤销即回拨至该行（D3 公式在链式采纳下逐行成立，1105 冒烟复测修正）
+     */
     @Transactional
     public AppliedView applyVersion(OssObject derivedObject, Document doc, String editorId,
-                                    String newText, String polishId, String decision, String acceptedText) {
+                                    String newText, String polishId, String decision, String acceptedText,
+                                    String replacedVersionId) {
         int versionNo = versionRepository.maxVersionNo(doc.getId()) + 1;
         String versionId = Ids.hex16();
         ossObjectRepository.insert(derivedObject);
@@ -80,7 +85,7 @@ public class PolishTxWriter {
         }
         documentRepository.updateCurrentVersion(doc.getId(), versionId);
         documentRepository.updateStatus(doc.getId(), "PARSING");
-        if (!polishRepository.updateDecisionIfPending(polishId, decision, acceptedText)) {
+        if (!polishRepository.updateDecisionApplied(polishId, decision, acceptedText, replacedVersionId)) {
             throw new CidasBusinessException(ErrorCode.CONFLICT, "该润色结果已被处理");
         }
         // 简化解析：段落即结构（按行成块），跳过 Tika；成功后同事务补发向量化事件

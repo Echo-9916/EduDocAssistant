@@ -159,7 +159,7 @@ class PolishServiceTest {
         givenVersionText("前置。", "旧段落", "后置。");
         when(ossAdapter.putText(anyString(), anyString())).thenReturn(
                 new OssStorageAdapter.ObjectInfo(10, "etag", null, "SSE-OSS"));
-        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(new PolishService.AppliedView(POLISH_ID, DOC_ID, "V2", 2, "PARSING"));
 
         PolishService.AppliedView view = service.apply(POLISH_ID, "ACCEPT", null, null);
@@ -170,7 +170,7 @@ class PolishServiceTest {
         assertEquals("前置。新段落后置。", newText.getValue());
         ArgumentCaptor<OssObject> object = ArgumentCaptor.forClass(OssObject.class);
         verify(txWriter).applyVersion(object.capture(), any(), eq("U1"), eq("前置。新段落后置。"),
-                eq(POLISH_ID), eq("ACCEPT"), eq("新段落"));
+                eq(POLISH_ID), eq("ACCEPT"), eq("新段落"), eq(VERSION));
         assertEquals("PARSED", object.getValue().getObjectRole());
         assertEquals("text/plain", object.getValue().getMimeType());
         // POLISH_APPLIED 审计在 PolishTxWriter 事务内（见 writer 用例），服务层不再单独写
@@ -185,7 +185,7 @@ class PolishServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> service.apply(POLISH_ID, "ACCEPT", null, null));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
-        verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any());
+        verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -208,7 +208,7 @@ class PolishServiceTest {
         givenVersionText("重复段", "中间", "重复段");
         when(ossAdapter.putText(anyString(), anyString())).thenReturn(
                 new OssStorageAdapter.ObjectInfo(10, "etag", null, "SSE-OSS"));
-        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(new PolishService.AppliedView(POLISH_ID, DOC_ID, "V2", 2, "READY"));
 
         // 全文=「重复段中间重复段」，charStart=5 → 替换第二处
@@ -260,7 +260,7 @@ class PolishServiceTest {
         service.reject(POLISH_ID);
 
         verify(ossAdapter, never()).putText(anyString(), anyString());
-        verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any());
+        verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any(), any());
         // 审查发现 1：审计第四参必须是 documentId（fk_audit_log_2），不能传 polishId
         verify(auditService).record(eq("POLISH_REJECTED"), eq("POLISH_RESULT"), eq(POLISH_ID),
                 eq(DOC_ID), eq("200"), any());
@@ -277,32 +277,30 @@ class PolishServiceTest {
     // ---------- 撤销 ----------
 
     @Test
-    void revertOnlyLatestAppliedEditVersion() {
+    void revertRollsBackToVersionReplacedByThisApply() {
+        // D3 公式（采纳回写被替换版本）：撤销=回拨至 row.document_version_id
         givenRow("ACCEPT", "旧段落", "新段落");
         givenReadyDoc();
+        currentRow.setDocumentVersionId("V0");
         when(polishRepository.findLatestApplied(DOC_ID)).thenReturn(Optional.of(currentRow));
-        when(polishRepository.findAppliedVersionIds(POLISH_ID)).thenReturn(List.of(VERSION));
         when(versionRepository.findById(VERSION)).thenReturn(Optional.of(
                 new DocumentVersion(VERSION, DOC_ID, 2, "EDIT", "O2", "U1", "h", "A")));
-        when(versionRepository.findByDocumentAndVersionNo(DOC_ID, 1)).thenReturn(Optional.of(
-                new DocumentVersion("V1", DOC_ID, 1, "UPLOAD", "O1", "U1", "h", "A")));
+        when(versionRepository.findById("V0")).thenReturn(Optional.of(
+                new DocumentVersion("V0", DOC_ID, 1, "UPLOAD", "O1", "U1", "h", "A")));
 
         service.revert(POLISH_ID);
 
-        verify(txWriter).revertToPrevious(any(Document.class), eq("V1"), eq(POLISH_ID));
+        verify(txWriter).revertToPrevious(any(Document.class), eq("V0"), eq(POLISH_ID));
     }
 
     @Test
-    void revertRejectsWhenCurrentNotCreatedByThisRowApply() {
-        // 审查发现 3：撤销前校验当前版本确由该行最近一次采纳产生（经 POLISH_APPLIED 审计回溯）
+    void revertRejectsWhenTargetEqualsCurrent() {
+        // 重复撤销：row.document_version_id 已=current（上一轮已回拨）→ 40901
         givenRow("ACCEPT", "旧", "新");
-        givenReadyDoc();
+        givenReadyDoc(); // currentRow.documentVersionId = VERSION = doc.currentVersionId
         when(polishRepository.findLatestApplied(DOC_ID)).thenReturn(Optional.of(currentRow));
-        when(polishRepository.findAppliedVersionIds(POLISH_ID)).thenReturn(List.of("EE0000000000000000000000000000ZZ"));
         when(versionRepository.findById(VERSION)).thenReturn(Optional.of(
                 new DocumentVersion(VERSION, DOC_ID, 2, "EDIT", "O2", "U1", "h", "A")));
-        when(versionRepository.findByDocumentAndVersionNo(DOC_ID, 1)).thenReturn(Optional.of(
-                new DocumentVersion("V1", DOC_ID, 1, "UPLOAD", "O1", "U1", "h", "A")));
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class, () -> service.revert(POLISH_ID));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
@@ -310,32 +308,30 @@ class PolishServiceTest {
     }
 
     @Test
-    void revertRejectsOrphanPredecessorFromSameRow() {
-        // 撤销→重采纳→再撤销：前一版本是同一行撤销留下的孤儿 EDIT，弹栈会回拨到错误内容 → 40901
+    void revertRejectsWhenTargetNewerThanCurrent() {
         givenRow("ACCEPT", "旧", "新");
         givenReadyDoc();
+        currentRow.setDocumentVersionId("NEWER");
         when(polishRepository.findLatestApplied(DOC_ID)).thenReturn(Optional.of(currentRow));
-        when(polishRepository.findAppliedVersionIds(POLISH_ID)).thenReturn(List.of("V1", VERSION));
         when(versionRepository.findById(VERSION)).thenReturn(Optional.of(
-                new DocumentVersion(VERSION, DOC_ID, 3, "EDIT", "O2", "U1", "h", "A")));
-        when(versionRepository.findByDocumentAndVersionNo(DOC_ID, 2)).thenReturn(Optional.of(
-                new DocumentVersion("V1", DOC_ID, 2, "EDIT", "O1", "U1", "h", "A")));
+                new DocumentVersion(VERSION, DOC_ID, 2, "EDIT", "O2", "U1", "h", "A")));
+        when(versionRepository.findById("NEWER")).thenReturn(Optional.of(
+                new DocumentVersion("NEWER", DOC_ID, 5, "EDIT", "O9", "U1", "h", "A")));
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class, () -> service.revert(POLISH_ID));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
-        verify(txWriter, never()).revertToPrevious(any(), anyString(), anyString());
     }
 
     @Test
-    void multiRowChainRevertStillWorks() {
-        // 行1 采纳 v2、行2 采纳 v3：撤销行2 → 弹回 v2（v2 非本行产物，允许）
+    void multiRowChainRevertTargetsItsOwnReplacedVersion() {
+        // 行1 采纳 v2、行2 采纳 v3（行2 回写被替换版本 v2）：撤销行2 → 回 v2；孤儿链场景逐行正确
         givenRow("ACCEPT", "旧", "新");
         givenReadyDoc();
+        currentRow.setDocumentVersionId("V2_OTHER");
         when(polishRepository.findLatestApplied(DOC_ID)).thenReturn(Optional.of(currentRow));
-        when(polishRepository.findAppliedVersionIds(POLISH_ID)).thenReturn(List.of(VERSION));
         when(versionRepository.findById(VERSION)).thenReturn(Optional.of(
                 new DocumentVersion(VERSION, DOC_ID, 3, "EDIT", "O2", "U1", "h", "A")));
-        when(versionRepository.findByDocumentAndVersionNo(DOC_ID, 2)).thenReturn(Optional.of(
+        when(versionRepository.findById("V2_OTHER")).thenReturn(Optional.of(
                 new DocumentVersion("V2_OTHER", DOC_ID, 2, "EDIT", "O9", "U1", "h", "A")));
 
         service.revert(POLISH_ID);
@@ -381,11 +377,12 @@ class PolishServiceTest {
         OssObject derived = new OssObject("O2", "b", "r", "k", null, "etag", "hash", 5,
                 "text/plain", "SSE-OSS", "DERIVED");
         when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(1);
-        when(polishRepository.updateDecisionIfPending(eq(POLISH_ID), eq("ACCEPT"), any())).thenReturn(true);
+        when(polishRepository.updateDecisionApplied(eq(POLISH_ID), eq("ACCEPT"), any(), eq("V_REPLACED")))
+                .thenReturn(true);
         when(parseTx.writeSuccess(eq(DOC_ID), anyString(), anyList())).thenReturn(true);
 
         PolishService.AppliedView view = writer.applyVersion(derived, doc, "U1",
-                "第一段\n第二段", POLISH_ID, "ACCEPT", "第二段");
+                "第一段\n第二段", POLISH_ID, "ACCEPT", "第二段", "V_REPLACED");
 
         assertEquals(2, view.versionNo());
         verify(ossObjectRepository).insert(derived);
@@ -434,7 +431,7 @@ class PolishServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class, () -> writer.applyVersion(
                 new OssObject("O2", "b", "r", "k", null, "e", "h", 1, "text/plain", "N", "DERIVED"),
                 new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION),
-                "U1", "文本", POLISH_ID, "ACCEPT", "文本"));
+                "U1", "文本", POLISH_ID, "ACCEPT", "文本", VERSION));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
     }
 
@@ -446,10 +443,10 @@ class PolishServiceTest {
                 new ParseProperties(true, 1, "s", "g", 1500), auditService);
         Document doc = new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION);
         when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(1);
-        when(polishRepository.updateDecisionIfPending(anyString(), anyString(), any())).thenReturn(false);
+        when(polishRepository.updateDecisionApplied(anyString(), anyString(), any(), any())).thenReturn(false);
 
         assertThrows(CidasBusinessException.class, () -> writer.applyVersion(
                 new OssObject("O2", "b", "r", "k", null, "e", "h", 1, "text/plain", "N", "DERIVED"),
-                doc, "U1", "文本", POLISH_ID, "ACCEPT", "文本"));
+                doc, "U1", "文本", POLISH_ID, "ACCEPT", "文本", VERSION));
     }
 }

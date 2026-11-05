@@ -201,9 +201,11 @@ public class QaServiceImpl implements QaService {
         }
     }
 
+    /** 归一余弦相似度：COSINE 距离定义域 [0,2] → score=max(0,1-d/2)∈[0,1]；
+     *  旧式 1-min(d) 在 d>1 时恒 ≤0，阈值形同虚设全部拒答（1105 冒烟复测校准错误，探针实证）。 */
     private static double evidenceScore(List<SearchHit> hits) {
-        double minDistance = hits.stream().mapToDouble(SearchHit::distance).min().orElse(1.0);
-        return 1.0 - minDistance;
+        double minDistance = hits.stream().mapToDouble(SearchHit::distance).min().orElse(2.0);
+        return Math.max(0.0, 1.0 - minDistance / 2.0);
     }
 
     // ---------- 引用硬校验（R9） ----------

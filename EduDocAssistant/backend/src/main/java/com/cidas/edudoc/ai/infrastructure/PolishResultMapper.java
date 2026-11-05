@@ -19,6 +19,8 @@ public interface PolishResultMapper {
                        @Param("acceptedText") String acceptedText,
                        @Param("expectPending") boolean expectPending);
 
-    /** 该行历次 POLISH_APPLIED 审计产生的版本 ID（create_time 升序），撤销链校验用。 */
-    List<String> selectAppliedVersionIds(@Param("polishId") String polishId);
+    /** 采纳时回写「被替换版本」到 document_version_id：撤销=回拨至该行（D3 公式，链式正确）。 */
+    int updateDecisionApplied(@Param("idHex") String idHex, @Param("decision") String decision,
+                              @Param("acceptedText") String acceptedText,
+                              @Param("replacedVersionIdHex") String replacedVersionIdHex);
 }

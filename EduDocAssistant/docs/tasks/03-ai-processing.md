@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | D1 | 真实模型接入 | OpenAI 兼容适配层，推荐硅基流动 SiliconFlow 一路凭据：对话模型 + `BAAI/bge-m3` 嵌入（恰好 1024 维，匹配 `edudoc_chunk_embedding.VECTOR(1024)` 列）+ `bge-reranker-v2-m3`。API Key 由用户经环境变量提供，不入仓 |
 | D2 | 预览页形态 = 文本阅读视图 | 按已解析分块（text + heading_path + page_no + char 区间）渲染可读视图，页码锚点；引用回跳=滚动至对应块并高亮 char_start~char_end。02 排除的预览页由本切片补上（不做 pdf.js 原样渲染） |
-| D3 | 润色采纳落地物 = 派生全文 .txt 对象 | 以解析文本为底、替换被采纳段落，生成 DERIVED oss_object → `version_type=EDIT` 新版本；撤销=把 `current_version_id` 回拨到 `polish_result.document_version_id`（版本行保留，不违不可变红线）；docx 写回属协作编辑域，不做 |
+| D3 | 润色采纳落地物 = 派生全文 .txt 对象 | 以解析文本为底、替换被采纳段落，生成派生 oss_object（**角色落字典值 PARSED**，`ck_oss_role` 无 DERIVED——概念名与列值解耦，1105 审查确认）→ `version_type=EDIT` 新版本；撤销=当前 EDIT 版本弹栈、`current_version_id` 回拨前一版本（版本行保留，不违不可变红线；撤销前经 POLISH_APPLIED 审计回溯校验当前版本确由该行最近一次采纳产生，「撤销→重采纳」孤儿链显式 40901 拒绝——**1105 审查 P2/C07 整改后口径**，单次链下与「回拨至 document_version_id」等价）；docx 写回属协作编辑域，不做 |
 
 ## 不属本切片
 
@@ -44,11 +44,11 @@
 - **引用**：概要 §4.2（AI 服务向量化写 Oracle）、§4.3 表（分块保留页码与字符范围、维度匹配）、`index_status` 占位由 02 预留。
 - **现状**：解析成功只置文档 READY，chunk `index_status=PENDING`；无 EMBED 事件与消费者。
 - **验收标准**：
-  - `DocumentParseTxServiceImpl.writeSuccess` 同事务追加 outbox 事件 `DOCUMENT_EMBED_REQUESTED`（aggregateRef=versionId）；重解析成功后同样补发（旧向量置 STALE）。
+  - `DocumentParseTxServiceImpl.writeSuccess` 同事务追加 outbox 事件 `DOCUMENT_EMBED_REQUESTED`（aggregateRef=versionId）；重解析成功后同样补发（旧向量行与旧 AI 引用行同事务物理删除后随新块重建——`fk_chunk_embedding_1`/`fk_ai_citation_2` 均无级联，且 `ck_chunk_index` 无 STALE 值；STALE 语义仅适用「分块存活」场景，重解析是整版换块。**1105 审查 P3-1 口径对齐：本行为既定实现，审查已确认合理**）。
   - 新事件路由 `edudoc:stream:document-embed`（`OutboxProperties` 映射表扩展），`EmbedWorker` 消费组 `cg-document-embed`、独立线程池：按 version 取全部 chunk → 25/批调 `AiGateway.embed` → 维度校验（≠1024 → 50201 任务 FAILED 且不落半向量）→ 单事务 upsert `edudoc_chunk_embedding`（VECTOR 列以 `[a,b,…]` 字符串绑定 + `TO_VECTOR(?, 1024, FLOAT32)`）并置 chunk `index_status=READY`。
   - 幂等：消息重投按 (chunk_id, model_profile_id) uk 覆盖写；`EMBED` 任务行入 `edudoc_ai_task`（task_type=EMBED）记录进度与失败（retry_count 复用）。
   - 观测：`redis-cli XLEN/XPENDING`、`SELECT index_status, COUNT(*) … GROUP BY`。
-- **测试**：`EmbedWorkerTest`（mock AiGateway：批量切分、维度不符整批 FAILED、重投幂等、STALE→READY）；`ChunkEmbeddingRepositoryIT` 风格真库向量往返（TO_VECTOR→VECTOR_DISTANCE 自检，沿用 `[IT-SKIP]` 告警先例）。
+- **测试**：`EmbedWorkerTest`（mock AiGateway：批量切分、维度不符整批 FAILED——1105 审查 P1-1 后为**两阶段**：全部批次校验通过才统一落库、后批失败不留半向量；重投幂等=upsert 覆盖写）；`ChunkEmbeddingRepositoryIT` 风格真库向量往返（TO_VECTOR→VECTOR_DISTANCE 自检，沿用 `[IT-SKIP]` 告警先例）。
 - **依赖**：C-02 | **状态**：已完成
 
 ## C-04 AI 任务编排 + 摘要链路（含结果导出最小实现）
@@ -90,7 +90,8 @@
 - **验收标准**：
   - `POST /documents/{id}/polish` `{paragraphs:[{chunkId? ,text}]}`：text 合计 ≤5000 字符（40001）；同步调 `AiGateway.polish`（只送选中段落，§4.2「不把整份文档发送给模型」）→ 每段落一行 `edudoc_polish_result`（PENDING，source/polished 对照；比对标记由前端 diff 库或后端可选 `diff` 字段——本切片前端渲染左右对照即可）。
   - `POST /polish/{id}/decision` `{decision: ACCEPT|PARTIAL|REJECT, acceptedText?}`：ACCEPT/PARTIAL 单事务——读当前版本解析文本（chunk 全量顺序拼接）→ 替换目标段落 → 新 `edudoc_oss_object`（DERIVED，`.txt`）→ 新版本（version_no+1、version_type=EDIT、source_object=派生对象）→ `current_version_id` 前移 → decision 与 accepted_text 回写 + 审计 `POLISH_APPLIED`；同文档已有未撤销 EDIT 链时**基于最新版本**重放替换（防并发覆盖，冲突→40901 §4.2）。REJECT 仅记状态。
-  - 撤销：`decision` 支持 `REVERT`——`current_version_id` 回拨至该行 `document_version_id`（版本行保留历史），仅允许撤销**最近一次**未撤销的采纳（否则 40901），审计 `POLISH_REVERTED`。
+  - 撤销：`decision` 支持 `REVERT`——弹出版本链顶层 EDIT、`current_version_id` 回拨前一版本（版本行保留历史；`ck_polish_decision` 无 REVERT 值，决策回写 PENDING 支持重润重采纳，1105 审查确认口径），仅允许撤销**最近一次**未撤销的采纳且须审计回溯确认当前版本由该行产生（否则 40901），审计 `POLISH_REVERTED` 与回拨**同事务**（1105 审查 P1-2）。
+  - 采纳替换定位（1105 审查 P2-4）：决策请求可带 `charStart`（预览块全文锚点）精确替换该偏移处出现；未带锚点且同文存在多个相同段落 → 40901 拒绝消歧，不静默替换首处。
   - 采纳后文档转 PARSING？——**否**：派生 .txt 走简化解析（文本即结构：按段落成块，跳过 Tika），与解析 worker 复用分块+向量化通道（新 outbox `DOCUMENT_EMBED_REQUESTED` 自然衔接待 C-03 组件），文档 READY 前预览与问答读旧版本内容（current_version 指向策略见风险表 R3）。
 - **测试**：`PolishServiceTest`（段落校验、采纳成版五写、REVERT 仅最近一次、并发采纳 40901、REJECT 不动版本）。
 - **依赖**：C-03、C-04 | **状态**：已完成
@@ -109,7 +110,8 @@
 - **验收标准**：
   - `POST /v1/embed`（批量 texts → 等长向量数组，维度校验失败 500 结构化错误）、`/v1/summarize`（分组文本+提示模板 → 摘要段与 chunkId 引用）、`/v1/extract-keypoints`（强制 JSON 数组输出，解析失败重试一次再报错）、`/v1/rerank`（query+docs→相关性序）、`/v1/answer`（evidence-only prompt，要求逐句带 chunkId 引用标记，maxTokens 上限）、`/v1/polish`（保留专业术语口径进模板）。
   - OpenAI 兼容客户端（httpx 直连 chat/embeddings/rerank endpoints），模型名与 base_url 走 `.env`（`SILICONFLOW_API_KEY`、`SILICONFLOW_BASE_URL` 默认 `https://api.siliconflow.cn/v1`，模型默认 `Pro/moonshotai/Kimi-K2-Instruct`/`BAAI/bge-m3`/`BAAI/bge-reranker-v2-m3`，可覆盖）；请求超时分级 + 一次重试 + `Retry-After` 透传；错误响应 `{code:MODEL_FAILED|TIMEOUT|BAD_INPUT, message, provider, model, elapsedMs}`，**不回显 API Key**。
-  - `X-Internal-Token` 校验（401）；`X-Trace-Id` 透传进日志；提示模板集中在 `app/prompts.py`（`prompt_version` 常量随结果返回，供 `edudoc_ai_result.prompt_version`）。
+  - `X-Internal-Token` 校验（401）；`X-Trace-Id` 透传进日志；提示模板集中在 `app/prompts.py`（`prompt_version` 常量随结果返回，供 `edudoc_ai_result.prompt_version`）；输出经 Pydantic 结构校验（合法 JSON 坏结构 → 502 MODEL_FAILED，1105 审查 P2-2）。
+  - **取消与幂等键口径（1105 审查 P3-4 回执）**：ai-service 六接口为无状态纯函数式调用，幂等天然成立（同请求可安全重放）；任务级幂等与取消由后端任务层承载（`uk_ai_task_1` + ACTIVE 确定性锁键 + QUEUED/RUNNING 状态机守卫，取消=结果写回丢弃）。OpenAI 兼容上游无取消/中断 API——**已发出的推理无法真正中止**，取消只保证不消费、不伪造结果；如需省额度须在任务领取前取消（QUEUED 态）。不做假取消接口。
   - 启动：`uvicorn app.main:app --port 8000` 写入 README；`.venv` 已有，`uv sync` 补 httpx/pytest。
 - **测试**：pytest（httpx mock 传输层）：embed 批量对齐、answer 引用标记解析、阈值外 JSON 坏输出重试与结构化错误、token 校验 401、超时映射；`python -m pytest` 进验收命令。
 - **依赖**：C-02 契约对齐（可并行开发，凭据到位后联调）| **状态**：已完成

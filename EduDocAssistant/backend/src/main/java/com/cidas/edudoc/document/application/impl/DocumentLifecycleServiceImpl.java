@@ -83,13 +83,18 @@ public class DocumentLifecycleServiceImpl implements DocumentLifecycleService {
                 .flatMap(version -> ossObjectRepository.findById(version.getSourceObjectId()))
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.CONFLICT, "版本源对象缺失"));
         documentRepository.updateStatus(documentId, "PARSING");
+        // 1105 冒烟缺口：EDIT 版本源对象是服务端派生 .txt（text/plain），不能走 Tika 伪装防御，
+        // 标记 textMode 由 worker 直接按「文本即结构」简化解析（C-07 口径）
+        boolean textMode = "text/plain".equals(sourceObject.getMimeType())
+                || "PARSED".equals(sourceObject.getObjectRole());
         String taskId = outboxEventRepository.publish("DOCUMENT_VERSION", targetVersion,
                 "DOCUMENT_PARSE_REQUESTED", Map.of(
                         "schemaVersion", 1,
                         "documentId", documentId,
                         "versionId", targetVersion,
                         "bucket", sourceObject.getBucketName(),
-                        "objectKey", sourceObject.getObjectKey()));
+                        "objectKey", sourceObject.getObjectKey(),
+                        "textMode", textMode));
         auditService.record("PARSE_REQUESTED", "DOCUMENT", documentId, documentId, "200",
                 Map.of("versionId", targetVersion, "taskId", taskId));
         return taskId;

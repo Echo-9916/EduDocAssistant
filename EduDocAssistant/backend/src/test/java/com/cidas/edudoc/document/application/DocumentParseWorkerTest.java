@@ -72,6 +72,33 @@ class DocumentParseWorkerTest {
                         && chunks.get(0).text().contains("hello world text")));
     }
 
+    private static MapRecord<String, Object, Object> recordTextMode(String documentId, String versionId) {
+        String payload = "{\"schemaVersion\":1,\"documentId\":\"" + documentId + "\",\"versionId\":\""
+                + versionId + "\",\"bucket\":\"b\",\"objectKey\":\"edudoc/uploads/a.pdf\",\"textMode\":true}";
+        Map<Object, Object> fields = Map.of("payload", payload, "aggregateRef", versionId,
+                "eventType", "DOCUMENT_PARSE_REQUESTED");
+        return MapRecord.create("edudoc:stream:document-parse", fields)
+                .withId(org.springframework.data.redis.connection.stream.RecordId.of("1-0"));
+    }
+
+    @Test
+    void textModeDerivedTxtParsesWithoutTika() throws Exception {
+        // 1105 冒烟缺口：EDIT 版本重解析（派生 .txt）不得走 Tika 伪装防御，按行简化解析
+        when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("PARSING", "V1")));
+        org.mockito.Mockito.doAnswer(inv -> {
+            java.nio.file.Files.writeString(inv.getArgument(1), "第一段\n\n第二段\n", StandardCharsets.UTF_8);
+            return null;
+        }).when(adapter).downloadTo(eq("edudoc/uploads/a.pdf"), any());
+
+        worker.handle(null, CONSUMER, recordTextMode("D1", "V1"));
+
+        verify(extractor, never()).extract(any(), anyString());
+        // 两个短段在 chunk-size=1500 内合并为单块（分块语义），文本以 \n 连接
+        verify(txService).writeSuccess(eq("D1"), eq("V1"),
+                org.mockito.ArgumentMatchers.argThat(chunks -> chunks.size() == 1
+                        && chunks.get(0).text().equals("第一段\n第二段")));
+    }
+
     @Test
     void skipsStaleEventWhenAlreadyReady() throws Exception {
         when(documentRepository.findById("D1")).thenReturn(Optional.of(doc("READY", "V1")));

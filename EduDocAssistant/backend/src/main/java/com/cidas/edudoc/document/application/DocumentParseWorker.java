@@ -143,13 +143,14 @@ public class DocumentParseWorker {
         try {
             documentId = objectMapper.readTree(payload).path("documentId").asText();
             String objectKey = objectMapper.readTree(payload).path("objectKey").asText();
+            boolean textMode = objectMapper.readTree(payload).path("textMode").asBoolean(false);
             var doc = documentRepository.findById(documentId).orElse(null);
             if (doc == null) {
                 log.warn("解析事件对应文档不存在，丢弃：documentId={}", documentId);
             } else if (!"PARSING".equals(doc.getStatus()) || !versionId.equalsIgnoreCase(doc.getCurrentVersionId())) {
                 log.info("过期解析事件跳过：documentId={} status={}", documentId, doc.getStatus());
             } else {
-                process(documentId, versionId, objectKey);
+                process(documentId, versionId, objectKey, textMode);
             }
         } catch (Exception e) {
             log.error("解析失败 documentId={}", documentId, e);
@@ -169,11 +170,11 @@ public class DocumentParseWorker {
         }
     }
 
-    private void process(String documentId, String versionId, String objectKey) throws Exception {
+    private void process(String documentId, String versionId, String objectKey, boolean textMode) throws Exception {
         Path temp = Files.createTempFile("edudoc-parse-", ".bin");
         try {
             ossStorageAdapter.downloadTo(objectKey, temp);
-            List<TextBlock> blocks = extractor.extract(temp, fileNameOf(objectKey));
+            List<TextBlock> blocks = textMode ? textBlocks(temp) : extractor.extract(temp, fileNameOf(objectKey));
             List<Chunk> chunks = new ChunkingService(properties.chunkSize()).chunk(blocks);
             if (chunks.isEmpty()) {
                 throw new IllegalStateException("文档无可提取文本（空文档或扫描件）");
@@ -187,6 +188,16 @@ public class DocumentParseWorker {
         } finally {
             Files.deleteIfExists(temp);
         }
+    }
+
+    /** 派生 .txt 简化解析（C-07/1105 冒烟缺口）：文本即结构，按非空行成块，跳过 Tika。 */
+    private static List<TextBlock> textBlocks(Path temp) throws java.io.IOException {
+        String text = Files.readString(temp, java.nio.charset.StandardCharsets.UTF_8);
+        return text.lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty())
+                .map(line -> new TextBlock(line, null, 0))
+                .toList();
     }
 
     private static String fileNameOf(String objectKey) {

@@ -120,6 +120,18 @@ class AiServiceClientTest {
     }
 
     @Test
+    void upstream504StructuredTimeoutMapsTo50401() {
+        // 1105 审查 P2-1：ai-service 返回 504+code=TIMEOUT 时不得塌缩为 50201
+        responseStatus = 504;
+        responseJson = "{\"code\":\"TIMEOUT\",\"message\":\"chat/completions 调用超时\",\"provider\":\"x\",\"model\":\"m\",\"elapsedMs\":4600}";
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> client("tok", 2000).embed(List.of("a")));
+        assertEquals(ErrorCode.TIMEOUT, e.errorCode());
+        assertTrue(e.retryable());
+    }
+
+    @Test
     void upstream4xxMapsToNonRetryableModelFailed() {
         responseStatus = 401;
         responseJson = "{\"code\":\"MODEL_FAILED\",\"message\":\"bad token\"}";

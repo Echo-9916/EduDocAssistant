@@ -176,12 +176,16 @@ public class AiServiceClient implements AiGateway {
             }
             return resp;
         } catch (RestClientResponseException e) {
+            String errBody = trim(e.getResponseBodyAsString());
+            log.warn("ai-service 返回异常状态：path={} status={} body={}", path, e.getStatusCode(), errBody);
+            // 1105 审查 P2-1：优先解析 ai-service 结构化 code，再以 HTTP status 兜底
+            if (e.getStatusCode().value() == 504 || "TIMEOUT".equals(upstreamCode(errBody))) {
+                throw new CidasBusinessException(ErrorCode.TIMEOUT,
+                        "ai-service 超时：" + path, true, Map.of("path", path));
+            }
             boolean retryable = e.getStatusCode().is5xxServerError();
-            log.warn("ai-service 返回异常状态：path={} status={} body={}", path, e.getStatusCode(),
-                trim(e.getResponseBodyAsString()));
             throw new CidasBusinessException(ErrorCode.MODEL_FAILED,
-                    "模型服务失败：" + e.getStatusCode() + " " + trim(e.getResponseBodyAsString()),
-                    retryable, Map.of("path", path));
+                    "模型服务失败：" + e.getStatusCode() + " " + errBody, retryable, Map.of("path", path));
         } catch (ResourceAccessException e) {
             if (e.getCause() instanceof SocketTimeoutException) {
                 throw new CidasBusinessException(ErrorCode.TIMEOUT,
@@ -201,6 +205,18 @@ public class AiServiceClient implements AiGateway {
             }
             throw new CidasBusinessException(ErrorCode.MODEL_FAILED,
                     "ai-service 响应异常：" + e.getMessage(), false, Map.of("path", path));
+        }
+    }
+
+    /** 从 ai-service 结构化错误体 {code:…} 提取 code；解析失败返回 null（不臆断）。 */
+    private String upstreamCode(String body) {
+        if (body == null || !body.contains("\"code\"")) {
+            return null;
+        }
+        try {
+            return mapper.readTree(body).path("code").asText(null);
+        } catch (Exception e) {
+            return null;
         }
     }
 

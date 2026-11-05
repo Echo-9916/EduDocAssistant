@@ -53,7 +53,10 @@ class AiTaskOrchestratorTest {
     }
 
     private static void login(Set<String> permissions) {
-        AuthContext.set(new UserPrincipal("U1", "teacher", null, Set.of("TEACHER"), permissions, Set.of()));
+        // 种子角色均含 DOCUMENT_READ（审查 P2-3：组合校验后各用例默认带上）
+        Set<String> all = new java.util.HashSet<>(permissions);
+        all.add("DOCUMENT_READ");
+        AuthContext.set(new UserPrincipal("U1", "teacher", null, Set.of("TEACHER"), all, Set.of()));
     }
 
     private static Document readyDoc(String ownerId) {
@@ -128,6 +131,21 @@ class AiTaskOrchestratorTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> orchestrator.createTask(DOC_ID, "SUMMARY"));
         assertEquals(ErrorCode.FORBIDDEN, e.errorCode());
+    }
+
+    @Test
+    void requiresDocumentReadInAdditionToAiPermission() {
+        // 1105 审查 P2-3：DOCUMENT_READ 与 AI_SUMMARY 需同时满足（服务层组合校验）
+        AuthContext.set(new UserPrincipal("U1", "teacher", null, Set.of("TEACHER"),
+                Set.of("AI_SUMMARY"), Set.of())); // 仅 AI_SUMMARY，缺 DOCUMENT_READ
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(readyDoc("U1")));
+        givenReadyChunks();
+        when(aiTaskRepository.findActive(VERSION, "SUMMARY", "U1")).thenReturn(Optional.empty());
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> orchestrator.createTask(DOC_ID, "SUMMARY"));
+        assertEquals(ErrorCode.FORBIDDEN, e.errorCode());
+        verify(aiTaskRepository, never()).insertOrReuse(any());
     }
 
     @Test

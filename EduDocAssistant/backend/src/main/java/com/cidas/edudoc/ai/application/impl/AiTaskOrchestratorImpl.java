@@ -42,6 +42,8 @@ public class AiTaskOrchestratorImpl implements AiTaskOrchestrator {
     @Transactional
     public String createTask(String documentId, String taskType) {
         UserPrincipal principal = AuthContext.require();
+        // 1105 审查 P2-3：DOCUMENT_READ 与 AI_* 权限点组合校验（注解之外服务层兜底）
+        assertPermission(principal, PermissionCode.DOCUMENT_READ);
         assertPermission(principal, permissionOf(taskType));
         Document doc = requireVisible(documentId);
         if (!"READY".equals(doc.getStatus())) {

@@ -70,6 +70,7 @@ public class QaServiceImpl implements QaService {
     @Override
     public SessionView createSession(String documentId, String title) {
         UserPrincipal principal = AuthContext.require();
+        assertQaPermissions(principal);
         Document doc = requireVisible(documentId, principal);
         Optional<QaSession> active = qaRepository.findActiveSession(doc.getId(), principal.userId());
         if (active.isPresent()) {
@@ -84,6 +85,7 @@ public class QaServiceImpl implements QaService {
     @Override
     public List<SessionView> listSessions(String documentId) {
         UserPrincipal principal = AuthContext.require();
+        assertQaPermissions(principal);
         Document doc = requireVisible(documentId, principal);
         return qaRepository.findSessions(doc.getId(), principal.userId()).stream()
                 .map(this::toView).toList();
@@ -92,6 +94,7 @@ public class QaServiceImpl implements QaService {
     @Override
     public AskResult ask(String sessionId, String question) {
         UserPrincipal principal = AuthContext.require();
+        assertQaPermissions(principal);
         QaSession session = requireOwnActiveSession(sessionId, principal);
         if (question == null || question.isBlank() || question.strip().length() > MAX_QUESTION_CHARS) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "问题需为 1-1000 字符");
@@ -135,7 +138,9 @@ public class QaServiceImpl implements QaService {
 
     @Override
     public List<MessageView> messages(String sessionId) {
-        requireOwnActiveOrClosedSession(sessionId, AuthContext.require());
+        UserPrincipal principal = AuthContext.require();
+        assertQaPermissions(principal);
+        requireOwnActiveOrClosedSession(sessionId, principal);
         return qaRepository.findMessages(sessionId).stream().map(m -> {
             List<CitationView> citations = "ASSISTANT".equals(m.getRole()) && m.getAiTaskId() != null
                     ? citationsOfTask(m.getAiTaskId()) : List.of();
@@ -270,6 +275,16 @@ public class QaServiceImpl implements QaService {
     }
 
     // ---------- 归属与校验 ----------
+
+    /** 1105 审查 P2-3：AI_QA 与 DOCUMENT_READ 权限点组合（服务层校验，不依赖注解锁死）。 */
+    private static void assertQaPermissions(UserPrincipal principal) {
+        for (String permission : List.of(com.cidas.edudoc.access.domain.PermissionCode.AI_QA,
+                com.cidas.edudoc.access.domain.PermissionCode.DOCUMENT_READ)) {
+            if (!principal.permissions().contains(permission)) {
+                throw new CidasBusinessException(ErrorCode.FORBIDDEN, "权限点不足：" + permission);
+            }
+        }
+    }
 
     private Document requireVisible(String documentId, UserPrincipal principal) {
         if (!Ids.isHex16(documentId)) {

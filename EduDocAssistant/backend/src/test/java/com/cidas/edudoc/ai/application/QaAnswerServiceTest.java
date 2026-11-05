@@ -66,7 +66,8 @@ class QaAnswerServiceTest {
 
     @BeforeEach
     void setUp() {
-        AuthContext.set(new UserPrincipal("U1", "stu", null, Set.of("STUDENT"), Set.of("AI_QA"), Set.of()));
+        AuthContext.set(new UserPrincipal("U1", "stu", null, Set.of("STUDENT"),
+                Set.of("AI_QA", "DOCUMENT_READ"), Set.of()));
         when(qaRepository.findSession(SESSION_ID)).thenReturn(Optional.of(
                 new QaSession(SESSION_ID, DOC_ID, "U1", "t", "A")));
         Document doc = new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION);
@@ -280,6 +281,15 @@ class QaAnswerServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> service.ask(SESSION_ID, "问题？"));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
+    }
+
+    @Test
+    void qaRequiresDocumentReadCombinedWithAiQa() {
+        // 1105 审查 P2-3：QA 服务层组合同时校验 DOCUMENT_READ + AI_QA
+        AuthContext.set(new UserPrincipal("U1", "stu", null, Set.of("STUDENT"), Set.of("AI_QA"), Set.of()));
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> service.createSession(DOC_ID, null));
+        assertEquals(ErrorCode.FORBIDDEN, e.errorCode());
     }
 
     @Test

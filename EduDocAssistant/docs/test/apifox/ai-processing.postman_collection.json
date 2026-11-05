@@ -1,0 +1,679 @@
+{
+  "info": {
+    "name": "EduDocAssistant 智能处理接口（AI 域）",
+    "description": "03 智能处理切片（C-01~C-09）手动测试集合，与 docs/tasks/03-ai-processing.md 配套；后端 mvn spring-boot:run、ai-service uvicorn（8000）、Redis、Oracle 全部在跑。\n\n【前置】1) 两侧环境变量同名：EDUDOC_AI_INTERNAL_TOKEN（backend 与 ai-service）；2) SILICONFLOW_API_KEY 已配置且余额可用；3) 库中至少有一份 READY 文档（可先跑「EduDocAssistant 文档接入接口」集合灌入 30 页课件）；4) 「1 登录与选文档」→「2 预览」按序执行后，polishSource/qaFrag 等变量自动就绪。\n\n【链路顺序】3 重解析触发向量化 → 4 摘要任务 → 5 要点任务 → 6 问答 → 7 润色采纳/撤销 → 8 结果导出 → 9 ai-service 直连内部接口。\n\n【观测】Redis：XLEN edudoc:stream:document-embed、XPENDING … cg-document-embed、XLEN edudoc:stream:ai-task；Oracle：SELECT index_status, COUNT(*) FROM edudoc_document_chunk WHERE document_version_id=HEXTORAW('<versionId>') GROUP BY index_status；SELECT task_type,status,progress,error_code FROM edudoc_ai_task ORDER BY create_time DESC；edudoc_chunk_embedding / edudoc_ai_result / edudoc_ai_citation 计数。\n\n【要点】摘要创建返回 40901=向量未就绪（重解析后稍候重试本请求即可）；问答端到端预算 5s（P-05），真实上游偶发超时按契约回 504+50401 并落 FAILED 消息，属设计行为；润色撤销回拨后决策行回到 PENDING，可再次采纳（还原可重润）。\n\n【幂等】写接口均带 Idempotency-Key（{{$guid}} 每次自动换新）。\n\n错误码：40001 参数 · 40301 权限 · 40401 不存在/非本人 · 40901 冲突（未就绪/终态/重复决策）· 50201 模型服务失败 · 50301 服务间密钥未配置 · 50401 处理超时。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "aiBaseUrl", "value": "http://localhost:8000" },
+    { "key": "internalToken", "value": "", "description": "填 EDUDOC_AI_INTERNAL_TOKEN 的值（勿提交到仓库）" },
+    { "key": "token", "value": "" },
+    { "key": "studentToken", "value": "" },
+    { "key": "documentId", "value": "" },
+    { "key": "versionId", "value": "" },
+    { "key": "chunkId0", "value": "" },
+    { "key": "polishSource", "value": "" },
+    { "key": "qaFrag", "value": "" },
+    { "key": "qaQuestion", "value": "" },
+    { "key": "taskId", "value": "" },
+    { "key": "resultId", "value": "" },
+    { "key": "kpTaskId", "value": "" },
+    { "key": "sessionId", "value": "" },
+    { "key": "polishId", "value": "" },
+    { "key": "polishedText", "value": "" },
+    { "key": "newVersionId", "value": "" },
+    { "key": "polishId2", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1 登录与选文档",
+      "item": [
+        {
+          "name": "登录（teacher）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.token) { pm.collectionVariables.set('token', res.data.token); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"teacher\",\n  \"password\": \"Cidas@123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"] },
+            "description": "预期 200；自动写入 token。"
+          },
+          "response": []
+        },
+        {
+          "name": "登录（student）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.token) { pm.collectionVariables.set('studentToken', res.data.token); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"student\",\n  \"password\": \"Cidas@123\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"] },
+            "description": "预期 200；自动写入 studentToken（越权反例用）。"
+          },
+          "response": []
+        },
+        {
+          "name": "文档列表（取 READY 第一篇）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "const items = (res && res.data && res.data.items) || [];",
+              "if (items.length) { pm.collectionVariables.set('documentId', items[0].id); }"
+            ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents?status=READY&pageSize=50", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents"], "query": [ { "key": "status", "value": "READY" }, { "key": "pageSize", "value": "50" } ] },
+            "description": "预期 200；自动写入 documentId。列表为空则先跑「文档接入接口」集合灌入并等待解析 READY。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：student 访问他人文档 → 40401",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{studentToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}"] },
+            "description": "预期 404 + code=40401（非本人文档不泄露存在性）。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 预览结构树（C-08）",
+      "item": [
+        {
+          "name": "预览（当前版本）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "const d = res && res.data;",
+              "if (d) {",
+              "  pm.test('code=200', () => pm.expect(res.code).to.eql(200));",
+              "  pm.collectionVariables.set('versionId', d.versionId);",
+              "  const bs = d.blocks || [];",
+              "  pm.test('首块 char_start=0（C-01 密铺）', () => pm.expect(bs[0] && bs[0].charStart).to.eql(0));",
+              "  if (bs.length) { pm.collectionVariables.set('chunkId0', bs[0].chunkId); }",
+              "  let src = '';",
+              "  for (const b of bs) {",
+              "    for (const l of String(b.text || '').split('\\n')) {",
+              "      const s = l.trim();",
+              "      if (s.length >= 20 && s.length <= 260 && !/[\"\\\\]/.test(s)) { src = s; break; }",
+              "    }",
+              "    if (src) break;",
+              "  }",
+              "  pm.collectionVariables.set('polishSource', src);",
+              "  pm.collectionVariables.set('qaFrag', src.slice(0, 24));",
+              "}"
+            ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/preview", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "preview"] },
+            "description": "预期 200；blocks 按 chunk_no 升序、char 闭区间密铺（首块 charStart=0，相邻 charEnd+1=后块 charStart）。自动写入 versionId/chunkId0/polishSource/qaFrag——若 polishSource 为空说明样例文档段落太碎，手工在变量面板挑一段 20~260 字符的块内单行填入。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：非当前版本 → 40901",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/preview?versionId=AA0000000000000000000000000000A1", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "preview"], "query": [ { "key": "versionId", "value": "AA0000000000000000000000000000A1" } ] },
+            "description": "预期 409 + code=40901（仅可预览当前版本）。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3 重解析触发向量化（C-03）",
+      "item": [
+        {
+          "name": "重新解析",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/parse", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "parse"] },
+            "description": "预期 200 taskId；同事务补发 DOCUMENT_EMBED_REQUESTED。观测：XLEN/XPENDING edudoc:stream:document-embed；chunk index_status PENDING→READY；edudoc_chunk_embedding 行数=块数（1024 维）。稍候 10~30s（真实嵌入）再继续。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4 摘要任务（C-04）",
+      "item": [
+        {
+          "name": "创建摘要任务",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.taskId) { pm.collectionVariables.set('taskId', res.data.taskId); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/summaries", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "summaries"] },
+            "description": "预期 202 + taskId（自动写入）。40901=文档或向量未就绪——重解析后稍候重试本请求。无 AI_SUMMARY 权限的账号（如 student）→ 40301。"
+          },
+          "response": []
+        },
+        {
+          "name": "再建一次（活跃去重应同 taskId）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/summaries", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "summaries"] },
+            "description": "UT-08 业务幂等：上一任务仍 QUEUED/RUNNING 时预期返回同一 taskId；已终态则新建（重生成=新任务）。"
+          },
+          "response": []
+        },
+        {
+          "name": "查询任务进度（轮询至 SUCCEEDED）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "const d = res && res.data;",
+              "if (d && d.status === 'SUCCEEDED' && d.result) { pm.collectionVariables.set('resultId', d.result.resultId); }"
+            ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/ai-tasks/{{taskId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "ai-tasks", "{{taskId}}"] },
+            "description": "预期 200；status/progress(0-100)/errorCode；SUCCEEDED 时 result 含 contentText、structuredJson.segments、citations（page_no/char 由分块回填）——自动写入 resultId。P-04：30 页含摘要 ≤60s；FAILED 带 50201/50401。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：student 查他人任务 → 40401",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{studentToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/ai-tasks/{{taskId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "ai-tasks", "{{taskId}}"] },
+            "description": "预期 404 + code=40401。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：终态任务取消 → 40901",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/ai-tasks/{{taskId}}/cancel", "host": ["{{baseUrl}}"], "path": ["api", "v1", "ai-tasks", "{{taskId}}", "cancel"] },
+            "description": "任务已 SUCCEEDED/FAILED 时预期 409 + code=40901。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5 要点任务（C-05）",
+      "item": [
+        {
+          "name": "创建要点任务",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.taskId) { pm.collectionVariables.set('kpTaskId', res.data.taskId); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/keypoints", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "keypoints"] },
+            "description": "预期 202 + taskId（自动写入）。40901 同摘要口径。"
+          },
+          "response": []
+        },
+        {
+          "name": "立即取消（竞态演示：204 或 40901 都合法）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/ai-tasks/{{kpTaskId}}/cancel", "host": ["{{baseUrl}}"], "path": ["api", "v1", "ai-tasks", "{{kpTaskId}}", "cancel"] },
+            "description": "QUEUED→204（CANCELED）；若 worker 已领取则 RUNNING→204 置取消标记、结果写回被守卫丢弃。任务已被极快跑完则 40901——都符合状态机设计。"
+          },
+          "response": []
+        },
+        {
+          "name": "重新创建并轮询至 SUCCEEDED",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.taskId) { pm.collectionVariables.set('kpTaskId', res.data.taskId); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/keypoints", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "keypoints"] },
+            "description": "取消后再建（活跃去重只认 QUEUED/RUNNING），然后 GET /api/v1/ai-tasks/{{kpTaskId}} 轮询：核对 structuredJson.keypoints 按 charStart 文档序、underMin 标记（<5 条不判失败）、citations 全部指向本版本合法块。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6 问答（C-06）",
+      "item": [
+        {
+          "name": "创建会话",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.sessionId) { pm.collectionVariables.set('sessionId', res.data.sessionId); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"documentId\": \"{{documentId}}\",\n  \"title\": \"apifox 问答\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/qa/sessions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "qa", "sessions"] },
+            "description": "预期 201 + sessionId（自动写入）；再跑一次应复用同一活跃会话。文档非 READY → 40901；无 AI_QA 权限 → 40301。"
+          },
+          "response": []
+        },
+        {
+          "name": "会话列表（历史回看）",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/qa/sessions?documentId={{documentId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "qa", "sessions"], "query": [ { "key": "documentId", "value": "{{documentId}}" } ] },
+            "description": "预期 200；本人该文档会话列表（§5.1.3 历史记录）。"
+          },
+          "response": []
+        },
+        {
+          "name": "提问（有依据，期望 READY）",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "const frag = pm.collectionVariables.get('qaFrag') || '向量检索';",
+              "pm.collectionVariables.set('qaQuestion', '文档里关于「' + frag + '」的部分讲了什么？');"
+            ] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.status === 'READY') { console.log('READY citations=' + (res.data.citations || []).length); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"question\": \"{{qaQuestion}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/qa/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["api", "v1", "qa", "sessions", "{{sessionId}}", "messages"] },
+            "description": "预期 200，status=READY + answer + citations（chunkId 全属本版本证据集）；证据不足→ status=REFUSED（业务成功，仍是 200，拒答双消息落库）。P-05 端到端 ≤5s：真实上游偶发超预算回 504+50401 且落 FAILED 消息（不伪造答案，属契约行为，见台账校准项）。"
+          },
+          "response": []
+        },
+        {
+          "name": "提问（文档外主题，期望 REFUSED）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"question\": \"红烧肉怎么做才好吃？\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/qa/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["api", "v1", "qa", "sessions", "{{sessionId}}", "messages"] },
+            "description": "UT-09：预期 200 + status=REFUSED + 固定拒答文案「未在文档中找到依据…」，不调用生成。"
+          },
+          "response": []
+        },
+        {
+          "name": "消息历史（sequence 连续 + 引用）",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/qa/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["api", "v1", "qa", "sessions", "{{sessionId}}", "messages"] },
+            "description": "预期 200；USER/ASSISTANT 成对、sequenceNo 自增连续、REFUSED/FAILED 状态在消息上，ASSISTANT(READY) 带 citations。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：空问题 → 40001",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"question\": \"  \"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/qa/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["api", "v1", "qa", "sessions", "{{sessionId}}", "messages"] },
+            "description": "预期 400 + code=40001（1-1000 字符校验）。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：student 用他人会话 → 40401",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{studentToken}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"question\": \"越权问题\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/qa/sessions/{{sessionId}}/messages", "host": ["{{baseUrl}}"], "path": ["api", "v1", "qa", "sessions", "{{sessionId}}", "messages"] },
+            "description": "预期 404 + code=40401（非本人会话不泄露存在性；student 对该文档也无 READ 归属）。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7 润色：对照/采纳/撤销（C-07）",
+      "item": [
+        {
+          "name": "润色选中段落",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.length) {",
+              "  pm.collectionVariables.set('polishId', res.data[0].polishId);",
+              "  pm.collectionVariables.set('polishedText', res.data[0].polishedText || '');",
+              "}"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"paragraphs\": [ { \"text\": \"{{polishSource}}\" } ]\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/polish", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "polish"] },
+            "description": "预期 200；每段一行 PENDING（source/polished 对照），自动写入 polishId/polishedText。段落合计 >5000 字符 → 40001（冒烟脚本已覆盖，此处文本取预览自动切片）。若 polishSource 为空请先跑「2 预览」。"
+          },
+          "response": []
+        },
+        {
+          "name": "采纳（ACCEPT 成版）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.versionId) { pm.collectionVariables.set('newVersionId', res.data.versionId); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"ACCEPT\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/polish/{{polishId}}/decision", "host": ["{{baseUrl}}"], "path": ["api", "v1", "polish", "{{polishId}}", "decision"] },
+            "description": "预期 200 + 新 versionId/versionNo（EDIT 版本、派生 .txt 角色落 PARSED）；同事务简化解析→READY 并补发向量化。目标段落不在当前版本（文档已被更新）→ 40901。审计 POLISH_APPLIED。"
+          },
+          "response": []
+        },
+        {
+          "name": "新版预览（应含润色文本）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "const d = res && res.data;",
+              "if (d) {",
+              "  const joined = (d.blocks || []).map(b => b.text).join('');",
+              "  const p = (pm.collectionVariables.get('polishedText') || '').slice(0, 18);",
+              "  pm.test('预览版本=成版版本', () => pm.expect(d.versionId).to.eql(pm.collectionVariables.get('newVersionId')));",
+              "  pm.test('新版含润色文本', () => pm.expect(p.length > 0 && joined.indexOf(p) >= 0).to.be.true);",
+              "}"
+            ] } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/preview", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "preview"] },
+            "description": "预期 200；versionId=上一步 newVersionId，块文本重建后包含润色文本前 18 字。采纳后新向量异步重建中（问答命中新版以 READY 子集为界，风险表 R3）。"
+          },
+          "response": []
+        },
+        {
+          "name": "撤销（REVERT 回拨）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"REVERT\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/polish/{{polishId}}/decision", "host": ["{{baseUrl}}"], "path": ["api", "v1", "polish", "{{polishId}}", "decision"] },
+            "description": "预期 200；current_version_id 回拨到采纳前版本（版本行保留、不可变红线不破），决策回写 PENDING（还原可重润），审计 POLISH_REVERTED。非最近一次未撤销采纳 → 40901。"
+          },
+          "response": []
+        },
+        {
+          "name": "重复撤销 → 40901",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"REVERT\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/polish/{{polishId}}/decision", "host": ["{{baseUrl}}"], "path": ["api", "v1", "polish", "{{polishId}}", "decision"] },
+            "description": "已撤销（行回到 PENDING）再撤销 → 预期 409 + code=40901（不是未撤销的采纳）。"
+          },
+          "response": []
+        },
+        {
+          "name": "放弃（REJECT 不动版本）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.length) { pm.collectionVariables.set('polishId2', res.data[0].polishId); }"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"paragraphs\": [ { \"text\": \"{{polishSource}}\" } ]\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/documents/{{documentId}}/polish", "host": ["{{baseUrl}}"], "path": ["api", "v1", "documents", "{{documentId}}", "polish"] },
+            "description": "撤销后原文恢复，重润同段（顺带验证「还原可重润」）。随后 POST /api/v1/polish/{{polishId2}}/decision body {\"decision\":\"REJECT\"} → 200 且 current_version_id 不变、文档不重新解析。"
+          },
+          "response": []
+        },
+        {
+          "name": "REJECT（不动版本）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"REJECT\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/polish/{{polishId2}}/decision", "host": ["{{baseUrl}}"], "path": ["api", "v1", "polish", "{{polishId2}}", "decision"] },
+            "description": "预期 200；仅记 decision=REJECT。对同一行再次任何决策 → 40901。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：student 决策他人结果 → 40401",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{studentToken}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"REJECT\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/v1/polish/{{polishId2}}/decision", "host": ["{{baseUrl}}"], "path": ["api", "v1", "polish", "{{polishId2}}", "decision"] },
+            "description": "预期 404 + code=40401。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8 结果导出（C-04 最小实现）",
+      "item": [
+        {
+          "name": "导出 docx",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/ai-results/{{resultId}}/export?format=docx", "host": ["{{baseUrl}}"], "path": ["api", "v1", "ai-results", "{{resultId}}", "export"], "query": [ { "key": "format", "value": "docx" } ] },
+            "description": "预期 200；Content-Disposition attachment filename*=UTF-8（含文档标题）；二进制以 PK 开头、Word 可打开（标题+段落+引用脚注+模型元信息）。// ponytail：export 域切片落地后迁移。"
+          },
+          "response": []
+        },
+        {
+          "name": "导出 txt",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/ai-results/{{resultId}}/export?format=txt", "host": ["{{baseUrl}}"], "path": ["api", "v1", "ai-results", "{{resultId}}", "export"], "query": [ { "key": "format", "value": "txt" } ] },
+            "description": "预期 200 text/plain；正文 + [引用 n]（页码+片段）。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：越权导出 → 40401 / 坏 format → 40001",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{studentToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/v1/ai-results/{{resultId}}/export?format=pdf", "host": ["{{baseUrl}}"], "path": ["api", "v1", "ai-results", "{{resultId}}", "export"], "query": [ { "key": "format", "value": "pdf" } ] },
+            "description": "非本人结果：预期先按 404 + 40401（越权探测不出存在性）。本人 + 坏 format：预期 400 + 40001——可把 Authorization 换回 {{token}} 单独验证后者。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "9 ai-service 直连（C-09 内部接口）",
+      "item": [
+        {
+          "name": "embed（1024 维校验）",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const res = pm.response.json();",
+              "pm.test('向量 1024 维', () => pm.expect(res.vectors && res.vectors[0] && res.vectors[0].length).to.eql(1024));"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Internal-Token", "value": "{{internalToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"texts\": [\"apifox 向量化探测\"]\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{aiBaseUrl}}/v1/embed", "host": ["{{aiBaseUrl}}"], "path": ["v1", "embed"] },
+            "description": "预期 200 {model:\"BAAI/bge-m3\", vectors:[[1024]]}。internalToken 变量必须与 ai-service 环境同名同值，否则 401/503。"
+          },
+          "response": []
+        },
+        {
+          "name": "反例：无 X-Internal-Token → 401",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"texts\": [\"x\"]\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{aiBaseUrl}}/v1/embed", "host": ["{{aiBaseUrl}}"], "path": ["v1", "embed"] },
+            "description": "预期 401；ai-service 未配置 internal_token 时预期 503（干净拒绝，不回显任何密钥）。"
+          },
+          "response": []
+        },
+        {
+          "name": "rerank",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Internal-Token", "value": "{{internalToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"query\": \"向量检索\",\n  \"documents\": [\"分块嵌入向量后按余弦距离取回证据\", \"红烧肉需要冰糖上色\"],\n  \"topN\": 2\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{aiBaseUrl}}/v1/rerank", "host": ["{{aiBaseUrl}}"], "path": ["v1", "rerank"] },
+            "description": "预期 200 {results:[{index,relevanceScore}…]}，相关文档 index=0 应排第一。"
+          },
+          "response": []
+        },
+        {
+          "name": "polish（只送选中段）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Internal-Token", "value": "{{internalToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"paragraphs\": [\"apifox 探测句子，语义通顺即可。\"]\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{aiBaseUrl}}/v1/polish", "host": ["{{aiBaseUrl}}"], "path": ["v1", "polish"] },
+            "description": "预期 200 {polished:[{text}], model, promptVersion, usage}——polished 与入参等长；纯文本走中性 system 提示（不裹 JSON）。"
+          },
+          "response": []
+        },
+        {
+          "name": "summarize（chunkId 引用合法性）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Internal-Token", "value": "{{internalToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"chunks\": [ { \"chunkId\": \"{{chunkId0}}\", \"text\": \"本分块描述向量化、摘要、要点、问答与润色的处理流程。\" } ]\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{aiBaseUrl}}/v1/summarize", "host": ["{{aiBaseUrl}}"], "path": ["v1", "summarize"] },
+            "description": "预期 200 {segments:[{text,chunkIds}]}；chunkIds 只应引用入参存在的 chunkId（后端再按本版本硬校验，非法引用丢弃）。先跑「2 预览」以写入 chunkId0。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

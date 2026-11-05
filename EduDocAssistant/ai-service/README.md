@@ -16,7 +16,8 @@ uvicorn app.main:app --port 8000
 | --- | --- | --- |
 | `SILICONFLOW_API_KEY` | 空 | 模型凭据（缺失时上游 401 → 本服务 502 结构化错误） |
 | `SILICONFLOW_BASE_URL` | `https://api.siliconflow.cn/v1` | OpenAI 兼容端点 |
-| `EDUDOC_LLM_MODEL` | `Pro/moonshotai/Kimi-K2-Instruct` | 对话模型 |
+| `EDUDOC_LLM_MODEL` | `deepseek-ai/DeepSeek-V3` | 对话模型（摘要/要点/润色；原 Kimi-K2 在硅基流动已下架 Model disabled） |
+| `EDUDOC_ANSWER_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | 问答答案模型（P-05 5s 预算内的快档位） |
 | `EDUDOC_EMBEDDING_MODEL` | `BAAI/bge-m3` | 嵌入模型（须 1024 维） |
 | `EDUDOC_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排模型 |
 | `EDUDOC_EMBEDDING_DIM` | `1024` | 嵌入维度校验（与 Oracle VECTOR(1024) 对齐） |

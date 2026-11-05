@@ -171,7 +171,7 @@ class PolishServiceTest {
         ArgumentCaptor<OssObject> object = ArgumentCaptor.forClass(OssObject.class);
         verify(txWriter).applyVersion(object.capture(), any(), eq("U1"), eq("前置。新段落后置。"),
                 eq(POLISH_ID), eq("ACCEPT"), eq("新段落"));
-        assertEquals("DERIVED", object.getValue().getObjectRole());
+        assertEquals("PARSED", object.getValue().getObjectRole());
         assertEquals("text/plain", object.getValue().getMimeType());
         verify(auditService).record(eq("POLISH_APPLIED"), any(), any(), any(), any(), any());
     }

@@ -45,6 +45,12 @@
         WHERE r.id = HEXTORAW(#{idHex})
     </select>
 
+    <delete id="deleteCitationsByVersion">
+        DELETE FROM edudoc_ai_citation
+        WHERE chunk_id IN (SELECT id FROM edudoc_document_chunk
+                           WHERE document_version_id = HEXTORAW(#{versionIdHex}))
+    </delete>
+
     <select id="selectCitations" resultType="com.cidas.edudoc.ai.infrastructure.AiCitation">
         SELECT RAWTOHEX(c.id) AS id, RAWTOHEX(c.result_id) AS resultId, RAWTOHEX(c.chunk_id) AS chunkId,
                c.page_no AS pageNo, c.char_start AS charStart, c.char_end AS charEnd,

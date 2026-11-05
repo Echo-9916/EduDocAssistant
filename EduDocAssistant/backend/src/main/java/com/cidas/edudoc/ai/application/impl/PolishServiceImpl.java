@@ -127,9 +127,10 @@ public class PolishServiceImpl implements PolishService {
         String objectKey = ossProperties.objectKeyPrefix() + "/derived/" + doc.getId()
                 + "/" + Ids.hex16() + ".txt";
         OssStorageAdapter.ObjectInfo info = ossStorageAdapter.putText(objectKey, newText); // 网络写入在事务外
+        // D3 的「DERIVED 派生对象」落库用字典内角色 PARSED（ck_oss_role 无 DERIVED 值，零 DDL 前提）
         OssObject derived = new OssObject(Ids.hex16(), ossProperties.bucket(), ossProperties.region(),
                 objectKey, info.versionId(), info.etag(), sha256Hex(newText), info.contentLength(),
-                "text/plain", info.encryption(), "DERIVED");
+                "text/plain", info.encryption(), "PARSED");
         AppliedView view = txWriter.applyVersion(derived, doc, principal.userId(), newText,
                 row.getId(), decision, accepted);
         auditService.record("POLISH_APPLIED", "DOCUMENT", doc.getId(), doc.getId(), "200",

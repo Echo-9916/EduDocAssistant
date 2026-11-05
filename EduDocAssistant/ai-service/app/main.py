@@ -135,7 +135,7 @@ def create_app(settings: Settings | None = None,
             prompts.answer_prompt(req.question,
                                   [c.model_dump() for c in req.evidence],
                                   [h.model_dump() for h in req.history]),
-            req.maxTokens, timeout_key="answer")
+            req.maxTokens, timeout_key="answer", model=settings.answer_model)
         refused = bool(parsed.get("refused", True)) or not parsed.get("answer")
         citations = [] if refused else [
             {"chunkId": str(c.get("chunkId", "")), "quote": c.get("quote")}

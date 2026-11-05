@@ -40,6 +40,10 @@ public class AiResultRepository {
         return mapper.selectCitations(resultIdHex);
     }
 
+    public int deleteCitationsByVersion(String versionIdHex) {
+        return mapper.deleteCitationsByVersion(versionIdHex);
+    }
+
     /** 引用片段截断（VARCHAR2(2000) 字节语义下留足多字节余量）。 */
     public static String clipQuote(String text) {
         if (text == null) {

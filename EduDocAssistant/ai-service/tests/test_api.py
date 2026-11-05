@@ -12,8 +12,8 @@ from app.model_client import ModelClient
 
 KEY = "sk-SECRET1234567890"
 SETTINGS = Settings(api_key=KEY, base_url="https://provider.invalid/v1", chat_model="K",
-                    embedding_model="bge-m3", rerank_model="rr", embedding_dimension=4,
-                    internal_token="tok")
+                    answer_model="Fast-7B", embedding_model="bge-m3", rerank_model="rr",
+                    embedding_dimension=4, internal_token="tok")
 
 
 def make_client(responses):
@@ -91,7 +91,8 @@ def test_missing_and_wrong_internal_token():
 
 def test_token_not_configured_is_503():
     settings = Settings(api_key=KEY, base_url="https://x.invalid/v1", chat_model="K",
-                        embedding_model="E", rerank_model="R", embedding_dimension=4, internal_token="")
+                        answer_model="Fast-7B", embedding_model="E", rerank_model="R",
+                        embedding_dimension=4, internal_token="")
     http = TestClient(create_app(settings, ModelClient(settings, transport=httpx.MockTransport(
         lambda r: httpx.Response(200, json={})  # noqa: S306
     ))), headers={"X-Internal-Token": "anything"})
@@ -149,9 +150,11 @@ def test_answer_with_citations_and_history_in_prompt():
     assert body["refused"] is False
     assert body["answer"] == "依据是 X"
     assert body["citations"] == [{"chunkId": "C1", "quote": "X 原文"}]
-    sent_prompt = json.loads(calls[0].content)["messages"][1]["content"]
+    sent = json.loads(calls[0].content)
+    sent_prompt = sent["messages"][1]["content"]
     assert "上一问" in sent_prompt and "上一答" in sent_prompt  # 历史由服务端拼接
-    assert json.loads(calls[0].content)["max_tokens"] == 900
+    assert sent["max_tokens"] == 900
+    assert sent["model"] == "Fast-7B"  # P-05：答案走独立快模型位，生成任务仍走 chat_model
 
 
 def test_answer_refused_flag():

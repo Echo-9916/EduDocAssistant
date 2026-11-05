@@ -112,16 +112,17 @@ class ModelClient:
         return [{"index": r["index"], "relevanceScore": r["relevance_score"]}
                 for r in data.get("results", [])]
 
-    def chat_json(self, user_prompt: str, max_tokens: int, timeout_key: str = "generate") -> tuple[dict, dict]:
+    def chat_json(self, user_prompt: str, max_tokens: int, timeout_key: str = "generate",
+                  model: str | None = None) -> tuple[dict, dict]:
         """对话并要求 JSON：解析失败重试一次（换更严提示），仍失败报 MODEL_FAILED。"""
         prompt = user_prompt
         for attempt in (0, 1):
-            content, usage, model = self._chat(prompt, max_tokens, timeout_key)
+            content, usage, model_name = self._chat(prompt, max_tokens, timeout_key, model=model)
             try:
                 parsed = extract_json(content)
                 if not isinstance(parsed, dict):
                     raise ValueError("期望 JSON 对象")
-                return parsed, usage | {"model": model}
+                return parsed, usage | {"model": model_name}
             except ValueError as e:
                 prompt = user_prompt + f"\n\n上次输出无法解析（{e}）。只输出合法 JSON 对象。"
         raise ModelError("MODEL_FAILED", "模型输出无法解析为 JSON（已重试一次）")
@@ -134,13 +135,13 @@ class ModelClient:
         return _strip_fences(content), usage | {"model": model}
 
     def _chat(self, user_prompt: str, max_tokens: int, timeout_key: str,
-              system: str | None = None) -> tuple[str, dict, str]:
+              system: str | None = None, model: str | None = None) -> tuple[str, dict, str]:
         from .prompts import SYSTEM_STRICT_JSON
 
         messages = ([{"role": "system", "content": system or SYSTEM_STRICT_JSON}]
                     + [{"role": "user", "content": user_prompt}])
         data = self._post("chat/completions", {
-            "model": self.settings.chat_model,
+            "model": model or self.settings.chat_model,
             "messages": messages,
             "temperature": 0.2,
             "max_tokens": max(1, min(int(max_tokens), 4000)),

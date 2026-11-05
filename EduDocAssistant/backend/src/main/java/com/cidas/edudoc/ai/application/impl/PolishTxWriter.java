@@ -27,7 +27,7 @@ import java.util.List;
 
 /**
  * 润色写事务（C-07）：行落库与「成版五写」单事务提交——
- * DERIVED 对象登记 → EDIT 版本 → current 前移 → 状态 PARSING → 简化解析（文本即结构，跳 Tika）
+ * 派生文本对象登记（角色取字典值 PARSED，ck_oss_role 无 DERIVED）→ EDIT 版本 → current 前移 → PARSING → 简化解析（文本即结构，跳 Tika）
  * 走 DocumentParseTxService 复用分块+向量化通道（DOCUMENT_EMBED_REQUESTED 自然衔接）。
  */
 @Component

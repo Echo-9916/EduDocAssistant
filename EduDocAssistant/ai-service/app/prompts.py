@@ -38,7 +38,7 @@ def answer_prompt(question: str, evidence: list[dict], history: list[dict]) -> s
         f"{'用户' if h['role'] == 'user' else '助手'}: {h['content']}" for h in history
     ) or "（无）"
     return (
-        "只依据证据回答用户问题；证据不足时必须拒答，不得用常识补写。\n"
+        "只依据证据回答用户问题；证据不足时必须拒答，不得用常识补写。回答简洁，150 字以内。\n"
         "输出 JSON 对象：可答时 {\"refused\": false, \"answer\": \"回答\", "
         "\"citations\": [{\"chunkId\": \"证据chunkId\", \"quote\": \"逐字引用的证据片段\"}]}\n"
         "拒答时 {\"refused\": true}。citations 的 chunkId 只能引用证据编号，quote 须逐字来自证据。\n\n"

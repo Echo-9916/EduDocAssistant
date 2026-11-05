@@ -36,6 +36,8 @@ public class AiServiceClient implements AiGateway {
     private final RestClient shortClient;
     private final RestClient longClient;
     private final RestClient answerClient;
+    private final java.util.concurrent.ConcurrentHashMap<Long, RestClient> timedClients =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public AiServiceClient(AiServiceProperties properties, ObjectMapper mapper) {
         this.properties = properties;
@@ -72,7 +74,12 @@ public class AiServiceClient implements AiGateway {
 
     @Override
     public EmbedOutcome embed(List<String> texts) {
-        JsonNode resp = post("/v1/embed", Map.of("texts", texts), shortClient);
+        return embed(texts, properties.shortTimeoutMs());
+    }
+
+    @Override
+    public EmbedOutcome embed(List<String> texts, long timeoutMs) {
+        JsonNode resp = post("/v1/embed", Map.of("texts", texts), clientFor(timeoutMs, shortClient));
         List<float[]> vectors = new ArrayList<>();
         for (JsonNode vector : resp.path("vectors")) {
             float[] row = new float[vector.size()];
@@ -117,11 +124,32 @@ public class AiServiceClient implements AiGateway {
 
     @Override
     public AnswerOutcome answer(String question, List<SourceChunk> evidence, List<HistoryMessage> history) {
+        return answer(question, evidence, history, properties.answerTimeoutMs());
+    }
+
+    @Override
+    public SummarizeOutcome summarizeReduce(List<SourceChunk> segments) {
+        JsonNode resp = post("/v1/summarize", Map.of(
+                "chunks", segments.stream().map(c -> Map.of("chunkId", c.chunkId(), "text", c.text())).toList(),
+                "reduce", true), longClient);
+        List<SummarySegment> reduced = new ArrayList<>();
+        for (JsonNode segment : resp.path("segments")) {
+            List<String> chunkIds = new ArrayList<>();
+            segment.path("chunkIds").forEach(node -> chunkIds.add(node.asText()));
+            reduced.add(new SummarySegment(segment.path("text").asText(""), chunkIds));
+        }
+        return new SummarizeOutcome(resp.path("model").asText(null), resp.path("promptVersion").asText(null),
+                usage(resp), reduced);
+    }
+
+    @Override
+    public AnswerOutcome answer(String question, List<SourceChunk> evidence, List<HistoryMessage> history,
+                                long timeoutMs) {
         JsonNode resp = post("/v1/answer", Map.of(
                 "question", question,
                 "evidence", evidence.stream().map(c -> Map.of("chunkId", c.chunkId(), "text", c.text())).toList(),
                 "history", history.stream().map(h -> Map.of("role", h.role(), "content", h.content())).toList(),
-                "maxTokens", 900), answerClient);
+                "maxTokens", 900), clientFor(timeoutMs, answerClient));
         List<CitationRef> citations = new ArrayList<>();
         for (JsonNode node : resp.path("citations")) {
             citations.add(new CitationRef(node.path("chunkId").asText(null), node.path("quote").asText(null)));
@@ -145,13 +173,27 @@ public class AiServiceClient implements AiGateway {
 
     @Override
     public List<RerankHit> rerank(String query, List<String> documents, int topN) {
+        return rerank(query, documents, topN, properties.shortTimeoutMs());
+    }
+
+    @Override
+    public List<RerankHit> rerank(String query, List<String> documents, int topN, long timeoutMs) {
         JsonNode resp = post("/v1/rerank",
-                Map.of("query", query, "documents", documents, "topN", topN), shortClient);
+                Map.of("query", query, "documents", documents, "topN", topN),
+                clientFor(timeoutMs, shortClient));
         List<RerankHit> hits = new ArrayList<>();
         for (JsonNode node : resp.path("results")) {
             hits.add(new RerankHit(node.path("index").asInt(), node.path("relevanceScore").asDouble()));
         }
         return hits;
+    }
+
+    /** QA 预算传递（P1-3）：per-call 超时复用连接配置、缓存客户端实例。 */
+    private RestClient clientFor(long timeoutMs, RestClient tierClient) {
+        if (timeoutMs <= 0) {
+            return tierClient;
+        }
+        return timedClients.computeIfAbsent(timeoutMs, t -> buildClient(t));
     }
 
     private JsonNode post(String path, Map<String, Object> body, RestClient client) {

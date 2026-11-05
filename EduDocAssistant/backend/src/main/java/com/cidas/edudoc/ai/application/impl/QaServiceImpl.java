@@ -102,24 +102,31 @@ public class QaServiceImpl implements QaService {
         String q = question.strip();
         Document doc = requireVisible(session.getDocumentId(), principal);
 
+        // P-05 端到端统一预算（1105 审查 P1-3）：逐段检查剩余时间并把上限传给每次外部调用
+        long deadline = System.nanoTime()
+                + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(Math.max(1, qaProperties.budgetMs()));
+
         AiModelProfile embedProfile = profileRepository.findByCode(EmbedWorker.EMBED_PROFILE_CODE)
                 .filter(p -> "A".equals(p.getStatus()) && p.getEmbeddingDimension() != null)
                 .orElseThrow(() -> new CidasBusinessException(
                         ErrorCode.SERVICE_UNAVAILABLE, "嵌入模型档案缺失或未启用"));
-        List<float[]> vectors = aiGateway.embed(List.of(q)).vectors();
+        long embedBudget = remainingOrThrow(deadline, session, q);
+        List<float[]> vectors = aiGateway.embed(List.of(q), embedBudget).vectors();
         if (vectors.isEmpty() || vectors.get(0).length != embedProfile.getEmbeddingDimension()) {
             return refuse(session, q, "问题向量维度不符");
         }
-        List<SearchHit> hits = searchEvidence(q, doc, embedProfile, vectors.get(0));
+        long searchBudget = remainingOrThrow(deadline, session, q);
+        List<SearchHit> hits = searchEvidence(q, doc, embedProfile, vectors.get(0), searchBudget);
         if (hits.isEmpty() || evidenceScore(hits) < qaProperties.evidenceThreshold()) {
             return refuse(session, q, "证据不足（阈值 " + qaProperties.evidenceThreshold() + "）");
         }
 
         List<HistoryMessage> history = history(sessionId);
+        long answerBudget = remainingOrThrow(deadline, session, q);
         AnswerOutcome outcome;
         try {
             outcome = aiGateway.answer(q, hits.stream()
-                    .map(h -> new SourceChunk(h.chunkId(), h.contentText())).toList(), history);
+                    .map(h -> new SourceChunk(h.chunkId(), h.contentText())).toList(), history, answerBudget);
         } catch (CidasBusinessException e) {
             // 超时/模型失败：FAILED 双消息落库后按原错误码上抛（50401→HTTP 504），不伪造答案
             qaTxService.persist(new QaTxService.Write(sessionId, q,
@@ -151,8 +158,21 @@ public class QaServiceImpl implements QaService {
 
     // ---------- 检索与阈值 ----------
 
+    /** 剩余预算（扣 200ms 安全余量给下一段）；不足 300ms 即按超时终止：FAILED 双消息落库后上抛 50401。 */
+    private long remainingOrThrow(long deadlineNanos, QaSession session, String question) {
+        long remainingMs = (deadlineNanos - System.nanoTime()) / 1_000_000 - 200;
+        if (remainingMs < 300) {
+            qaTxService.persist(new QaTxService.Write(session.getId(), question,
+                    "问答处理超时（端到端预算 " + qaProperties.budgetMs() + "ms）", "FAILED", null, null, List.of()));
+            throw new CidasBusinessException(ErrorCode.TIMEOUT,
+                    "问答端到端预算耗尽", true, Map.of("stage", "deadline"));
+        }
+        return remainingMs;
+    }
+
     /** §3.2.2：topK=6 → rerank take(4)；未配置 RERANK 档案或调用失败 → 降级向量序 take(4)。 */
-    private List<SearchHit> searchEvidence(String question, Document doc, AiModelProfile profile, float[] vector) {
+    private List<SearchHit> searchEvidence(String question, Document doc, AiModelProfile profile,
+                                           float[] vector, long rerankBudgetMs) {
         List<SearchHit> hits = embeddingRepository.searchByVersion(doc.getCurrentVersionId(),
                 profile.getId(), EmbedWorker.toVectorLiteral(vector),
                 profile.getEmbeddingDimension(), TOP_K);
@@ -167,7 +187,7 @@ public class QaServiceImpl implements QaService {
         }
         try {
             List<RerankHit> ranked = aiGateway.rerank(question,
-                    hits.stream().map(SearchHit::contentText).toList(), take);
+                    hits.stream().map(SearchHit::contentText).toList(), take, rerankBudgetMs);
             List<SearchHit> reordered = ranked.stream()
                     .filter(h -> h.index() >= 0 && h.index() < hits.size())
                     .map(h -> hits.get(h.index()))

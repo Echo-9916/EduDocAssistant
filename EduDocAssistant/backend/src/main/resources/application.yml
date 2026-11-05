@@ -34,6 +34,8 @@ edudoc:
       model: ${EDUDOC_AI_RERANK_MODEL:BAAI/bge-reranker-v2-m3}
   qa:
     evidence-threshold: 0.35
+    # P-05 问答端到端目标 5s：统一 deadline，剩余时间逐段传给 embed/rerank/answer（1105 审查 P1-3）
+    budget-ms: 5000
   oss:
     endpoint: ${EDUDOC_OSS_ENDPOINT:https://oss-cn-beijing.aliyuncs.com}
     region: ${EDUDOC_OSS_REGION:cn-beijing}

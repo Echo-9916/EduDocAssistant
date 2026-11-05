@@ -9,20 +9,33 @@ import java.util.List;
  */
 public interface AiGateway {
 
-    /** 批量向量化；返回向量与入参等长（顺序一致）。 */
+    /** 批量向量化（档内默认超时）；返回向量与入参等长（顺序一致）。 */
     EmbedOutcome embed(List<String> texts);
+
+    /** 带超时上限的向量化（QA 端到端预算传递，1105 审查 P1-3）。 */
+    EmbedOutcome embed(List<String> texts, long timeoutMs);
 
     SummarizeOutcome summarize(List<SourceChunk> chunks);
 
+    /** 摘要 reduce 段：对 map 段再做一次汇总结论（1105 审查 P3-2 真 map-reduce）。 */
+    SummarizeOutcome summarizeReduce(List<SourceChunk> segments);
+
     KeypointOutcome extractKeypoints(List<SourceChunk> chunks);
 
-    /** evidence-only 问答；refused=true 表示模型按证据判定无法作答。 */
+    /** evidence-only 问答（档内默认超时）；refused=true 表示模型按证据判定无法作答。 */
     AnswerOutcome answer(String question, List<SourceChunk> evidence, List<HistoryMessage> history);
+
+    /** 带超时上限的问答生成（QA 端到端预算传递）。 */
+    AnswerOutcome answer(String question, List<SourceChunk> evidence, List<HistoryMessage> history,
+                         long timeoutMs);
 
     PolishOutcome polish(List<String> paragraphs);
 
-    /** 相关性重排；返回按分数降序的原文档下标。 */
+    /** 相关性重排（档内默认超时）；返回按分数降序的原文档下标。 */
     List<RerankHit> rerank(String query, List<String> documents, int topN);
+
+    /** 带超时上限的重排（QA 端到端预算传递）。 */
+    List<RerankHit> rerank(String query, List<String> documents, int topN, long timeoutMs);
 
     record SourceChunk(String chunkId, String text) {
     }

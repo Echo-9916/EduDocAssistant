@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -62,7 +63,7 @@ class QaAnswerServiceTest {
     private final AiResultRepository aiResultRepository = mock(AiResultRepository.class);
     private final QaService service = new QaServiceImpl(documentRepository, embeddingRepository,
             profileRepository, aiGateway, qaRepository, qaTxService,
-            new QaProperties(0.35), aiResultRepository, new ObjectMapper());
+            new QaProperties(0.35, 5000), aiResultRepository, new ObjectMapper());
 
     @BeforeEach
     void setUp() {
@@ -74,7 +75,7 @@ class QaAnswerServiceTest {
         when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc));
         when(profileRepository.findByCode("EMB_BGE_M3")).thenReturn(Optional.of(
                 new AiModelProfile(PROFILE_ID, "EMB_BGE_M3", "EMBEDDING", "bge-m3", 1024, "COSINE", "A")));
-        when(aiGateway.embed(anyList())).thenReturn(new EmbedOutcome("bge-m3",
+        when(aiGateway.embed(anyList(), anyLong())).thenReturn(new EmbedOutcome("bge-m3",
                 List.of(new float[1024])));
         when(qaTxService.persist(any())).thenReturn(new QaTxService.Written("QM1", "AM1"));
         when(qaRepository.findMessages(SESSION_ID)).thenReturn(List.of());
@@ -103,7 +104,7 @@ class QaAnswerServiceTest {
         QaService.AskResult result = service.ask(SESSION_ID, "文档外问题？");
 
         assertEquals("REFUSED", result.status());
-        verify(aiGateway, never()).answer(anyString(), anyList(), anyList());
+        verify(aiGateway, never()).answer(anyString(), anyList(), anyList(), anyLong());
         ArgumentCaptor<QaTxService.Write> write = ArgumentCaptor.forClass(QaTxService.Write.class);
         verify(qaTxService).persist(write.capture());
         assertEquals("REFUSED", write.getValue().assistantStatus());
@@ -134,7 +135,7 @@ class QaAnswerServiceTest {
     void readyAnswerPersistsTaskResultAndCitations() {
         givenHits(hit("H1", 0.05, "依据原文一"), hit("H2", 0.2, "依据原文二"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.empty());
-        when(aiGateway.answer(anyString(), anyList(), anyList())).thenReturn(new AnswerOutcome(
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenReturn(new AnswerOutcome(
                 "Kimi", "qa-v1", new AiGateway.TokenUsage(50, 20), "答案文本",
                 List.of(new CitationRef("H1", null)), false));
 
@@ -157,7 +158,7 @@ class QaAnswerServiceTest {
     void allIllegalCitationsRefuseUt10() {
         givenHits(hit("H1", 0.05, "依据原文一"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.empty());
-        when(aiGateway.answer(anyString(), anyList(), anyList())).thenReturn(new AnswerOutcome(
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenReturn(new AnswerOutcome(
                 "Kimi", "qa-v1", null, "答案文本",
                 List.of(new CitationRef("NOT_EXIST", null),
                         new CitationRef("H1", "这段引用根本对不上原文")), false));
@@ -172,7 +173,7 @@ class QaAnswerServiceTest {
     void quotePrefixContainedIsAccepted() {
         givenHits(hit("H1", 0.05, "依据原文一，后续内容"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.empty());
-        when(aiGateway.answer(anyString(), anyList(), anyList())).thenReturn(new AnswerOutcome(
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenReturn(new AnswerOutcome(
                 "Kimi", "qa-v1", null, "答案",
                 List.of(new CitationRef("H1", "依据原文一，后")), false)); // 前 20 字包含即可
 
@@ -183,7 +184,7 @@ class QaAnswerServiceTest {
     void modelSelfRefusalBecomesRefused() {
         givenHits(hit("H1", 0.05, "依据"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.empty());
-        when(aiGateway.answer(anyString(), anyList(), anyList())).thenReturn(new AnswerOutcome(
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenReturn(new AnswerOutcome(
                 "Kimi", "qa-v1", null, "", List.of(), true));
 
         assertEquals("REFUSED", service.ask(SESSION_ID, "问题？").status());
@@ -193,7 +194,7 @@ class QaAnswerServiceTest {
     void timeoutWritesFailedMessageAndRetrows504() {
         givenHits(hit("H1", 0.05, "依据"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.empty());
-        when(aiGateway.answer(anyString(), anyList(), anyList())).thenThrow(
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenThrow(
                 new CidasBusinessException(ErrorCode.TIMEOUT, "ai-service 调用超时", true, java.util.Map.of()));
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
@@ -211,16 +212,16 @@ class QaAnswerServiceTest {
                 hit("H4", 0.2, "d"), hit("H5", 0.25, "e"), hit("H6", 0.3, "f"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.of(
                 new AiModelProfile("P2", "RERANK_BGE_V2", "RERANK", "r", null, null, "A")));
-        when(aiGateway.rerank(anyString(), anyList(), anyInt()))
+        when(aiGateway.rerank(anyString(), anyList(), anyInt(), anyLong()))
                 .thenThrow(new CidasBusinessException(ErrorCode.MODEL_FAILED, "rerank 挂", true, java.util.Map.of()));
-        when(aiGateway.answer(anyString(), anyList(), anyList())).thenReturn(new AnswerOutcome(
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenReturn(new AnswerOutcome(
                 "Kimi", "qa-v1", null, "答案", List.of(new CitationRef("H1", null)), false));
 
         QaService.AskResult result = service.ask(SESSION_ID, "问题？");
 
         assertEquals("READY", result.status());
         ArgumentCaptor<List<SourceChunk>> evidence = ArgumentCaptor.forClass(List.class);
-        verify(aiGateway).answer(anyString(), evidence.capture(), anyList());
+        verify(aiGateway).answer(anyString(), evidence.capture(), anyList(), anyLong());
         assertEquals(List.of("H1", "H2", "H3", "H4"),
                 evidence.getValue().stream().map(SourceChunk::chunkId).toList());
     }
@@ -230,15 +231,15 @@ class QaAnswerServiceTest {
         givenHits(hit("H1", 0.05, "a"), hit("H2", 0.1, "b"), hit("H3", 0.15, "c"), hit("H4", 0.2, "d"));
         when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.of(
                 new AiModelProfile("P2", "RERANK_BGE_V2", "RERANK", "r", null, null, "A")));
-        when(aiGateway.rerank(anyString(), anyList(), anyInt())).thenReturn(List.of(
+        when(aiGateway.rerank(anyString(), anyList(), anyInt(), anyLong())).thenReturn(List.of(
                 new RerankHit(3, 0.9), new RerankHit(0, 0.5)));
-        when(aiGateway.answer(anyString(), anyList(), anyList())).thenReturn(new AnswerOutcome(
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenReturn(new AnswerOutcome(
                 "Kimi", "qa-v1", null, "答案", List.of(new CitationRef("H4", null)), false));
 
         service.ask(SESSION_ID, "问题？");
 
         ArgumentCaptor<List<SourceChunk>> evidence = ArgumentCaptor.forClass(List.class);
-        verify(aiGateway).answer(anyString(), evidence.capture(), anyList());
+        verify(aiGateway).answer(anyString(), evidence.capture(), anyList(), anyLong());
         assertEquals(List.of("H4", "H1"), evidence.getValue().stream().map(SourceChunk::chunkId).toList());
     }
 
@@ -250,13 +251,13 @@ class QaAnswerServiceTest {
                 new QaMessage("M1", SESSION_ID, "USER", "第一问", null, 1, "READY"),
                 new QaMessage("M2", SESSION_ID, "ASSISTANT", "第一答", null, 2, "READY"),
                 new QaMessage("M3", SESSION_ID, "ASSISTANT", "拒答", null, 3, "REFUSED")));
-        when(aiGateway.answer(anyString(), anyList(), anyList())).thenReturn(new AnswerOutcome(
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenReturn(new AnswerOutcome(
                 "Kimi", "qa-v1", null, "答案", List.of(new CitationRef("H1", null)), false));
 
         service.ask(SESSION_ID, "第二问");
 
         ArgumentCaptor<List<HistoryMessage>> history = ArgumentCaptor.forClass(List.class);
-        verify(aiGateway).answer(eq("第二问"), anyList(), history.capture());
+        verify(aiGateway).answer(eq("第二问"), anyList(), history.capture(), anyLong());
         assertEquals(List.of("第一问", "第一答"), history.getValue().stream()
                 .map(HistoryMessage::content).toList());
     }
@@ -281,6 +282,43 @@ class QaAnswerServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> service.ask(SESSION_ID, "问题？"));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
+    }
+
+    @Test
+    void endToEndDeadlineAbortsBeforeStageWhenBudgetSpent() {
+        // 1105 审查 P1-3：QA 统一 5s 预算，逐段传递剩余时间；预算耗尽 → 不调用后续阶段，
+        // 落 FAILED 双消息并抛 50401
+        when(qaRepository.findSession(SESSION_ID)).thenReturn(Optional.of(
+                new QaSession(SESSION_ID, DOC_ID, "U1", "t", "A")));
+        when(documentRepository.findById(DOC_ID)).thenReturn(java.util.Optional.of(
+                new com.cidas.edudoc.document.infrastructure.Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION)));
+        QaService tight = new QaServiceImpl(documentRepository, embeddingRepository, profileRepository,
+                aiGateway, qaRepository, qaTxService, new QaProperties(0.35, 0), aiResultRepository,
+                new ObjectMapper());
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> tight.ask(SESSION_ID, "问题？"));
+
+        assertEquals(ErrorCode.TIMEOUT, e.errorCode());
+        verify(aiGateway, never()).embed(anyList(), anyLong());
+        ArgumentCaptor<QaTxService.Write> write = ArgumentCaptor.forClass(QaTxService.Write.class);
+        verify(qaTxService).persist(write.capture());
+        assertEquals("FAILED", write.getValue().assistantStatus());
+    }
+
+    @Test
+    void answerReceivesBoundedRemainingTimeout() {
+        givenHits(hit("H1", 0.05, "依据"));
+        when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.empty());
+        when(aiGateway.answer(anyString(), anyList(), anyList(), anyLong())).thenReturn(
+                new AnswerOutcome("Kimi", "qa-v1", null, "答案", List.of(new CitationRef("H1", null)), false));
+
+        service.ask(SESSION_ID, "问题？");
+
+        ArgumentCaptor<Long> timeout = ArgumentCaptor.forClass(Long.class);
+        verify(aiGateway).answer(anyString(), anyList(), anyList(), timeout.capture());
+        assertTrue(timeout.getValue() > 0 && timeout.getValue() <= 5000,
+                "answer 超时必须继承剩余预算：got " + timeout.getValue());
     }
 
     @Test

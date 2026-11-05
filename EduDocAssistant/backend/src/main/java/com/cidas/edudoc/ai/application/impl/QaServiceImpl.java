@@ -115,11 +115,13 @@ public class QaServiceImpl implements QaService {
         if (vectors.isEmpty() || vectors.get(0).length != embedProfile.getEmbeddingDimension()) {
             return refuse(session, q, "问题向量维度不符");
         }
-        long searchBudget = remainingOrThrow(deadline, session, q);
-        List<SearchHit> hits = searchEvidence(q, doc, embedProfile, vectors.get(0), searchBudget);
-        if (hits.isEmpty() || evidenceScore(hits) < qaProperties.evidenceThreshold()) {
+        List<SearchHit> topHits = searchEvidence(doc, embedProfile, vectors.get(0));
+        // 阈值判据在 topK=6 全集上算（1105 冒烟：分数若在 rerank 后子集上算，排序波动会翻转拒答判定）
+        if (topHits.isEmpty() || evidenceScore(topHits) < qaProperties.evidenceThreshold()) {
             return refuse(session, q, "证据不足（阈值 " + qaProperties.evidenceThreshold() + "）");
         }
+        long searchBudget = remainingOrThrow(deadline, session, q);
+        List<SearchHit> hits = rerankTake(q, topHits, searchBudget);
 
         List<HistoryMessage> history = history(sessionId);
         long answerBudget = remainingOrThrow(deadline, session, q);
@@ -170,16 +172,16 @@ public class QaServiceImpl implements QaService {
         return remainingMs;
     }
 
-    /** §3.2.2：topK=6 → rerank take(4)；未配置 RERANK 档案或调用失败 → 降级向量序 take(4)。 */
-    private List<SearchHit> searchEvidence(String question, Document doc, AiModelProfile profile,
-                                           float[] vector, long rerankBudgetMs) {
-        List<SearchHit> hits = embeddingRepository.searchByVersion(doc.getCurrentVersionId(),
+    /** §3.2.2 第一步：版本内向量检索 topK=6（本地 SQL，无外部预算）。 */
+    private List<SearchHit> searchEvidence(Document doc, AiModelProfile profile, float[] vector) {
+        return embeddingRepository.searchByVersion(doc.getCurrentVersionId(),
                 profile.getId(), EmbedWorker.toVectorLiteral(vector),
                 profile.getEmbeddingDimension(), TOP_K);
+    }
+
+    /** §3.2.2 第二步：rerank take(4)；未配置 RERANK 档案或调用失败 → 降级向量序 take(4)（R2）。 */
+    private List<SearchHit> rerankTake(String question, List<SearchHit> hits, long rerankBudgetMs) {
         int take = Math.min(RERANK_TAKE, hits.size());
-        if (hits.isEmpty()) {
-            return hits;
-        }
         Optional<AiModelProfile> rerankProfile = profileRepository.findByCode("RERANK_BGE_V2")
                 .filter(p -> "A".equals(p.getStatus()));
         if (rerankProfile.isEmpty()) {

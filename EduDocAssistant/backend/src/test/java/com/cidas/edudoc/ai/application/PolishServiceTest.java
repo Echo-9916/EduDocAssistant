@@ -162,7 +162,7 @@ class PolishServiceTest {
         when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(new PolishService.AppliedView(POLISH_ID, DOC_ID, "V2", 2, "PARSING"));
 
-        PolishService.AppliedView view = service.apply(POLISH_ID, "ACCEPT", null);
+        PolishService.AppliedView view = service.apply(POLISH_ID, "ACCEPT", null, null);
 
         assertEquals("V2", view.versionId());
         ArgumentCaptor<String> newText = ArgumentCaptor.forClass(String.class);
@@ -183,9 +183,51 @@ class PolishServiceTest {
         givenVersionText("别的文本");
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
-                () -> service.apply(POLISH_ID, "ACCEPT", null));
+                () -> service.apply(POLISH_ID, "ACCEPT", null, null));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
         verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void duplicateParagraphWithoutAnchorIsRejected() {
+        // 1105 审查 P2-4：同文重复段落且未给 charStart → 拒绝消歧负担，不再静默替换首处
+        givenRow("PENDING", "重复段", "新内容");
+        givenReadyDoc();
+        givenVersionText("重复段前置。", "重复段前置。");
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> service.apply(POLISH_ID, "ACCEPT", null, null));
+        assertEquals(ErrorCode.CONFLICT, e.errorCode());
+        verify(ossAdapter, never()).putText(anyString(), anyString());
+    }
+
+    @Test
+    void charStartAnchorReplacesExactOccurrence() {
+        givenRow("PENDING", "重复段", "新内容");
+        givenReadyDoc();
+        givenVersionText("重复段", "中间", "重复段");
+        when(ossAdapter.putText(anyString(), anyString())).thenReturn(
+                new OssStorageAdapter.ObjectInfo(10, "etag", null, "SSE-OSS"));
+        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(new PolishService.AppliedView(POLISH_ID, DOC_ID, "V2", 2, "READY"));
+
+        // 全文=「重复段中间重复段」，charStart=5 → 替换第二处
+        service.apply(POLISH_ID, "ACCEPT", null, 5);
+
+        ArgumentCaptor<String> newText = ArgumentCaptor.forClass(String.class);
+        verify(ossAdapter).putText(anyString(), newText.capture());
+        assertEquals("重复段中间新内容", newText.getValue());
+    }
+
+    @Test
+    void staleAnchorIsRejected() {
+        givenRow("PENDING", "重复段", "新内容");
+        givenReadyDoc();
+        givenVersionText("开头不同", "别的", "内容");
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> service.apply(POLISH_ID, "ACCEPT", null, 3));
+        assertEquals(ErrorCode.CONFLICT, e.errorCode());
     }
 
     @Test
@@ -193,7 +235,7 @@ class PolishServiceTest {
         givenRow("ACCEPT", "旧段落", "新段落");
         givenReadyDoc();
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
-                () -> service.apply(POLISH_ID, "ACCEPT", null));
+                () -> service.apply(POLISH_ID, "ACCEPT", null, null));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
     }
 
@@ -202,12 +244,12 @@ class PolishServiceTest {
         givenRow("PENDING", "旧段落", "新段落");
         givenReadyDoc();
         assertEquals(ErrorCode.BAD_REQUEST, assertThrows(CidasBusinessException.class,
-                () -> service.apply(POLISH_ID, "PARTIAL", " ")).errorCode());
+                () -> service.apply(POLISH_ID, "PARTIAL", " ", null)).errorCode());
 
         when(polishRepository.findById(POLISH_ID)).thenReturn(Optional.of(
                 new PolishResult(POLISH_ID, DOC_ID, VERSION, "OTHER", "T1", "旧", "新", null, "PENDING")));
         assertEquals(ErrorCode.NOT_FOUND, assertThrows(CidasBusinessException.class,
-                () -> service.apply(POLISH_ID, "ACCEPT", null)).errorCode());
+                () -> service.apply(POLISH_ID, "ACCEPT", null, null)).errorCode());
     }
 
     @Test

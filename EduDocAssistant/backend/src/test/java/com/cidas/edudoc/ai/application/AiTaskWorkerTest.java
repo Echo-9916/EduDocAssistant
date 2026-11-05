@@ -99,11 +99,18 @@ class AiTaskWorkerTest {
             return new SummarizeOutcome("Kimi-K2", "sum-v1", new TokenUsage(10, 5),
                     List.of(new SummarySegment("摘要-" + firstId, List.of(firstId, "NOT_A_CHUNK"))));
         });
+        // 真 reduce（P3-2）：两组 → 汇总一次；reduce 输出仍带非法引用，验证下游一并过滤
+        when(aiGateway.summarizeReduce(anyList())).thenReturn(new SummarizeOutcome(
+                "Kimi-K2", "sum-v2", new TokenUsage(4, 3),
+                List.of(new SummarySegment("摘要-A1", List.of("A1", "NOT_A_CHUNK")),
+                        new SummarySegment("摘要-A3", List.of("A3", "NOT_A_CHUNK")))));
         when(resultTxService.completeTask(any(), anyList())).thenReturn(true);
 
         worker.processTask(TASK_ID);
 
         verify(aiGateway, times(2)).summarize(anyList());
+        verify(aiGateway, times(1)).summarizeReduce(anyList());
+        verify(aiTaskRepository).releaseActiveKey(TASK_ID); // P2-5 终态释放活跃锁
         verify(aiTaskRepository, times(2)).updateProgress(eq(TASK_ID), anyInt());
         ArgumentCaptor<AiResult> result = ArgumentCaptor.forClass(AiResult.class);
         ArgumentCaptor<List<AiCitation>> citations = ArgumentCaptor.forClass(List.class);
@@ -153,6 +160,8 @@ class AiTaskWorkerTest {
         worker.processTask(TASK_ID);
 
         verify(auditService, never()).record(eq("AI_TASK_SUCCEEDED"), any(), any(), any(), any(), any());
+        // 单组不触发 reduce（P3-2）
+        verify(aiGateway, never()).summarizeReduce(anyList());
     }
 
     @Test

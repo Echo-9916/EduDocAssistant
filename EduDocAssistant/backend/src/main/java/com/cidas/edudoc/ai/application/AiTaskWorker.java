@@ -186,6 +186,9 @@ public class AiTaskWorker {
             log.error("AI 任务异常 taskId={}", taskId, e);
             aiTaskRepository.markFailed(taskId, "50001");
             auditFailed(task, new CidasBusinessException(ErrorCode.INTERNAL_ERROR, e.getMessage()));
+        } finally {
+            // 终态（含失败）释放 ACTIVE 锁键（P2-5）；已被取消路径释放过则 0 行无害
+            aiTaskRepository.releaseActiveKey(taskId);
         }
     }
 
@@ -222,6 +225,18 @@ public class AiTaskWorker {
             }
         }
         checkBudget(beganAt);
+
+        // 真 map-reduce（1105 审查 P3-2）：多组时把组摘要段再做一次汇总结论
+        if (groups.size() > 1 && !segments.isEmpty()) {
+            List<SourceChunk> segRefs = new ArrayList<>();
+            for (SummarySegment s : segments) {
+                segRefs.add(new SourceChunk(s.chunkIds().isEmpty() ? "" : s.chunkIds().get(0), s.text()));
+            }
+            List<SummarySegment> reduced = aiGateway.summarizeReduce(segRefs).segments();
+            if (!reduced.isEmpty()) {
+                segments = reduced;
+            }
+        }
 
         Map<String, VersionChunk> validChunks = citationService.indexByVersion(chunks);
         List<AiCitation> citations = new ArrayList<>();

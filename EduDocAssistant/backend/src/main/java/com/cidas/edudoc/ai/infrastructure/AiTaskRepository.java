@@ -63,4 +63,9 @@ public class AiTaskRepository {
     public void incrementRetry(String idHex) {
         mapper.incrementRetry(idHex);
     }
+
+    /** 生成类任务终态后释放活跃锁键（仅 ACTIVE: 前缀，EMBED 的 eventId 键不动）。 */
+    public void releaseActiveKey(String idHex) {
+        mapper.releaseActiveKey(idHex);
+    }
 }

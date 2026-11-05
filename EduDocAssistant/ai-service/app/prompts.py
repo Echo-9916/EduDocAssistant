@@ -24,6 +24,15 @@ def summarize_prompt(chunks: list[dict]) -> str:
     )
 
 
+def reduce_prompt(segments: list[dict]) -> str:
+    return (
+        "以下是对文档分段生成的摘要段（chunkId/summaryText）。将其融合重写成一份连贯的最终摘要，"
+        "去重、保留来源标注（chunkIds 可合并多段来源）。\n"
+        "输出 JSON 对象：{\"segments\": [{\"text\": \"最终摘要句\", \"chunkIds\": [\"来源chunkId\"]}]}\n\n"
+        "摘要段：\n" + _chunks_block(segments)
+    )
+
+
 def keypoints_prompt(chunks: list[dict]) -> str:
     return (
         "从以下分块文本中按文档顺序提取关键要点（尽量 5 条以上，每条须可定位到来源分块）。\n"

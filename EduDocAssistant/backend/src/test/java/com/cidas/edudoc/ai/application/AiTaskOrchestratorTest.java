@@ -75,6 +75,7 @@ class AiTaskOrchestratorTest {
         when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(readyDoc("U1")));
         givenReadyChunks();
         when(aiTaskRepository.findActive(VERSION, "SUMMARY", "U1")).thenReturn(Optional.empty());
+        when(aiTaskRepository.insertOrReuse(any())).thenAnswer(inv -> inv.getArgument(0));
 
         String taskId = orchestrator.createTask(DOC_ID, "SUMMARY");
 
@@ -83,7 +84,39 @@ class AiTaskOrchestratorTest {
         assertEquals("QUEUED", captor.getValue().getStatus());
         assertEquals("SUMMARY", captor.getValue().getTaskType());
         assertEquals("U1", captor.getValue().getRequestedBy());
+        // P2-5：确定性 ACTIVE 锁键
+        assertEquals("ACTIVE:" + VERSION + ":SUMMARY:U1", captor.getValue().getIdempotencyKey());
         verify(outboxEventRepository).publish(eq("AI_TASK"), anyString(), eq("AI_TASK_REQUESTED"), any());
+    }
+
+    @Test
+    void concurrentCreateCollisionReusesWinnerWithoutRepublish() {
+        // 两入口 findActive 均 miss，输家 insertOrReuse 撞唯一键返回赢家任务 → 不重复投递
+        login(Set.of("AI_SUMMARY"));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(readyDoc("U1")));
+        givenReadyChunks();
+        when(aiTaskRepository.findActive(VERSION, "SUMMARY", "U1")).thenReturn(Optional.empty());
+        AiTask winner = new AiTask("WINNER_ID", DOC_ID, VERSION, "SUMMARY", "QUEUED", 5, null,
+                "{}", "U1", 0, "ACTIVE:" + VERSION + ":SUMMARY:U1", null, 0);
+        when(aiTaskRepository.insertOrReuse(any())).thenReturn(winner);
+
+        String taskId = orchestrator.createTask(DOC_ID, "SUMMARY");
+
+        assertEquals("WINNER_ID", taskId);
+        verify(outboxEventRepository, never()).publish(any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelReleasesActiveKey() {
+        login(Set.of("AI_SUMMARY"));
+        AiTask queued = new AiTask(TASK_ID, DOC_ID, VERSION, "SUMMARY", "QUEUED", 5, null,
+                "{}", "U1", 0, "ACTIVE:" + VERSION + ":SUMMARY:U1", null, 0);
+        when(aiTaskRepository.findById(TASK_ID)).thenReturn(Optional.of(queued));
+        when(aiTaskRepository.cancelQueued(TASK_ID)).thenReturn(true);
+
+        orchestrator.cancel(TASK_ID);
+
+        verify(aiTaskRepository).releaseActiveKey(TASK_ID);
     }
 
     @Test

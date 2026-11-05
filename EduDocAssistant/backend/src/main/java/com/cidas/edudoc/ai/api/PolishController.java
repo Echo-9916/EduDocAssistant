@@ -29,7 +29,8 @@ public class PolishController {
     public record PolishRequest(List<ParagraphDto> paragraphs) {
     }
 
-    public record DecisionRequest(String decision, String acceptedText) {
+    /** charStart（可选）：预览块的全文闭区间起点，重复段落采纳时用于消歧（1105 审查 P2-4）。 */
+    public record DecisionRequest(String decision, String acceptedText, Integer charStart) {
     }
 
     @PostMapping("/api/v1/documents/{documentId}/polish")
@@ -50,7 +51,8 @@ public class PolishController {
         String decision = request.decision() == null ? "" : request.decision().strip().toUpperCase();
         switch (decision) {
             case "ACCEPT", "PARTIAL" -> {
-                return ApiResponse.ok(polishService.apply(polishId, decision, request.acceptedText()));
+                return ApiResponse.ok(polishService.apply(polishId, decision,
+                        request.acceptedText(), request.charStart()));
             }
             case "REJECT" -> {
                 polishService.reject(polishId);

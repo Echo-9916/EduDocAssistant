@@ -129,6 +129,35 @@ def test_bad_json_retried_once_then_structured_error():
     assert len(calls) == 2  # 恰好重试一次
 
 
+def test_valid_json_wrong_structure_is_structured_502():
+    # 1105 审查 P2-2：{"segments":["bad"]} 不得裸 500，必须 MODEL_FAILED 结构化
+    http, _ = ok([chat_body('{"segments": ["不是对象"]}'), chat_body('{"segments": ["还是不是"]}'),
+                  chat_body('{"segments": ["仍不是"]}'), chat_body('{"segments": ["终不是"]}')])
+    resp = http.post("/v1/summarize", json={"chunks": [{"chunkId": "C1", "text": "文"}]})
+    assert resp.status_code == 502
+    assert resp.json()["code"] == "MODEL_FAILED"
+    assert "结构" in resp.json()["message"]
+
+
+def test_summarize_reduce_flag_uses_merge_prompt():
+    http, calls = ok([chat_body('{"segments": [{"text": "合并摘要", "chunkIds": ["C1", "C2"]}]}')])
+    resp = http.post("/v1/summarize", json={
+        "chunks": [{"chunkId": "C1", "text": "摘要段一"}, {"chunkId": "C2", "text": "摘要段二"}],
+        "reduce": True})
+    assert resp.status_code == 200
+    assert resp.json()["segments"] == [{"text": "合并摘要", "chunkIds": ["C1", "C2"]}]
+    sent = json.loads(calls[0].content)["messages"][1]["content"]
+    assert "融合重写" in sent  # reduce 专用提示词
+
+
+def test_answer_citations_missing_defaults_to_empty():
+    http, _ = ok([chat_body('{"refused": false, "answer": "有据可答"}')])  # citations 省略合法
+    resp = http.post("/v1/answer", json={"question": "问？",
+                                         "evidence": [{"chunkId": "C1", "text": "据"}]})
+    body = resp.json()
+    assert body["refused"] is False and body["citations"] == []
+
+
 def test_keypoints_returns_array_shape():
     http, _ = ok([chat_body(json.dumps({"keypoints": [{"text": "要点", "chunkId": "C2"}]},
                                        ensure_ascii=False))])

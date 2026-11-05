@@ -79,4 +79,9 @@
         WHERE id = HEXTORAW(#{idHex})
     </update>
 
+    <update id="releaseActiveKey">
+        UPDATE edudoc_ai_task SET idempotency_key = NULL
+        WHERE id = HEXTORAW(#{idHex}) AND idempotency_key LIKE 'ACTIVE:%'
+    </update>
+
 </mapper>

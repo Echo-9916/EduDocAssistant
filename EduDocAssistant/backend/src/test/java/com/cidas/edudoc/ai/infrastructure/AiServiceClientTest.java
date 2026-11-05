@@ -169,6 +169,20 @@ class AiServiceClientTest {
     }
 
     @Test
+    void summarizeReducePostsReduceFlag() {
+        responseJson = "{\"model\":\"Kimi\",\"promptVersion\":\"sum-r1\","
+                + "\"segments\":[{\"text\":\"最终结论\",\"chunkIds\":[\"C1\",\"C2\"]}]}";
+
+        AiGateway.SummarizeOutcome outcome = client("tok", 5000)
+                .summarizeReduce(List.of(new AiGateway.SourceChunk("C1", "段一摘要"),
+                        new AiGateway.SourceChunk("C2", "段二摘要")));
+
+        assertEquals("最终结论", outcome.segments().get(0).text());
+        assertEquals("/v1/summarize", lastPath);
+        assertTrue(lastBody.contains("\"reduce\":true"), "reduce 标志须随请求发送：" + lastBody);
+    }
+
+    @Test
     void answerParsesRefusedFlagAndCitations() {
         responseJson = """
                 {"model":"Kimi-K2","promptVersion":"qa-v1","refused":false,

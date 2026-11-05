@@ -59,11 +59,19 @@ public class AiTaskOrchestratorImpl implements AiTaskOrchestrator {
                 .orElseGet(() -> newTask(doc, versionId, taskType, principal));
     }
 
+    /**
+     * 1105 审查 P2-5：以 ACTIVE 确定性锁键把「同版本+类型+发起人」的并发创建收敛到 uk_ai_task_1——
+     * 双入口 findActive 均 miss 时，后插入者撞唯一键并由 insertOrReuse 返回既有活跃任务（不重复发事件）。
+     */
     private String newTask(Document doc, String versionId, String taskType, UserPrincipal principal) {
         String taskId = Ids.hex16();
-        aiTaskRepository.insertOrReuse(new AiTask(taskId, doc.getId(), versionId, taskType,
+        String activeKey = "ACTIVE:" + versionId + ":" + taskType + ":" + principal.userId();
+        AiTask task = aiTaskRepository.insertOrReuse(new AiTask(taskId, doc.getId(), versionId, taskType,
                 "QUEUED", 5, null, jsonPayload(doc.getId(), versionId, taskType),
-                principal.userId(), 0, null, null, 0));
+                principal.userId(), 0, activeKey, null, 0));
+        if (!taskId.equals(task.getId())) {
+            return task.getId(); // 并发竞争落败：复用赢家任务，不重复投递
+        }
         outboxEventRepository.publish("AI_TASK", taskId, "AI_TASK_REQUESTED", Map.of(
                 "schemaVersion", 1, "taskId", taskId, "taskType", taskType,
                 "documentId", doc.getId(), "versionId", versionId));
@@ -84,6 +92,7 @@ public class AiTaskOrchestratorImpl implements AiTaskOrchestrator {
         // 取消标记 = 直接置 CANCELED：worker 结果写回以 status=RUNNING 为守卫（竞争兜底，表无 cancel_flag 列）
         if ("QUEUED".equals(status) || "RUNNING".equals(status)) {
             if (aiTaskRepository.cancelQueued(taskId) || aiTaskRepository.cancelRunning(taskId)) {
+                aiTaskRepository.releaseActiveKey(taskId); // 终态即释放活跃锁（P2-5）
                 return;
             }
             throw new CidasBusinessException(ErrorCode.CONFLICT, "任务状态已变化，请重试");

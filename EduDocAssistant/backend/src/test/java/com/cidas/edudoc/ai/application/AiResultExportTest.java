@@ -86,6 +86,21 @@ class AiResultExportTest {
     }
 
     @Test
+    void keypointResultDocxTitleSaysKeypointNotSummary() throws Exception {
+        // 1105 审查 P3-3：KEYPOINT 结果标题按类型给名
+        givenResult("U1");
+        when(resultRepository.findById(RESULT_ID)).thenReturn(java.util.Optional.of(
+                new com.cidas.edudoc.ai.infrastructure.AiResult(RESULT_ID, TASK_ID, "KEYPOINT",
+                        "1. 要点一", "{}", "Kimi-K2", "kp-v1", 10, 5)));
+        AiResultExportService.ExportFile file = service.export(RESULT_ID, "docx");
+        try (var doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(
+                new java.io.ByteArrayInputStream(file.content()))) {
+            String first = doc.getParagraphs().get(0).getText();
+            assertTrue(first.contains("· 要点") && !first.contains("摘要"), first);
+        }
+    }
+
+    @Test
     void txtExportsPlainTextBody() {
         givenResult("U1");
 

@@ -56,6 +56,16 @@ public class AiResultExportServiceImpl implements AiResultExportService {
                 buildDocx(title, result, citations));
     }
 
+    /** 1105 审查 P3-3：标题按结果类型给名，KEYPOINT/ANSWER 不再误标「摘要」。 */
+    private static String typeLabel(String resultType) {
+        return switch (resultType == null ? "" : resultType) {
+            case "KEYPOINT" -> "要点";
+            case "ANSWER" -> "回答";
+            case "POLISH" -> "润色";
+            default -> "摘要";
+        };
+    }
+
     private String buildText(String title, AiResult result, List<AiCitation> citations) {
         StringBuilder sb = new StringBuilder(title).append('\n').append('\n');
         sb.append(result.getContentText() == null ? "" : result.getContentText()).append('\n');
@@ -71,7 +81,7 @@ public class AiResultExportServiceImpl implements AiResultExportService {
         try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             XWPFParagraph heading = doc.createParagraph();
             heading.createRun().setBold(true);
-            heading.createRun().setText(title + " · 摘要");
+            heading.createRun().setText(title + " · " + typeLabel(result.getResultType()));
             String content = result.getContentText() == null ? "" : result.getContentText();
             for (String paragraph : content.split("\n")) {
                 if (!paragraph.isBlank()) {

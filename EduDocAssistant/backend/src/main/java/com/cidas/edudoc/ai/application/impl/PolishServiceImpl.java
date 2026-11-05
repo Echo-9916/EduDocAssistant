@@ -96,6 +96,11 @@ public class PolishServiceImpl implements PolishService {
 
     @Override
     public AppliedView apply(String polishId, String decision, String acceptedText) {
+        return apply(polishId, decision, acceptedText, null);
+    }
+
+    @Override
+    public AppliedView apply(String polishId, String decision, String acceptedText, Integer charStart) {
         UserPrincipal principal = AuthContext.require();
         PolishResult row = requireOwnRow(polishId, principal);
         if (!"PENDING".equals(row.getDecision())) {
@@ -114,11 +119,7 @@ public class PolishServiceImpl implements PolishService {
         DocumentVersion current = versionRepository.findById(doc.getCurrentVersionId())
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.CONFLICT, "当前版本缺失"));
         String docText = reconstructText(current.getId());
-        int idx = docText.indexOf(row.getSourceText());
-        if (idx < 0) {
-            throw new CidasBusinessException(ErrorCode.CONFLICT,
-                    "目标段落不在最新版本中（文档已被更新），请重新润色");
-        }
+        int idx = resolveOccurrence(docText, row.getSourceText(), charStart);
         String newText = docText.substring(0, idx) + accepted + docText.substring(idx + row.getSourceText().length());
 
         String objectKey = ossProperties.objectKeyPrefix() + "/derived/" + doc.getId()
@@ -183,6 +184,28 @@ public class PolishServiceImpl implements PolishService {
     }
 
     // ---------- 内部 ----------
+
+    /** 1105 审查 P2-4：锚点优先精确替换；无锚点且重复出现 → 拒绝；找不到 → 40901。 */
+    static int resolveOccurrence(String docText, String sourceText, Integer charStart) {
+        if (charStart != null) {
+            if (charStart >= 0 && charStart + sourceText.length() <= docText.length()
+                    && docText.startsWith(sourceText, charStart)) {
+                return charStart;
+            }
+            throw new CidasBusinessException(ErrorCode.CONFLICT,
+                    "段落与给定偏移不符（文档已被更新），请重新润色");
+        }
+        int first = docText.indexOf(sourceText);
+        if (first < 0) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT,
+                    "目标段落不在最新版本中（文档已被更新），请重新润色");
+        }
+        if (docText.indexOf(sourceText, first + 1) >= 0) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT,
+                    "存在多个相同段落，无法唯一替换，请重新润色并携带块偏移 charStart");
+        }
+        return first;
+    }
 
     String reconstructText(String versionId) {
         List<VersionChunk> chunks = embeddingRepository.selectVersionChunks(versionId);

@@ -24,6 +24,46 @@ class Chunk(BaseModel):
     text: str
 
 
+# —— 模型输出结构校验（1105 审查 P2-2）：合法 JSON、错误结构也必须转 MODEL_FAILED，不透传 500 ——
+
+class SegmentOut(BaseModel):
+    text: str
+    chunkIds: list[str] = []
+
+
+class SummarizeOut(BaseModel):
+    segments: list[SegmentOut]
+
+
+class KeypointOut(BaseModel):
+    text: str
+    chunkId: str | None = None
+
+
+class KeypointsOut(BaseModel):
+    keypoints: list[KeypointOut]
+
+
+class CitationOut(BaseModel):
+    chunkId: str
+    quote: str | None = None
+
+
+class AnswerOut(BaseModel):
+    refused: bool = True
+    answer: str | None = None
+    citations: list[CitationOut] = []
+
+
+def _validated(model, parsed: dict):
+    from .model_client import ModelError
+
+    try:
+        return model.model_validate(parsed)
+    except Exception as e:  # pydantic ValidationError
+        raise ModelError("MODEL_FAILED", f"模型输出结构不符：{type(e).__name__}: {str(e)[:200]}") from e
+
+
 class HistoryMsg(BaseModel):
     role: str
     content: str
@@ -35,6 +75,7 @@ class EmbedRequest(BaseModel):
 
 class ChunksRequest(BaseModel):
     chunks: list[Chunk] = Field(min_length=1)
+    reduce: bool = False  # true=对分段摘要做 reduce 汇总（C-04 真 map-reduce，1105 审查 P3-2）
 
 
 class RerankRequest(BaseModel):
@@ -115,18 +156,18 @@ def create_app(settings: Settings | None = None,
     @app.post("/v1/summarize")
     def summarize(req: ChunksRequest):
         chunks = [c.model_dump() for c in req.chunks]
-        parsed, meta = app.state.client.chat_json(prompts.summarize_prompt(chunks), 2000)
-        segments = [{"text": str(s.get("text", "")),
-                     "chunkIds": [str(x) for x in s.get("chunkIds", [])]}
-                    for s in parsed.get("segments", [])]
+        prompt = prompts.reduce_prompt(chunks) if req.reduce else prompts.summarize_prompt(chunks)
+        parsed, meta = app.state.client.chat_json(prompt, 2000)
+        out = _validated(SummarizeOut, parsed)
+        segments = [{"text": s.text, "chunkIds": s.chunkIds} for s in out.segments]
         return _generation_body(meta, segments=segments)
 
     @app.post("/v1/extract-keypoints")
     def extract_keypoints(req: ChunksRequest):
         chunks = [c.model_dump() for c in req.chunks]
         parsed, meta = app.state.client.chat_json(prompts.keypoints_prompt(chunks), 1500)
-        keypoints = [{"text": str(k.get("text", "")), "chunkId": k.get("chunkId")}
-                     for k in parsed.get("keypoints", [])]
+        out = _validated(KeypointsOut, parsed)
+        keypoints = [{"text": k.text, "chunkId": k.chunkId} for k in out.keypoints]
         return _generation_body(meta, keypoints=keypoints)
 
     @app.post("/v1/answer")
@@ -136,13 +177,10 @@ def create_app(settings: Settings | None = None,
                                   [c.model_dump() for c in req.evidence],
                                   [h.model_dump() for h in req.history]),
             req.maxTokens, timeout_key="answer", model=settings.answer_model)
-        refused = bool(parsed.get("refused", True)) or not parsed.get("answer")
-        citations = [] if refused else [
-            {"chunkId": str(c.get("chunkId", "")), "quote": c.get("quote")}
-            for c in parsed.get("citations", [])]
-        body = _generation_body(meta,
-                                 answer="" if refused else str(parsed.get("answer", "")),
-                                 citations=citations)
+        out = _validated(AnswerOut, parsed)
+        refused = out.refused or not out.answer
+        citations = [] if refused else [{"chunkId": c.chunkId, "quote": c.quote} for c in out.citations]
+        body = _generation_body(meta, answer="" if refused else (out.answer or ""), citations=citations)
         body["refused"] = refused
         return body
 

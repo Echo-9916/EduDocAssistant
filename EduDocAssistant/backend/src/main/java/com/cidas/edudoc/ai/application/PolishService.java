@@ -20,6 +20,12 @@ public interface PolishService {
     /** ACCEPT 用润色文本、PARTIAL 用客户端回传文本；单事务成版。 */
     AppliedView apply(String polishId, String decision, String acceptedText);
 
+    /**
+     * charStart（可空）为 C-01 密铺下的全文锚点：给定则精确替换该偏移处出现，
+     * 未给定且同文多处出现则拒绝消歧（不静默改错段）——1105 审查 P2-4。
+     */
+    AppliedView apply(String polishId, String decision, String acceptedText, Integer charStart);
+
     void reject(String polishId);
 
     /** 仅最近一次未撤销采纳可撤销：弹出版本链顶层 EDIT，current 回拨前一版本。 */

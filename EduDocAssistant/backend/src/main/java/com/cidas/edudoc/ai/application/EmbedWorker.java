@@ -199,7 +199,8 @@ public class EmbedWorker {
             return;
         }
         int batchSize = Math.max(1, properties.batchSize());
-        int done = 0;
+        // 阶段一：全部批次 embed + 维度校验，任一失败即整版不落（1105 审查 P1-1：禁半向量）
+        List<List<ChunkVector>> vectorBatches = new ArrayList<>();
         for (int from = 0; from < pending.size(); from += batchSize) {
             List<PendingChunk> batch = pending.subList(from, Math.min(pending.size(), from + batchSize));
             List<String> texts = batch.stream().map(PendingChunk::contentText).toList();
@@ -209,7 +210,12 @@ public class EmbedWorker {
             for (int i = 0; i < batch.size(); i++) {
                 vectors.add(new ChunkVector(batch.get(i).chunkId(), toVectorLiteral(outcome.vectors().get(i))));
             }
-            done += batch.size();
+            vectorBatches.add(vectors);
+        }
+        // 阶段二：统一落库，逐批回写进度
+        int done = 0;
+        for (List<ChunkVector> vectors : vectorBatches) {
+            done += vectors.size();
             int progress = (int) Math.floor(done * 95.0 / pending.size());
             embeddingTxService.storeBatch(taskId, profile.getId(), profile.getEmbeddingDimension(),
                     vectors, progress);

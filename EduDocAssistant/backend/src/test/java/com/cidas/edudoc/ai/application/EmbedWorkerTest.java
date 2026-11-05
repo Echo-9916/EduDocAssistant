@@ -126,6 +126,25 @@ class EmbedWorkerTest {
     }
 
     @Test
+    void laterBatchDimensionFailureKeepsEarlierBatchesUnpersisted() {
+        // 1105 审查 P1-1：两阶段化——全部批次 embed+校验成功后才允许落库（整版无半向量）
+        givenReadyDocWithProfile();
+        when(embeddingRepository.selectPendingChunks(VERSION)).thenReturn(chunks(30)); // 25 + 5 两批
+        when(aiGateway.embed(anyList())).thenAnswer(inv -> {
+            List<String> texts = inv.getArgument(0);
+            int dim = texts.size() == 25 ? 1024 : 768; // 第二批维度错误
+            return new EmbedOutcome("m", java.util.stream.IntStream.range(0, texts.size())
+                    .mapToObj(i -> new float[dim]).toList());
+        });
+
+        worker.processEvent("E1", DOC, VERSION);
+
+        verify(embeddingTxService, never()).storeBatch(any(), any(), anyInt(), anyList(), anyInt());
+        verify(aiTaskRepository).markFailed("T1", "50201");
+        verify(aiTaskRepository, never()).markSucceeded(any());
+    }
+
+    @Test
     void dimensionMismatchFailsTaskAndPersistsNothing() {
         givenReadyDocWithProfile();
         when(embeddingRepository.selectPendingChunks(VERSION)).thenReturn(chunks(3));

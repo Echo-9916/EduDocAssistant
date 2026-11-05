@@ -87,11 +87,8 @@ public class PolishServiceImpl implements PolishService {
             rows.add(new PolishResult(Ids.hex16(), doc.getId(), doc.getCurrentVersionId(),
                     principal.userId(), taskId, texts.get(i), outcome.polished().get(i), null, "PENDING"));
         }
-        txWriter.persistRows(task, rows);
-        auditService.record("AI_TASK_SUCCEEDED", "AI_TASK", taskId, doc.getId(), "200",
-                Map.of("taskType", "POLISH", "paragraphCount", texts.size(),
-                        "model", outcome.model() == null ? "" : outcome.model(),
-                        "promptVersion", outcome.promptVersion() == null ? "" : outcome.promptVersion()));
+        // 审计随对照行同事务写入（1105 审查 P1-2）
+        txWriter.persistRows(task, rows, outcome.model(), outcome.promptVersion());
         return rows.stream()
                 .map(r -> new PolishRowView(r.getId(), r.getSourceText(), r.getPolishedText(), r.getDecision()))
                 .toList();
@@ -131,12 +128,9 @@ public class PolishServiceImpl implements PolishService {
         OssObject derived = new OssObject(Ids.hex16(), ossProperties.bucket(), ossProperties.region(),
                 objectKey, info.versionId(), info.etag(), sha256Hex(newText), info.contentLength(),
                 "text/plain", info.encryption(), "PARSED");
-        AppliedView view = txWriter.applyVersion(derived, doc, principal.userId(), newText,
+        // 成版五写 + POLISH_APPLIED 审计同一事务（1105 审查 P1-2）
+        return txWriter.applyVersion(derived, doc, principal.userId(), newText,
                 row.getId(), decision, accepted);
-        auditService.record("POLISH_APPLIED", "DOCUMENT", doc.getId(), doc.getId(), "200",
-                Map.of("polishId", row.getId(), "decision", decision,
-                        "versionId", view.versionId(), "versionNo", view.versionNo()));
-        return view;
     }
 
     @Override
@@ -184,9 +178,8 @@ public class PolishServiceImpl implements PolishService {
             throw new CidasBusinessException(ErrorCode.CONFLICT,
                     "同一结果存在撤销后重采纳链，无法定位回拨目标，请重新润色");
         }
+        // 回拨 + POLISH_REVERTED 审计同一事务（1105 审查 P1-2）
         txWriter.revertToPrevious(doc, previous.getId(), row.getId());
-        auditService.record("POLISH_REVERTED", "DOCUMENT", doc.getId(), doc.getId(), "200",
-                Map.of("polishId", row.getId(), "restoredVersionId", previous.getId()));
     }
 
     // ---------- 内部 ----------

@@ -120,12 +120,12 @@ class PolishServiceTest {
         assertEquals("PENDING", views.get(0).decision());
         ArgumentCaptor<List<PolishResult>> rows = ArgumentCaptor.forClass(List.class);
         ArgumentCaptor<AiTask> task = ArgumentCaptor.forClass(AiTask.class);
-        verify(txWriter).persistRows(task.capture(), rows.capture());
+        // 审计已迁入写事务（1105 P1-2）：服务层只委托 persistRows 并带上模型元信息
+        verify(txWriter).persistRows(task.capture(), rows.capture(), eq("m"), eq("p"));
         assertEquals("POLISH", task.getValue().getTaskType());
         assertEquals("SUCCEEDED", task.getValue().getStatus());
         assertEquals("原文一", rows.getValue().get(0).getSourceText());
         assertEquals("润二", rows.getValue().get(1).getPolishedText());
-        verify(auditService).record(eq("AI_TASK_SUCCEEDED"), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -173,7 +173,7 @@ class PolishServiceTest {
                 eq(POLISH_ID), eq("ACCEPT"), eq("新段落"));
         assertEquals("PARSED", object.getValue().getObjectRole());
         assertEquals("text/plain", object.getValue().getMimeType());
-        verify(auditService).record(eq("POLISH_APPLIED"), any(), any(), any(), any(), any());
+        // POLISH_APPLIED 审计在 PolishTxWriter 事务内（见 writer 用例），服务层不再单独写
     }
 
     @Test
@@ -248,7 +248,6 @@ class PolishServiceTest {
         service.revert(POLISH_ID);
 
         verify(txWriter).revertToPrevious(any(Document.class), eq("V1"), eq(POLISH_ID));
-        verify(auditService).record(eq("POLISH_REVERTED"), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -335,12 +334,13 @@ class PolishServiceTest {
         AiTaskRepository aiTaskRepository = mock(AiTaskRepository.class);
         PolishTxWriter writer = new PolishTxWriter(aiTaskRepository, polishRepository,
                 ossObjectRepository, versionRepository, documentRepository, parseTx,
-                new ParseProperties(true, 1, "s", "g", 1500));
+                new ParseProperties(true, 1, "s", "g", 1500), auditService);
         Document doc = new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION);
         OssObject derived = new OssObject("O2", "b", "r", "k", null, "etag", "hash", 5,
                 "text/plain", "SSE-OSS", "DERIVED");
         when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(1);
         when(polishRepository.updateDecisionIfPending(eq(POLISH_ID), eq("ACCEPT"), any())).thenReturn(true);
+        when(parseTx.writeSuccess(eq(DOC_ID), anyString(), anyList())).thenReturn(true);
 
         PolishService.AppliedView view = writer.applyVersion(derived, doc, "U1",
                 "第一段\n第二段", POLISH_ID, "ACCEPT", "第二段");
@@ -358,7 +358,24 @@ class PolishServiceTest {
         verify(parseTx).writeSuccess(eq(DOC_ID), anyString(), chunks.capture());
         assertEquals(1, chunks.getValue().size());
         assertNotNull(view.versionId());
-        assertTrue(view.documentStatus().equals("PARSING"));
+        // 1105 P2-4：同事务 writeSuccess 成功后响应回真实状态 READY（不再硬编码 PARSING）
+        assertEquals("READY", view.documentStatus());
+        // 1105 P1-2：POLISH_APPLIED 审计在成版同一事务内
+        verify(auditService).record(eq("POLISH_APPLIED"), eq("DOCUMENT"), eq(DOC_ID), eq(DOC_ID),
+                eq("200"), any());
+    }
+
+    @Test
+    void revertToPreviousAuditsInSameTxWriter() {
+        PolishTxWriter writer = new PolishTxWriter(mock(AiTaskRepository.class), polishRepository,
+                mock(OssObjectRepository.class), versionRepository, documentRepository,
+                mock(DocumentParseTxService.class), new ParseProperties(true, 1, "s", "g", 1500), auditService);
+        writer.revertToPrevious(new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION),
+                "V0", POLISH_ID);
+        verify(documentRepository).updateCurrentVersion(DOC_ID, "V0");
+        verify(polishRepository).updateDecision(POLISH_ID, "PENDING", null);
+        verify(auditService).record(eq("POLISH_REVERTED"), eq("DOCUMENT"), eq(DOC_ID), eq(DOC_ID),
+                eq("200"), any());
     }
 
     @Test
@@ -367,7 +384,7 @@ class PolishServiceTest {
         DocumentParseTxService parseTx = mock(DocumentParseTxService.class);
         PolishTxWriter writer = new PolishTxWriter(mock(AiTaskRepository.class), polishRepository,
                 mock(OssObjectRepository.class), versionRepository, documentRepository, parseTx,
-                new ParseProperties(true, 1, "s", "g", 1500));
+                new ParseProperties(true, 1, "s", "g", 1500), auditService);
         when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(1);
         org.mockito.Mockito.doThrow(new org.springframework.dao.DuplicateKeyException("uk_document_version"))
                 .when(versionRepository).insert(any());
@@ -384,7 +401,7 @@ class PolishServiceTest {
         DocumentParseTxService parseTx = mock(DocumentParseTxService.class);
         PolishTxWriter writer = new PolishTxWriter(mock(AiTaskRepository.class), polishRepository,
                 mock(OssObjectRepository.class), versionRepository, documentRepository, parseTx,
-                new ParseProperties(true, 1, "s", "g", 1500));
+                new ParseProperties(true, 1, "s", "g", 1500), auditService);
         Document doc = new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION);
         when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(1);
         when(polishRepository.updateDecisionIfPending(anyString(), anyString(), any())).thenReturn(false);

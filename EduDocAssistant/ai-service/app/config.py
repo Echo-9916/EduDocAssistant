@@ -30,5 +30,10 @@ class Settings:
         )
 
 
-# 超时分级（概要 §7 I04）：answer 对齐问答 5s 端到端预算，生成类走任务 60s 预算内
-TIMEOUTS = {"embed": 8.0, "rerank": 8.0, "generate": 50.0, "answer": 4.6, "polish": 30.0}
+# 超时分级（概要 §7 I04）：answer 对齐问答 5s 端到端预算（EDUDOC_ANSWER_TIMEOUT_S 为物理世界校准口），
+# 生成类走任务 60s 预算内
+TIMEOUTS = {"embed": 8.0, "rerank": 8.0, "generate": 50.0, "polish": 30.0}
+
+
+def answer_timeout() -> float:
+    return float(os.environ.get("EDUDOC_ANSWER_TIMEOUT_S", "4.6"))

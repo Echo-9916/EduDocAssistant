@@ -10,7 +10,7 @@ import time
 
 import httpx
 
-from .config import TIMEOUTS, Settings
+from .config import TIMEOUTS, Settings, answer_timeout
 
 PROVIDER = "siliconflow-compatible"
 
@@ -57,7 +57,7 @@ class ModelClient:
     # ---- 底层：一次重试 + 错误映射 ----
 
     def _post(self, path: str, payload: dict, timeout_key: str) -> dict:
-        timeout = TIMEOUTS[timeout_key]
+        timeout = answer_timeout() if timeout_key == "answer" else TIMEOUTS[timeout_key]
         deadline = time.monotonic() + timeout * 2 + 1  # 重试总预算封顶
         last_error = None
         for attempt in (0, 1):

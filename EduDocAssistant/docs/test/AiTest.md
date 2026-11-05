@@ -2,7 +2,7 @@
 
 > 覆盖 03 切片 C-01~C-09 后端与 ai-service 接口（预览结构树、向量化流水线、摘要/要点任务、问答、润色成版与撤销、结果导出、ai-service 六类内部接口）。结构与 [AuthTest.md](AuthTest.md)、[DocumentTest.md](DocumentTest.md) 同源。
 > Apifox 可直接导入 [apifox/ai-processing.postman_collection.json](apifox/ai-processing.postman_collection.json)：9 组 38 个请求含全部反例；token/documentId/taskId/resultId/sessionId/polishId 链式变量自动串联，预览请求自动挑润色段与问句片段，按文件夹顺序执行即可走完全链路。
-> **回归基线**：2026-11-05 真库+真模型冒烟 **24/25**（唯一未过项为 P-05 时延校准，属既定裁决遗留，见「回归结果」）；`mvn test` 224 全绿、`python -m pytest` 16 全绿。
+> **回归基线**：2026-11-05 真库+真模型冒烟 **24/25**（唯一未过项为 P-05 时延校准，属既定裁决遗留，见「回归结果」）；1105 符合性审查 13 项整改后 `mvn test` **239 全绿**、`python -m pytest` **19 全绿**（含 READY 路径真机实证，见「1105 审查整改复测」）。
 
 ## 环境与前置
 
@@ -185,3 +185,16 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/v1/embed 
 - **Smoke-1/2（2026-11-05 上午）**：环境侧问题两连——OSS `UserDisable`（账号侧处理）、`Pro/moonshotai/Kimi-K2-Instruct` 上游 403 `Model disabled`（chat 默认改 `deepseek-ai/DeepSeek-V3`，问答另设答案模型位）。
 - **Smoke-3/4（2026-11-05 下午，真库+真模型）**：**24/25 通过**。抓出并修复两个真缺陷：① 重解析 ORA-02292——`ai_citation` FK 阻挡删块 → 清理事务先删引用行（`ReparseCleanupTest` 锁顺序）；② 采纳成版 ORA-02290——D3 的 DERIVED 不在 `ck_oss_role` 字典 → 落库角色 PARSED。关键实测：1024 维 12KB 向量串 `TO_VECTOR` 绑定+`MERGE` 覆盖写真库通过（审查 R-A 解除）；解析→向量 READY 3.1s；摘要 SUCCEEDED 38~41s（30 条引用回填）；要点 26~35 条文档序；拒答双路（阈值+模型自拒）；润色采纳 EDIT 成版→撤销回拨全链；docx PK 头/越权 40401。唯一 FAIL = §6 P-05 时延（504 契约正确，校准项见上）。
 - 修复后回归：`mvn test` **224/224**、`uv run python -m pytest` **16/16**。
+
+## 1105 审查整改复测（2026-11-05 晚）
+
+按 `docs/review/1105-ai-processing-C01-C09符合性审查报告.md` 逐项整改（P1-1/2/3、P2-1/2/3/4/5、P3-1/2/3/4），整改中冒烟复测又抓出并修复三枚审查未覆盖的真缺陷：
+
+| # | 缺陷（复测实证） | 修复 |
+|---|---|---|
+| 1 | QA ANSWER 落库消息先于任务行 → 真库 ORA-02291（fk_qa_message_2） | QaTxService 顺序调整 + InOrder 回归锁；READY 路径真机实证通过（引用回填、消息/任务/结果齐） |
+| 2 | `evidenceScore=1-min(d)` 对同文原文也低于 0.35 → 全线恒拒（分数定义错）；且分数在 rerank 后子集上算，排序波动翻转拒答判定 | 归一 `max(0,1-d/2)`、阈值 0.60（校准：同文≈0.94/改写≈0.78/文档外≈0.50-0.59）、判定固定于 topK=6 全集 |
+| 3 | 撤销 `version_no-1` 弹栈在「撤销→重采纳」孤儿 EDIT 链弹错版本（跨链实测复现） | 采纳时回写被替换版本至 `polish_result.document_version_id`，撤销=D3 原公式逐行回拨 |
+
+- 复测结果：默认配置（QA 预算 5s）冒烟 **24/25**，QA 命中项在 lorem 对抗性样例上于 504 契约路径（预算内 FAILED 双消息、不伪造答案）与模型自拒之间波动；放宽预算至 9s 后 READY+引用真机通过——坐实为上游时延而非代码缺陷，P-05 校准移交 C-14（换真实课件样例）。
+- 回归：`mvn test` **239/239**、`pytest` **19/19**。

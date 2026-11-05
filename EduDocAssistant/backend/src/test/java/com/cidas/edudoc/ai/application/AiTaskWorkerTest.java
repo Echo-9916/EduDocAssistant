@@ -112,6 +112,10 @@ class AiTaskWorkerTest {
         assertTrue(result.getValue().getContentText().contains("摘要-A1"));
         assertEquals("sum-v1", result.getValue().getPromptVersion());
         // 非法 chunkId 丢弃、合法引用回填 page/char、rank 连续
+        // 审查发现 5：structured_json 组内 chunkIds 同样只留合法引用（非法引用丢弃要一次做全）
+        assertTrue(!result.getValue().getStructuredJson().contains("NOT_A_CHUNK"),
+                "结构化结果不得保留非法 chunkId：" + result.getValue().getStructuredJson());
+        assertTrue(result.getValue().getStructuredJson().contains("A1"));
         assertEquals(2, citations.getValue().size());
         assertEquals(1, citations.getValue().get(0).getRankNo());
         assertEquals(2, citations.getValue().get(1).getRankNo());

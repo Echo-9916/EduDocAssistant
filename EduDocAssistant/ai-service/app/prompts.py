@@ -10,6 +10,10 @@ SYSTEM_STRICT_JSON = (
     "你是校园文档助手。严格按用户要求的 JSON 结构输出，不要输出任何解释文字或 Markdown 代码围栏。"
 )
 
+SYSTEM_PLAIN_TEXT = (
+    "你是校园文本润色助手。只输出用户要求的文本内容本身，不要解释、前缀或代码围栏。"
+)
+
 
 def summarize_prompt(chunks: list[dict]) -> str:
     return (

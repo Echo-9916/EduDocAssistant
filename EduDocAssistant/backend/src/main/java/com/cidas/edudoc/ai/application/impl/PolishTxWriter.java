@@ -62,8 +62,13 @@ public class PolishTxWriter {
         int versionNo = versionRepository.maxVersionNo(doc.getId()) + 1;
         String versionId = Ids.hex16();
         ossObjectRepository.insert(derivedObject);
-        versionRepository.insert(new DocumentVersion(versionId, doc.getId(), versionNo, "EDIT",
-                derivedObject.getId(), editorId, derivedObject.getContentHash(), "A"));
+        try {
+            versionRepository.insert(new DocumentVersion(versionId, doc.getId(), versionNo, "EDIT",
+                    derivedObject.getId(), editorId, derivedObject.getContentHash(), "A"));
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // 审查修复（发现 2）：两条润色行并发成版撞 uk(document_id, version_no) → 40901 可重试，而非 50001
+            throw new CidasBusinessException(ErrorCode.CONFLICT, "并发采纳冲突，请基于最新版本重试");
+        }
         documentRepository.updateCurrentVersion(doc.getId(), versionId);
         documentRepository.updateStatus(doc.getId(), "PARSING");
         if (!polishRepository.updateDecisionIfPending(polishId, decision, acceptedText)) {

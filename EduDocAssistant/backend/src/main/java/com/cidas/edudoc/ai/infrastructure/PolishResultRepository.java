@@ -35,4 +35,9 @@ public class PolishResultRepository {
     public void updateDecision(String idHex, String decision, String acceptedText) {
         mapper.updateDecision(idHex, decision, acceptedText, false);
     }
+
+    /** 该行采纳产生的版本 ID 链（审计回溯，撤销校验用）。 */
+    public List<String> findAppliedVersionIds(String polishIdHex) {
+        return mapper.selectAppliedVersionIds(polishIdHex);
+    }
 }

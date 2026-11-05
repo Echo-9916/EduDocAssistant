@@ -237,7 +237,8 @@ public class AiTaskWorker {
                         chunk.charStart(), chunk.charEnd(),
                         AiResultRepository.clipQuote(chunk.contentText()), rank++));
             }
-            segmentViews.add(Map.of("text", segment.text(), "chunkIds", segment.chunkIds()));
+            segmentViews.add(Map.of("text", segment.text(),
+                    "chunkIds", segment.chunkIds().stream().filter(validChunks::containsKey).toList()));
         }
         String resultId = Ids.hex16();
         citations.forEach(c -> c.setResultId(resultId));

@@ -190,6 +190,16 @@ def test_polish_keeps_paragraph_alignment():
     assert body["usage"] == {"inputTokens": 20, "outputTokens": 10}
 
 
+def test_polish_uses_plain_system_and_strips_fences():
+    # 审查修复：纯文本润色不得带强 JSON system；围栏壳兜底剥离
+    http, calls = ok([chat_body("```\n润一\n```"), chat_body("润二")])
+    resp = http.post("/v1/polish", json={"paragraphs": ["原一", "原二"]})
+    assert resp.json()["polished"] == [{"text": "润一"}, {"text": "润二"}]
+    sent = json.loads(calls[0].content)
+    assert "JSON" not in sent["messages"][0]["content"]
+    assert "润色" in sent["messages"][0]["content"]
+
+
 # ---------- 错误卫生 ----------
 
 def test_upstream_error_body_key_masked_and_retry_after_passthrough():

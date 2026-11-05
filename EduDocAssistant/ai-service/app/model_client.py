@@ -127,16 +127,21 @@ class ModelClient:
         raise ModelError("MODEL_FAILED", "模型输出无法解析为 JSON（已重试一次）")
 
     def chat_text(self, user_prompt: str, max_tokens: int, timeout_key: str = "generate") -> tuple[str, dict]:
-        content, usage, model = self._chat(user_prompt, max_tokens, timeout_key)
-        return content.strip(), usage | {"model": model}
+        # 审查修复：纯文本任务用中性 system——强 JSON 指令会污染润色输出；剥壳兜底防围栏
+        from .prompts import SYSTEM_PLAIN_TEXT
 
-    def _chat(self, user_prompt: str, max_tokens: int, timeout_key: str) -> tuple[str, dict, str]:
+        content, usage, model = self._chat(user_prompt, max_tokens, timeout_key, system=SYSTEM_PLAIN_TEXT)
+        return _strip_fences(content), usage | {"model": model}
+
+    def _chat(self, user_prompt: str, max_tokens: int, timeout_key: str,
+              system: str | None = None) -> tuple[str, dict, str]:
         from .prompts import SYSTEM_STRICT_JSON
 
+        messages = ([{"role": "system", "content": system or SYSTEM_STRICT_JSON}]
+                    + [{"role": "user", "content": user_prompt}])
         data = self._post("chat/completions", {
             "model": self.settings.chat_model,
-            "messages": [{"role": "system", "content": SYSTEM_STRICT_JSON},
-                         {"role": "user", "content": user_prompt}],
+            "messages": messages,
             "temperature": 0.2,
             "max_tokens": max(1, min(int(max_tokens), 4000)),
         }, timeout_key)
@@ -149,6 +154,13 @@ class ModelClient:
                 {"inputTokens": int(usage.get("prompt_tokens", 0) or 0),
                  "outputTokens": int(usage.get("completion_tokens", 0) or 0)},
                 data.get("model", self.settings.chat_model))
+
+
+def _strip_fences(text: str) -> str:
+    """剥 ``` 围栏壳（兜底），其余原样。"""
+    stripped = text.strip()
+    fence = re.match(r"^```(?:\w+)?\s*\n(.*)\n```$", stripped, re.S)
+    return (fence.group(1) if fence else stripped).strip()
 
 
 def _safe_detail(resp: httpx.Response) -> str:

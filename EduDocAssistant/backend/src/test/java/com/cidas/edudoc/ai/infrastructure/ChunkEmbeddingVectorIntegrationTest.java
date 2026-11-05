@@ -47,7 +47,20 @@ class ChunkEmbeddingVectorIntegrationTest {
     private static Connection setupConn;
     private static SqlSessionFactory factory;
 
-    private static final String VECTOR_TEXT = "[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]";
+    /** R-A：列固定 VECTOR(1024,FLOAT32)，必须全维往返；1024 元素字符串 ~12KB，正压 VARCHAR2 绑定上限。 */
+    private static final int DIM = 1024;
+    private static final String VECTOR_TEXT = buildVectorText();
+
+    private static String buildVectorText() {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < DIM; i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append(i == 0 ? "1" : "0");
+        }
+        return sb.append(']').toString();
+    }
 
     @BeforeAll
     static void setUp() throws Exception {
@@ -94,7 +107,7 @@ class ChunkEmbeddingVectorIntegrationTest {
                     + CHUNK_ID + "'), HEXTORAW('" + VERSION_ID + "'), 1, 0, 4, '文本', 2, 'h1', 'PENDING')");
             st.execute("INSERT INTO edudoc_ai_model_profile (id, profile_code, provider_type, model_name, "
                     + "endpoint_config_key, embedding_dimension, metric_type, status) VALUES (HEXTORAW('"
-                    + PROFILE_ID + "'), '" + PROFILE_CODE + "', 'EMBEDDING', 'tiny', 'k', 16, 'COSINE', 'A')");
+                    + PROFILE_ID + "'), '" + PROFILE_CODE + "', 'EMBEDDING', 'tiny', 'k', 1024, 'COSINE', 'A')");
         }
         setupConn.commit();
     }
@@ -128,20 +141,28 @@ class ChunkEmbeddingVectorIntegrationTest {
                     mapper.selectPendingChunks(VERSION_ID);
             assertEquals(1, pending.size());
 
-            mapper.upsertBatch(PROFILE_ID, 16, List.of(new ChunkVector(CHUNK_ID, VECTOR_TEXT)));
+            mapper.upsertBatch(PROFILE_ID, DIM, List.of(new ChunkVector(CHUNK_ID, VECTOR_TEXT)));
             mapper.markChunksReady(List.of(CHUNK_ID));
 
-            try (Statement st = setupConn.createStatement();
-                 ResultSet rs = st.executeQuery(
-                         "SELECT VECTOR_DISTANCE(e.embedding, TO_VECTOR('" + VECTOR_TEXT + "', 16, FLOAT32), COSINE) "
-                                 + "FROM edudoc_chunk_embedding e "
-                                 + "WHERE e.chunk_id = HEXTORAW('" + CHUNK_ID + "')")) {
-                assertTrue(rs.next(), "向量行应已写入");
-                assertTrue(rs.getDouble(1) < 1e-6, "同向量自距离应≈0，实际 " + rs.getDouble(1));
+            // 自距离用绑定变量验证（12KB 字符串字面量本身会撞 ORA-01704，绑定才是生产路径）
+            try (java.sql.PreparedStatement ps = setupConn.prepareStatement(
+                    "SELECT VECTOR_DISTANCE(e.embedding, TO_VECTOR(?, " + DIM + ", FLOAT32), COSINE) "
+                            + "FROM edudoc_chunk_embedding e WHERE e.chunk_id = HEXTORAW('" + CHUNK_ID + "')")) {
+                ps.setString(1, VECTOR_TEXT);
+                try (ResultSet rs = ps.executeQuery()) {
+                    assertTrue(rs.next(), "向量行应已写入");
+                    assertTrue(rs.getDouble(1) < 1e-6, "同向量自距离应≈0，实际 " + rs.getDouble(1));
+                }
             }
 
+            // R-A 检索侧：searchByVersion 同样绑 12KB 字符串（生产问答路径）
+            List<ChunkEmbeddingRepository.SearchHit> found =
+                    mapper.searchByVersion(VERSION_ID, PROFILE_ID, VECTOR_TEXT, DIM, 3);
+            assertEquals(1, found.size(), "topK 检索应命中已就绪块");
+            assertEquals(CHUNK_ID, found.get(0).chunkId());
+
             // 重投覆盖写：同 (chunk, profile) uk 不产生第二行
-            mapper.upsertBatch(PROFILE_ID, 16, List.of(new ChunkVector(CHUNK_ID, VECTOR_TEXT)));
+            mapper.upsertBatch(PROFILE_ID, DIM, List.of(new ChunkVector(CHUNK_ID, VECTOR_TEXT)));
             try (Statement st = setupConn.createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM edudoc_chunk_embedding "
                          + "WHERE chunk_id = HEXTORAW('" + CHUNK_ID + "')")) {

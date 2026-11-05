@@ -141,11 +141,12 @@ public class PolishServiceImpl implements PolishService {
     @Override
     public void reject(String polishId) {
         UserPrincipal principal = AuthContext.require();
-        requireOwnRow(polishId, principal);
+        PolishResult row = requireOwnRow(polishId, principal);
         if (!polishRepository.updateDecisionIfPending(polishId, "REJECT", null)) {
             throw new CidasBusinessException(ErrorCode.CONFLICT, "该润色结果已被处理");
         }
-        auditService.record("POLISH_REJECTED", "POLISH_RESULT", polishId, polishId, "200", Map.of());
+        // 审查修复：第四参是 document_id 外键列，必须传文档 ID（评审发现 1）
+        auditService.record("POLISH_REJECTED", "POLISH_RESULT", polishId, row.getDocumentId(), "200", Map.of());
     }
 
     @Override
@@ -166,9 +167,22 @@ public class PolishServiceImpl implements PolishService {
         if (!"EDIT".equals(current.getVersionType())) {
             throw new CidasBusinessException(ErrorCode.CONFLICT, "当前版本不是润色采纳版本，不可撤销");
         }
+        // 审查修复（发现 3）：撤销前经 POLISH_APPLIED 审计回溯，确认当前版本确由该行最近一次采纳产生，
+        // 且前一版本不是同一行「撤销→重采纳」留下的孤儿 EDIT（否则弹栈回拨到错误内容）
+        List<String> appliedVersionIds = polishRepository.findAppliedVersionIds(row.getId());
+        if (appliedVersionIds.isEmpty()
+                || !appliedVersionIds.get(appliedVersionIds.size() - 1).equalsIgnoreCase(current.getId())) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT, "当前版本并非该结果最近一次采纳产生，不可撤销");
+        }
         DocumentVersion previous = versionRepository
                 .findByDocumentAndVersionNo(doc.getId(), current.getVersionNo() - 1)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.CONFLICT, "前一版本缺失"));
+        boolean orphanPredecessor = appliedVersionIds.stream()
+                .anyMatch(id -> id.equalsIgnoreCase(previous.getId()));
+        if (orphanPredecessor) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT,
+                    "同一结果存在撤销后重采纳链，无法定位回拨目标，请重新润色");
+        }
         txWriter.revertToPrevious(doc, previous.getId(), row.getId());
         auditService.record("POLISH_REVERTED", "DOCUMENT", doc.getId(), doc.getId(), "200",
                 Map.of("polishId", row.getId(), "restoredVersionId", previous.getId()));

@@ -71,5 +71,9 @@ class QaTxWriteTest {
         verify(aiTaskRepository).insertOrReuse(task);
         verify(aiResultRepository).insert(result);
         verify(aiResultRepository).insertCitations(anyList());
+        // FK_QA_MESSAGE_2：任务行必须先于消息插入（真机冒烟 ORA-02291 回归锁）
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(aiTaskRepository, qaRepository);
+        order.verify(aiTaskRepository).insertOrReuse(task);
+        order.verify(qaRepository).insertMessages(anyList());
     }
 }

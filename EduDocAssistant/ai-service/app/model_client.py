@@ -9,6 +9,7 @@ import re
 import time
 
 import httpx
+from pydantic import ValidationError
 
 from .config import TIMEOUTS, Settings, answer_timeout
 
@@ -113,19 +114,27 @@ class ModelClient:
                 for r in data.get("results", [])]
 
     def chat_json(self, user_prompt: str, max_tokens: int, timeout_key: str = "generate",
-                  model: str | None = None) -> tuple[dict, dict]:
-        """对话并要求 JSON：解析失败重试一次（换更严提示），仍失败报 MODEL_FAILED。"""
+                  model: str | None = None, schema=None) -> tuple[dict, dict]:
+        """对话并要求 JSON：解析失败或（提供 schema 时）结构校验失败均重试一次，仍失败报 MODEL_FAILED。
+        1106 复审 P3-1：schema 纳入重试环，合法 JSON 坏结构也有一次自愈机会再报错。"""
         prompt = user_prompt
+        last_error = ""
         for attempt in (0, 1):
             content, usage, model_name = self._chat(prompt, max_tokens, timeout_key, model=model)
             try:
                 parsed = extract_json(content)
                 if not isinstance(parsed, dict):
                     raise ValueError("期望 JSON 对象")
+                if schema is not None:
+                    parsed = schema.model_validate(parsed).model_dump()
                 return parsed, usage | {"model": model_name}
+            except ValidationError as e:  # 是 ValueError 子类，必须先于解析分支捕获
+                last_error = f"结构不符（{str(e)[:200]}）"
+                prompt = user_prompt + f"\n\n上次输出{last_error}。严格按字段类型重新输出合法 JSON。"
             except ValueError as e:
-                prompt = user_prompt + f"\n\n上次输出无法解析（{e}）。只输出合法 JSON 对象。"
-        raise ModelError("MODEL_FAILED", "模型输出无法解析为 JSON（已重试一次）")
+                last_error = f"无法解析（{e}）"
+                prompt = user_prompt + f"\n\n上次输出{last_error}。只输出符合结构约定的合法 JSON 对象。"
+        raise ModelError("MODEL_FAILED", f"模型输出{last_error}（已重试一次）")
 
     def chat_text(self, user_prompt: str, max_tokens: int, timeout_key: str = "generate") -> tuple[str, dict]:
         # 审查修复：纯文本任务用中性 system——强 JSON 指令会污染润色输出；剥壳兜底防围栏

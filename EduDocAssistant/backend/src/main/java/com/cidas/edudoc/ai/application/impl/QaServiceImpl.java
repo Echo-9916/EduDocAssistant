@@ -102,15 +102,26 @@ public class QaServiceImpl implements QaService {
         String q = question.strip();
         Document doc = requireVisible(session.getDocumentId(), principal);
 
-        // P-05 端到端统一预算（1105 审查 P1-3）：逐段检查剩余时间并把上限传给每次外部调用
+        // P-05 端到端统一预算（1105 审查 P1-3）：逐段检查剩余时间并把上限传给每次外部调用。
+        // 1106 复审 P2-4：embed/search/rerank/answer 任一阶段超时或模型失败，统一在此写 FAILED 双消息
+        // （拒答 REFUSED 是业务成功，走 refuse/refuseOutcome 正常返回，不落 FAILED）。
         long deadline = System.nanoTime()
                 + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(Math.max(1, qaProperties.budgetMs()));
+        try {
+            return runQaPipeline(sessionId, session, doc, q, deadline);
+        } catch (CidasBusinessException e) {
+            qaTxService.persist(new QaTxService.Write(sessionId, q,
+                    "问答失败：" + e.getMessage(), "FAILED", null, null, List.of()));
+            throw e;
+        }
+    }
 
+    private AskResult runQaPipeline(String sessionId, QaSession session, Document doc, String q, long deadline) {
         AiModelProfile embedProfile = profileRepository.findByCode(EmbedWorker.EMBED_PROFILE_CODE)
                 .filter(p -> "A".equals(p.getStatus()) && p.getEmbeddingDimension() != null)
                 .orElseThrow(() -> new CidasBusinessException(
                         ErrorCode.SERVICE_UNAVAILABLE, "嵌入模型档案缺失或未启用"));
-        long embedBudget = remainingOrThrow(deadline, session, q);
+        long embedBudget = remainingOrThrow(deadline);
         List<float[]> vectors = aiGateway.embed(List.of(q), embedBudget).vectors();
         if (vectors.isEmpty() || vectors.get(0).length != embedProfile.getEmbeddingDimension()) {
             return refuse(session, q, "问题向量维度不符");
@@ -120,28 +131,19 @@ public class QaServiceImpl implements QaService {
         if (topHits.isEmpty() || evidenceScore(topHits) < qaProperties.evidenceThreshold()) {
             return refuse(session, q, "证据不足（阈值 " + qaProperties.evidenceThreshold() + "）");
         }
-        long searchBudget = remainingOrThrow(deadline, session, q);
+        long searchBudget = remainingOrThrow(deadline);
         List<SearchHit> hits = rerankTake(q, topHits, searchBudget);
 
         List<HistoryMessage> history = history(sessionId);
-        long answerBudget = remainingOrThrow(deadline, session, q);
-        AnswerOutcome outcome;
-        try {
-            outcome = aiGateway.answer(q, hits.stream()
-                    .map(h -> new SourceChunk(h.chunkId(), h.contentText())).toList(), history, answerBudget);
-        } catch (CidasBusinessException e) {
-            // 超时/模型失败：FAILED 双消息落库后按原错误码上抛（50401→HTTP 504），不伪造答案
-            qaTxService.persist(new QaTxService.Write(sessionId, q,
-                    "问答失败：" + e.getMessage(), "FAILED", null, null, List.of()));
-            throw e;
-        }
+        long answerBudget = remainingOrThrow(deadline);
+        AnswerOutcome outcome = aiGateway.answer(q, hits.stream()
+                .map(h -> new SourceChunk(h.chunkId(), h.contentText())).toList(), history, answerBudget);
         List<CitationView> citations = outcome.refused() ? List.of()
                 : validateCitations(outcome.citations(), hits);
         if (outcome.refused() || citations.isEmpty()) {
             // §3.2.2 两处 REFUSED 分支 + UT-10 全部非法引用 → 拒答
             return refuseOutcome(sessionId, q, outcome);
         }
-
         return persistAnswer(session, doc, q, outcome, citations);
     }
 
@@ -160,12 +162,10 @@ public class QaServiceImpl implements QaService {
 
     // ---------- 检索与阈值 ----------
 
-    /** 剩余预算（扣 200ms 安全余量给下一段）；不足 300ms 即按超时终止：FAILED 双消息落库后上抛 50401。 */
-    private long remainingOrThrow(long deadlineNanos, QaSession session, String question) {
+    /** 剩余预算（扣 200ms 安全余量给下一段）；不足即抛 TIMEOUT，FAILED 双消息由 ask 外层统一落库（P2-4）。 */
+    private long remainingOrThrow(long deadlineNanos) {
         long remainingMs = (deadlineNanos - System.nanoTime()) / 1_000_000 - 200;
         if (remainingMs < 300) {
-            qaTxService.persist(new QaTxService.Write(session.getId(), question,
-                    "问答处理超时（端到端预算 " + qaProperties.budgetMs() + "ms）", "FAILED", null, null, List.of()));
             throw new CidasBusinessException(ErrorCode.TIMEOUT,
                     "问答端到端预算耗尽", true, Map.of("stage", "deadline"));
         }

@@ -91,8 +91,8 @@ public class AiTaskOrchestratorImpl implements AiTaskOrchestrator {
         String status = requireOwnTask(taskId).getStatus();
         // 取消标记 = 直接置 CANCELED：worker 结果写回以 status=RUNNING 为守卫（竞争兜底，表无 cancel_flag 列）
         if ("QUEUED".equals(status) || "RUNNING".equals(status)) {
+            // 取消 SQL 自带 ACTIVE 锁释放（1106 复审 P2-2：终态迁移与释放同语句原子）
             if (aiTaskRepository.cancelQueued(taskId) || aiTaskRepository.cancelRunning(taskId)) {
-                aiTaskRepository.releaseActiveKey(taskId); // 终态即释放活跃锁（P2-5）
                 return;
             }
             throw new CidasBusinessException(ErrorCode.CONFLICT, "任务状态已变化，请重试");

@@ -107,7 +107,8 @@ class AiTaskOrchestratorTest {
     }
 
     @Test
-    void cancelReleasesActiveKey() {
+    void cancelUsesQueuedTransition() {
+        // 锁键释放已并入 cancelQueued/cancelRunning 的终态 SQL（1106 复审 P2-2），服务层不再单独释放
         login(Set.of("AI_SUMMARY"));
         AiTask queued = new AiTask(TASK_ID, DOC_ID, VERSION, "SUMMARY", "QUEUED", 5, null,
                 "{}", "U1", 0, "ACTIVE:" + VERSION + ":SUMMARY:U1", null, 0);
@@ -116,7 +117,7 @@ class AiTaskOrchestratorTest {
 
         orchestrator.cancel(TASK_ID);
 
-        verify(aiTaskRepository).releaseActiveKey(TASK_ID);
+        verify(aiTaskRepository).cancelQueued(TASK_ID);
     }
 
     @Test

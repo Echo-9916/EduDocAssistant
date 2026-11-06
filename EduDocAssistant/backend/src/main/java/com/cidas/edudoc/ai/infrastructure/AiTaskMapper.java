@@ -37,6 +37,6 @@ public interface AiTaskMapper {
 
     int incrementRetry(@Param("idHex") String idHex);
 
-    /** 终态释放活跃锁键（idempotency_key 置 NULL，uk 允许多 NULL），使后续可重新发起同类任务。 */
-    int releaseActiveKey(@Param("idHex") String idHex);
+
+    int releaseStaleActiveKeys();
 }

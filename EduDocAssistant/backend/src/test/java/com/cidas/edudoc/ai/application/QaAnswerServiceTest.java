@@ -212,6 +212,32 @@ class QaAnswerServiceTest {
     }
 
     @Test
+    void embedStageFailureWritesFailedMessage() {
+        // 1106 复审 P2-4：embed 阶段超时/失败也必须落 FAILED 双消息（此前只有 answer 阶段落）
+        when(aiGateway.embed(anyList(), anyLong())).thenThrow(new CidasBusinessException(
+                ErrorCode.MODEL_FAILED, "embed 上游失败", true, java.util.Map.of()));
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> service.ask(SESSION_ID, "问题？"));
+        assertEquals(ErrorCode.MODEL_FAILED, e.errorCode());
+        ArgumentCaptor<QaTxService.Write> write = ArgumentCaptor.forClass(QaTxService.Write.class);
+        verify(qaTxService).persist(write.capture());
+        assertEquals("FAILED", write.getValue().assistantStatus());
+        verify(aiGateway, never()).answer(anyString(), anyList(), anyList(), anyLong());
+    }
+
+    @Test
+    void rerankTakeNotInvokedWhenThresholdMissed() {
+        // 阈值判据在 topK 全集：不足即拒答，不调 rerank/answer
+        givenHits(hit("H1", distForScore(0.1), "无关"), hit("H2", distForScore(0.05), "无关"));
+        when(profileRepository.findByCode("RERANK_BGE_V2")).thenReturn(Optional.of(
+                new AiModelProfile("P2", "RERANK_BGE_V2", "RERANK", "r", null, null, "A")));
+
+        assertEquals("REFUSED", service.ask(SESSION_ID, "问题？").status());
+        verify(aiGateway, never()).rerank(anyString(), anyList(), anyInt(), anyLong());
+    }
+
+    @Test
     void rerankFailureDegradesToVectorOrderTake4() {
         givenHits(hit("H1", 0.05, "a"), hit("H2", 0.1, "b"), hit("H3", 0.15, "c"),
                 hit("H4", 0.2, "d"), hit("H5", 0.25, "e"), hit("H6", 0.3, "f"));

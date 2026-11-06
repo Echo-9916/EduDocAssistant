@@ -55,22 +55,26 @@
     </update>
 
     <update id="markSucceeded">
-        UPDATE edudoc_ai_task SET status = 'SUCCEEDED', progress = 100, finished_at = SYSTIMESTAMP
+        UPDATE edudoc_ai_task SET status = 'SUCCEEDED', progress = 100, finished_at = SYSTIMESTAMP,
+            idempotency_key = CASE WHEN idempotency_key LIKE 'ACTIVE:%' THEN NULL ELSE idempotency_key END
         WHERE id = HEXTORAW(#{idHex}) AND status = 'RUNNING'
     </update>
 
     <update id="markFailed">
-        UPDATE edudoc_ai_task SET status = 'FAILED', error_code = #{errorCode}, finished_at = SYSTIMESTAMP
+        UPDATE edudoc_ai_task SET status = 'FAILED', error_code = #{errorCode}, finished_at = SYSTIMESTAMP,
+            idempotency_key = CASE WHEN idempotency_key LIKE 'ACTIVE:%' THEN NULL ELSE idempotency_key END
         WHERE id = HEXTORAW(#{idHex}) AND status = 'RUNNING'
     </update>
 
     <update id="cancelQueued">
-        UPDATE edudoc_ai_task SET status = 'CANCELED', finished_at = SYSTIMESTAMP
+        UPDATE edudoc_ai_task SET status = 'CANCELED', finished_at = SYSTIMESTAMP,
+            idempotency_key = CASE WHEN idempotency_key LIKE 'ACTIVE:%' THEN NULL ELSE idempotency_key END
         WHERE id = HEXTORAW(#{idHex}) AND status = 'QUEUED'
     </update>
 
     <update id="cancelRunning">
-        UPDATE edudoc_ai_task SET status = 'CANCELED', finished_at = SYSTIMESTAMP
+        UPDATE edudoc_ai_task SET status = 'CANCELED', finished_at = SYSTIMESTAMP,
+            idempotency_key = CASE WHEN idempotency_key LIKE 'ACTIVE:%' THEN NULL ELSE idempotency_key END
         WHERE id = HEXTORAW(#{idHex}) AND status = 'RUNNING'
     </update>
 
@@ -79,9 +83,10 @@
         WHERE id = HEXTORAW(#{idHex})
     </update>
 
-    <update id="releaseActiveKey">
+    <!-- 启动恢复扫描：崩溃遗留的终态 ACTIVE 锁键清理（1106 复审 P2-2 兜底） -->
+    <update id="releaseStaleActiveKeys">
         UPDATE edudoc_ai_task SET idempotency_key = NULL
-        WHERE id = HEXTORAW(#{idHex}) AND idempotency_key LIKE 'ACTIVE:%'
+        WHERE status IN ('SUCCEEDED', 'FAILED', 'CANCELED') AND idempotency_key LIKE 'ACTIVE:%'
     </update>
 
 </mapper>

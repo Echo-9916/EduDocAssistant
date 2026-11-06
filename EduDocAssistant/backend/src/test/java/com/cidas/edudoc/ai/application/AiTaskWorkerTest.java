@@ -110,14 +110,16 @@ class AiTaskWorkerTest {
 
         verify(aiGateway, times(2)).summarize(anyList());
         verify(aiGateway, times(1)).summarizeReduce(anyList());
-        verify(aiTaskRepository).releaseActiveKey(TASK_ID); // P2-5 终态释放活跃锁
         verify(aiTaskRepository, times(2)).updateProgress(eq(TASK_ID), anyInt());
         ArgumentCaptor<AiResult> result = ArgumentCaptor.forClass(AiResult.class);
         ArgumentCaptor<List<AiCitation>> citations = ArgumentCaptor.forClass(List.class);
         verify(resultTxService).completeTask(result.capture(), citations.capture());
         assertEquals("SUMMARY", result.getValue().getResultType());
         assertTrue(result.getValue().getContentText().contains("摘要-A1"));
-        assertEquals("sum-v1", result.getValue().getPromptVersion());
+        // P2-5：reduce 后 model/promptVersion 取 reduce 值，token 累加 reduce usage（map 2×(10,5)+reduce(4,3)）
+        assertEquals("sum-v2", result.getValue().getPromptVersion());
+        assertEquals(24, result.getValue().getInputTokens());
+        assertEquals(13, result.getValue().getOutputTokens());
         // 非法 chunkId 丢弃、合法引用回填 page/char、rank 连续
         // 审查发现 5：structured_json 组内 chunkIds 同样只留合法引用（非法引用丢弃要一次做全）
         assertTrue(!result.getValue().getStructuredJson().contains("NOT_A_CHUNK"),

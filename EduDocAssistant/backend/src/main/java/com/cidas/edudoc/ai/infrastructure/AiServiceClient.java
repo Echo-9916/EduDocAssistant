@@ -49,7 +49,8 @@ public class AiServiceClient implements AiGateway {
 
     private RestClient buildClient(long timeoutMs) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(3));
+        // 1106 复审 P2-3：连接超时也受本次预算约束（不固定 3s），避免总时延突破 deadline
+        factory.setConnectTimeout(Duration.ofMillis(Math.min(3000, Math.max(100, timeoutMs))));
         factory.setReadTimeout(Duration.ofMillis(timeoutMs));
         return RestClient.builder()
                 .baseUrl(properties.baseUrl())
@@ -188,12 +189,21 @@ public class AiServiceClient implements AiGateway {
         return hits;
     }
 
-    /** QA 预算传递（P1-3）：per-call 超时复用连接配置、缓存客户端实例。 */
+    /**
+     * QA 预算传递（P1-3）：per-call 超时复用连接配置。1106 复审 P2-3——按 500ms 分桶缓存，
+     * 避免每毫秒不同值撑爆客户端实例；命中桶则共享同一 RestClient。
+     */
+    private static final int MAX_TIMED_CLIENTS = 16;
+
     private RestClient clientFor(long timeoutMs, RestClient tierClient) {
         if (timeoutMs <= 0) {
             return tierClient;
         }
-        return timedClients.computeIfAbsent(timeoutMs, t -> buildClient(t));
+        long bucket = ((timeoutMs + 499) / 500) * 500; // 向上取整到 500ms
+        if (timedClients.size() >= MAX_TIMED_CLIENTS && !timedClients.containsKey(bucket)) {
+            return buildClient(bucket); // 缓存满则不缓存，直接新建（连接池小，罕见）
+        }
+        return timedClients.computeIfAbsent(bucket, this::buildClient);
     }
 
     private JsonNode post(String path, Map<String, Object> body, RestClient client) {

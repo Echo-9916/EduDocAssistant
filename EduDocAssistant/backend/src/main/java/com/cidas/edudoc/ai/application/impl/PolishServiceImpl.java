@@ -183,6 +183,10 @@ public class PolishServiceImpl implements PolishService {
     /** 1105 审查 P2-4：锚点优先精确替换；无锚点且重复出现 → 拒绝；找不到 → 40901。 */
     static int resolveOccurrence(String docText, String sourceText, Integer charStart) {
         if (charStart != null) {
+            if (charStart < 0) {
+                // 1106 复审 P2-1：负偏移是请求错误（40001），不得穿透成 500
+                throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "charStart 不能为负");
+            }
             // 锚点容错：sourceText 存的是 strip 后文本，charStart 可能指向块起点（含 C-01 前导连接符
             // \n 或空白）；跳过这些前导空白后再比对（服务层已 strip，客户端无需重算偏移）
             int anchor = charStart;

@@ -196,5 +196,18 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/v1/embed 
 | 2 | `evidenceScore=1-min(d)` 对同文原文也低于 0.35 → 全线恒拒（分数定义错）；且分数在 rerank 后子集上算，排序波动翻转拒答判定 | 归一 `max(0,1-d/2)`、阈值 0.60（校准：同文≈0.94/改写≈0.78/文档外≈0.50-0.59）、判定固定于 topK=6 全集 |
 | 3 | 撤销 `version_no-1` 弹栈在「撤销→重采纳」孤儿 EDIT 链弹错版本（跨链实测复现） | 采纳时回写被替换版本至 `polish_result.document_version_id`，撤销=D3 原公式逐行回拨 |
 
-- 复测结果：默认配置（QA 预算 5s）冒烟 **24/25**，QA 命中项在 lorem 对抗性样例上于 504 契约路径（预算内 FAILED 双消息、不伪造答案）与模型自拒之间波动；放宽预算至 9s 后 READY+引用真机通过——坐实为上游时延而非代码缺陷，P-05 校准移交 C-14（换真实课件样例）。
-- 回归：`mvn test` **239/239**、`pytest` **19/19**。
+- 复测结果：默认配置（QA 预算 5s）冒烟 **24/25**，QA 命中项在 lorem 对抗性样例上于 504 契约路径（预算内 FAILED 双消息、不伪造答案）与模型自拒之间波动；放宽预算至 9s 后 READY+引用真机通过——坐实为上游时延而非代码缺陷。
+- **P-05 口径（用户 2026-11-06 决策）**：默认 5 秒成功目标暂不作为阻塞项、保持未关闭；机制（deadline + 分段预算 + FAILED 落库）已就绪，C-14 换真实课件样例复测后再定验收口径。
+
+### 1106 复审整改（5 P2 + 2 P3）
+| 项 | 处置 |
+|---|---|
+| P2-1 负 `charStart` → 50001 | 入口校验 `charStart<0`→40001，补 `negativeCharStartRejectedAs40001` |
+| P2-2 ACTIVE 锁键释放非原子 | 释放并入 markSucceeded/markFailed/cancel 的**终态 SQL**（`CASE WHEN key LIKE 'ACTIVE:%' THEN NULL`），worker 启动 `releaseStaleActiveKeys` 恢复扫描兜底崩溃遗留；移除 finally 独立释放 |
+| P2-3 动态客户端连接超时/缓存膨胀 | 连接超时纳入本次预算；`clientFor` 按 500ms 分桶缓存 + 16 上限，满则即建不缓存 |
+| P2-4 embed 阶段超时未落 FAILED | ask 主体重构为 `runQaPipeline` 外包 try/catch，embed/search/rerank/answer 任一 `CidasBusinessException` 统一落 FAILED 双消息后上抛；补 `embedStageFailureWritesFailedMessage` |
+| P2-5 reduce 无预算/统计/引用覆盖 | reduce 前后各 `checkBudget`；累加 reduce usage、更新 model/promptVersion；引用与分组视图取 map 段全量 chunkId（reduceText 仅作用 content_text），补来源不再丢 |
+| P3-1 schema 错误未重试 | Pydantic 校验并入 `chat_json` 重试环（`ValidationError` 先于 `ValueError` 捕获），坏结构也重试一次再报；补 `bad_structure_then_valid_retry_succeeds` |
+| P3-2 注释/README 漂移 | `QaProperties` 阈值注释改 0.60；README 补 `EDUDOC_ANSWER_TIMEOUT_S` |
+
+- 回归：`mvn test` **242/242**、`pytest` **20/20**。

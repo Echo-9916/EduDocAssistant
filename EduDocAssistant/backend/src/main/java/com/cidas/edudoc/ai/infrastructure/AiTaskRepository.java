@@ -64,8 +64,8 @@ public class AiTaskRepository {
         mapper.incrementRetry(idHex);
     }
 
-    /** 生成类任务终态后释放活跃锁键（仅 ACTIVE: 前缀，EMBED 的 eventId 键不动）。 */
-    public void releaseActiveKey(String idHex) {
-        mapper.releaseActiveKey(idHex);
+    /** 启动恢复扫描：清理崩溃/升级遗留的终态 ACTIVE 锁键（1106 复审 P2-2；正常路径已在终态 SQL 内原子释放）。 */
+    public int releaseStaleActiveKeys() {
+        return mapper.releaseStaleActiveKeys();
     }
 }

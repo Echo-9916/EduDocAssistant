@@ -21,6 +21,7 @@ uvicorn app.main:app --port 8000
 | `EDUDOC_EMBEDDING_MODEL` | `BAAI/bge-m3` | 嵌入模型（须 1024 维） |
 | `EDUDOC_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排模型 |
 | `EDUDOC_EMBEDDING_DIM` | `1024` | 嵌入维度校验（与 Oracle VECTOR(1024) 对齐） |
+| `EDUDOC_ANSWER_TIMEOUT_S` | `4.6` | 问答 answer 调用超时（P-05 端到端 5s 预算内的校准口） |
 | `EDUDOC_AI_INTERNAL_TOKEN` | 空 | 服务间共享密钥，与后端同名；未配置=503，不匹配=401 |
 
 ## 接口（/v1/* 需 `X-Internal-Token`，`X-Trace-Id` 透传回写）

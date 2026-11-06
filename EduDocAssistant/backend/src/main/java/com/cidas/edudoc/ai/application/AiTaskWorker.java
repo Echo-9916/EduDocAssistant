@@ -73,6 +73,10 @@ public class AiTaskWorker {
             }
             return;
         }
+        int swept = aiTaskRepository.releaseStaleActiveKeys();
+        if (swept > 0) {
+            log.info("启动恢复：清理崩溃遗留的 ACTIVE 锁键 {} 行（1106 复审 P2-2）", swept);
+        }
         ensureGroup();
         running = true;
         pool = Executors.newFixedThreadPool(properties.concurrency(), task -> {
@@ -186,10 +190,8 @@ public class AiTaskWorker {
             log.error("AI 任务异常 taskId={}", taskId, e);
             aiTaskRepository.markFailed(taskId, "50001");
             auditFailed(task, new CidasBusinessException(ErrorCode.INTERNAL_ERROR, e.getMessage()));
-        } finally {
-            // 终态（含失败）释放 ACTIVE 锁键（P2-5）；已被取消路径释放过则 0 行无害
-            aiTaskRepository.releaseActiveKey(taskId);
         }
+        // 锁键释放已并入终态 SQL（1106 复审 P2-2），此处无需独立释放
     }
 
     private void handleSummary(AiTask task, long beganAt) {
@@ -226,16 +228,30 @@ public class AiTaskWorker {
         }
         checkBudget(beganAt);
 
-        // 真 map-reduce（1105 审查 P3-2）：多组时把组摘要段再做一次汇总结论
+        // 真 map-reduce（1105 P3-2 / 1106 复审 P2-5）：多组时二次汇总——reduce 前后各查一次预算、
+        // usage/model/promptVersion 全量累加；引用与分组视图取 map 阶段并集（reduce 文本只作结论，
+        // 不因合并丢来源 chunkId），reduceText 仅决定 content_text。
+        String reduceText = null;
         if (groups.size() > 1 && !segments.isEmpty()) {
+            checkBudget(beganAt);
             List<SourceChunk> segRefs = new ArrayList<>();
             for (SummarySegment s : segments) {
-                segRefs.add(new SourceChunk(s.chunkIds().isEmpty() ? "" : s.chunkIds().get(0), s.text()));
+                segRefs.add(new SourceChunk(String.join(",", s.chunkIds()), s.text()));
             }
-            List<SummarySegment> reduced = aiGateway.summarizeReduce(segRefs).segments();
-            if (!reduced.isEmpty()) {
-                segments = reduced;
+            SummarizeOutcome reduced = aiGateway.summarizeReduce(segRefs);
+            if (reduced.model() != null) {
+                model = reduced.model();
             }
+            if (reduced.promptVersion() != null) {
+                promptVersion = reduced.promptVersion();
+            }
+            if (reduced.usage() != null) {
+                inputTokens += reduced.usage().inputTokens() == null ? 0 : reduced.usage().inputTokens();
+                outputTokens += reduced.usage().outputTokens() == null ? 0 : reduced.usage().outputTokens();
+            }
+            reduceText = reduced.segments().stream().map(SummarySegment::text)
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            checkBudget(beganAt);
         }
 
         Map<String, VersionChunk> validChunks = citationService.indexByVersion(chunks);
@@ -258,9 +274,11 @@ public class AiTaskWorker {
         String resultId = Ids.hex16();
         citations.forEach(c -> c.setResultId(resultId));
         String structured = writeJson(Map.of("segments", segmentViews, "groupCount", groups.size()));
+        // 有 reduce 用汇总结论作正文，否则用 map 段拼接；引用/citations 恒取 map 段全量 chunkId
+        String contentText = reduceText != null && !reduceText.isBlank() ? reduceText
+                : String.join("\n", segments.stream().map(SummarySegment::text).toList());
         AiResult result = new AiResult(resultId, task.getId(), "SUMMARY",
-                String.join("\n", segments.stream().map(SummarySegment::text).toList()),
-                structured, model == null ? "unknown" : model,
+                contentText, structured, model == null ? "unknown" : model,
                 promptVersion == null ? "unknown" : promptVersion,
                 inputTokens == 0 ? null : inputTokens, outputTokens == 0 ? null : outputTokens);
         if (!resultTxService.completeTask(result, citations)) {

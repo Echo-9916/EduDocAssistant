@@ -139,6 +139,16 @@ def test_valid_json_wrong_structure_is_structured_502():
     assert "结构" in resp.json()["message"]
 
 
+def test_bad_structure_then_valid_retry_succeeds():
+    # 1106 复审 P3-1：合法 JSON 坏结构 → 重试一次 → 第二次合法 → 200
+    http, calls = ok([chat_body('{"segments": ["不是对象"]}'),
+                      chat_body('{"segments": [{"text": "结论", "chunkIds": ["C1"]}]}')])
+    resp = http.post("/v1/summarize", json={"chunks": [{"chunkId": "C1", "text": "文"}]})
+    assert resp.status_code == 200
+    assert resp.json()["segments"] == [{"text": "结论", "chunkIds": ["C1"]}]
+    assert len(calls) == 2  # 结构失败消耗了一次重试
+
+
 def test_summarize_reduce_flag_uses_merge_prompt():
     http, calls = ok([chat_body('{"segments": [{"text": "合并摘要", "chunkIds": ["C1", "C2"]}]}')])
     resp = http.post("/v1/summarize", json={

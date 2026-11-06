@@ -159,7 +159,7 @@ def create_app(settings: Settings | None = None,
     def summarize(req: ChunksRequest):
         chunks = [c.model_dump() for c in req.chunks]
         prompt = prompts.reduce_prompt(chunks) if req.reduce else prompts.summarize_prompt(chunks)
-        parsed, meta = app.state.client.chat_json(prompt, 2000)
+        parsed, meta = app.state.client.chat_json(prompt, 2000, schema=SummarizeOut)
         out = _validated(SummarizeOut, parsed)
         segments = [{"text": s.text, "chunkIds": s.chunkIds} for s in out.segments]
         return _generation_body(meta, segments=segments)
@@ -167,7 +167,8 @@ def create_app(settings: Settings | None = None,
     @app.post("/v1/extract-keypoints")
     def extract_keypoints(req: ChunksRequest):
         chunks = [c.model_dump() for c in req.chunks]
-        parsed, meta = app.state.client.chat_json(prompts.keypoints_prompt(chunks), 1500)
+        parsed, meta = app.state.client.chat_json(prompts.keypoints_prompt(chunks), 1500,
+                                                   schema=KeypointsOut)
         out = _validated(KeypointsOut, parsed)
         keypoints = [{"text": k.text, "chunkId": k.chunkId} for k in out.keypoints]
         return _generation_body(meta, keypoints=keypoints)
@@ -178,7 +179,7 @@ def create_app(settings: Settings | None = None,
             prompts.answer_prompt(req.question,
                                   [c.model_dump() for c in req.evidence],
                                   [h.model_dump() for h in req.history]),
-            req.maxTokens, timeout_key="answer", model=settings.answer_model)
+            req.maxTokens, timeout_key="answer", model=settings.answer_model, schema=AnswerOut)
         out = _validated(AnswerOut, parsed)
         refused = out.refused or not out.answer
         citations = [] if refused else [{"chunkId": c.chunkId, "quote": c.quote} for c in out.citations]

@@ -220,6 +220,20 @@ class PolishServiceTest {
     }
 
     @Test
+    void negativeCharStartRejectedAs40001() {
+        // 1106 复审 P2-1：负 charStart → 40001，不得 StringIndexOutOfBounds 塌缩 50001
+        givenRow("PENDING", "重复段", "新内容");
+        givenReadyDoc();
+        givenVersionText("重复段", "其他");
+        when(ossAdapter.putText(anyString(), anyString())).thenReturn(
+                new OssStorageAdapter.ObjectInfo(10, "etag", null, "SSE-OSS"));
+
+        CidasBusinessException e = assertThrows(CidasBusinessException.class,
+                () -> service.apply(POLISH_ID, "ACCEPT", null, -1));
+        assertEquals(ErrorCode.BAD_REQUEST, e.errorCode());
+    }
+
+    @Test
     void staleAnchorIsRejected() {
         givenRow("PENDING", "重复段", "新内容");
         givenReadyDoc();

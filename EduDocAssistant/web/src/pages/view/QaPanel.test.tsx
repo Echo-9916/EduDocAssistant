@@ -1,0 +1,88 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { citationLabel } from './QaPanel'
+
+vi.mock('../../api/http', () => ({ getErrorMessage: (e: Error) => e?.message ?? 'err' }))
+const api = vi.hoisted(() => ({
+  listQaSessions: vi.fn(),
+  listQaMessages: vi.fn(),
+  createQaSession: vi.fn(),
+  askQa: vi.fn(),
+}))
+vi.mock('../../api/ai', () => api)
+
+import QaPanel from './QaPanel'
+import type { PreviewBlock, QaMessageView } from '../../api/ai'
+
+const blocks: PreviewBlock[] = [
+  { chunkId: 'C1', chunkNo: 1, headingPath: null, pageNo: 3, charStart: 10, charEnd: 20, text: '证据文本内容' },
+]
+
+const msgs: QaMessageView[] = [
+  { messageId: 'M1', role: 'USER', contentText: '文档讲了什么？', status: 'READY', sequenceNo: 1, citations: [] },
+  {
+    messageId: 'M2', role: 'ASSISTANT', contentText: '讲了向量检索。', status: 'READY', sequenceNo: 2,
+    citations: [{ chunkId: 'C1', pageNo: 3, charStart: 12, charEnd: 16, quoteText: '证据文本内容片段较长截取四十字符以内测试测试测试' }],
+  },
+  { messageId: 'M3', role: 'ASSISTANT', contentText: '未在文档中找到依据，无法回答该问题。', status: 'REFUSED', sequenceNo: 3, citations: [] },
+]
+
+describe('QaPanel（C-12）', () => {
+  beforeEach(() => {
+    api.listQaSessions.mockResolvedValue([{ sessionId: 'S1', documentId: 'D1', title: 't', status: 'A' }])
+    api.listQaMessages.mockResolvedValue(msgs)
+  })
+
+  it('citationLabel：页码+片段前 40 字', () => {
+    expect(citationLabel({ chunkId: 'C1', pageNo: 3, charStart: null, charEnd: null, quoteText: '甲'.repeat(60) }, 0))
+      .toBe('[1] 第3页 ' + '甲'.repeat(40))
+  })
+
+  it('三态消息流渲染 + 引用 chip 跳回调 + 拒答文案突出', async () => {
+    const onHighlight = vi.fn()
+    render(<QaPanel documentId="D1" blocks={blocks} onHighlight={onHighlight} allowed />)
+    expect(await screen.findByText('讲了向量检索。')).toBeTruthy()
+    expect(screen.getByText('文档讲了什么？')).toBeTruthy()
+    expect(screen.getByText(/未在文档中找到依据/)).toBeTruthy()
+
+    fireEvent.click(screen.getByText(/^\[1\] 第3页/))
+    expect(onHighlight).toHaveBeenCalledWith(12, 16)
+  })
+
+  it('提问禁言至响应返回并重载消息流；空问题禁用', async () => {
+    let resolveAsk: (v: unknown) => void = () => {}
+    api.askQa.mockReturnValue(new Promise((r) => { resolveAsk = r }))
+    render(<QaPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed />
+    )
+    const textarea = await screen.findByPlaceholderText(/就本文档提问/)
+    const sendBtn = screen.getByTestId('qa-send')
+    expect((sendBtn.closest('button') as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.change(textarea, { target: { value: '新问题' } })
+    fireEvent.click(sendBtn)
+    await waitFor(() => expect(api.askQa).toHaveBeenCalledWith('S1', '新问题'))
+    // 发送中禁言
+    expect((textarea as HTMLTextAreaElement).disabled).toBe(true)
+    resolveAsk({ sessionId: 'S1', status: 'READY', answer: 'x', citations: [], questionMessageId: '', answerMessageId: '' })
+    await waitFor(() => expect(api.listQaMessages).toHaveBeenCalledTimes(2))
+    expect((textarea as HTMLTextAreaElement).disabled).toBe(false)
+  })
+
+  it('无活跃会话时首次提问自动建会话', async () => {
+    api.listQaSessions.mockResolvedValue([])
+    api.createQaSession.mockResolvedValue({ sessionId: 'S9', documentId: 'D1', title: null, status: 'A' })
+    api.askQa.mockResolvedValue({ sessionId: 'S9', status: 'REFUSED', answer: '', citations: [] })
+    api.listQaMessages.mockResolvedValue([])
+    render(<QaPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed />)
+    const textarea = await screen.findByPlaceholderText(/就本文档提问/)
+    fireEvent.change(textarea, { target: { value: '问' } })
+    fireEvent.click(screen.getByTestId('qa-send'))
+    await waitFor(() => expect(api.createQaSession).toHaveBeenCalledWith('D1'))
+    await waitFor(() => expect(api.askQa).toHaveBeenCalledWith('S9', '问'))
+  })
+
+  it('无权限提示', () => {
+    render(<QaPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed={false} />)
+    expect(screen.getByText(/AI_QA/)).toBeTruthy()
+  })
+})

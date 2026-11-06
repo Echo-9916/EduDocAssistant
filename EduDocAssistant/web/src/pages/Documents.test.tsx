@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', () => ({ useNavigate: () => navigateMock }))
 vi.mock('../api/http', () => ({ getErrorMessage: (e: Error) => e?.message ?? 'err' }))
 vi.mock('../api/documents', () => ({
   listCourses: vi.fn(),
@@ -66,6 +68,12 @@ describe('Documents', () => {
     fireEvent.click(await screen.findByText('重新解析'))
     await waitFor(() => expect(reparseDocument).toHaveBeenCalledWith('D1'))
     expect(await screen.findByText('解析失败')).toBeTruthy()
+  })
+
+  it('READY 行提供预览入口（C-10）', async () => {
+    render(<Documents role="TEACHER" />)
+    fireEvent.click(await screen.findByText('预览'))
+    expect(navigateMock).toHaveBeenCalledWith('documents/D1/view')
   })
 
   it('状态筛选透传 status 且重置页码（1104 审查 P2-1）', async () => {

@@ -1,6 +1,7 @@
 // B-11：我的文档（学生/教师共用，role 控制课程列与上传必填差异）。
 // 状态徽标文字+颜色双编码（详细设计 §4.2）；存在 UPLOADING/PARSING 行时 3s 轮询。
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Input, Popconfirm, Segmented, Select, Space, Tag, message } from 'antd'
 import { AppButton, AppTable } from '../components'
 import { getErrorMessage } from '../api/http'
@@ -45,6 +46,7 @@ interface Props {
 }
 
 export default function Documents({ role }: Props) {
+  const navigate = useNavigate()
   const [view, setView] = useState<'mine' | 'trash'>('mine')
   const [courses, setCourses] = useState<CourseView[]>([])
   const [filters, setFilters] = useState<{ courseId?: string; type?: string; status?: string; keyword?: string }>({})
@@ -227,10 +229,13 @@ export default function Documents({ role }: Props) {
           {
             title: '操作',
             key: 'actions',
-            width: 220,
+            width: 260,
             render: (_: unknown, row: DocumentSummary) => (
               <Space>
                 <a onClick={() => setDetailId(row.id)}>详情</a>
+                {row.status === 'READY' && (
+                  <a onClick={() => navigate(`documents/${row.id}/view`)}>预览</a>
+                )}
                 {view === 'trash' ? (
                   <a onClick={() => onRestore(row.id)}>恢复</a>
                 ) : (

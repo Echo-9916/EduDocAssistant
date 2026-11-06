@@ -9,9 +9,11 @@ import ForgotPassword from './pages/ForgotPassword'
 import Forbidden from './pages/Forbidden'
 import SectionPlaceholder from './pages/SectionPlaceholder'
 import Documents from './pages/Documents'
+import DocumentView from './pages/DocumentView'
 import Demo from './pages/Demo'
 import { roleNav, rolePath } from './routes'
 import type { NavItem } from './routes'
+import { PermissionCode } from './api/types'
 import type { RoleCodeValue } from './api/types'
 
 /** B-12：nav key → 真实页面映射；未接线的 key 仍走占位（其余切片逐个替换）。 */
@@ -56,6 +58,14 @@ export default function App() {
               }
             >
               <Route index element={<Navigate to={nav[0].key} replace />} />
+              <Route
+                path="documents/:docId/view"
+                element={
+                  <RequireAuth permission={PermissionCode.DOCUMENT_READ}>
+                    <DocumentView />
+                  </RequireAuth>
+                }
+              />
               {nav.map((item) => {
                 const element = pageOf(role, item)
                 return (

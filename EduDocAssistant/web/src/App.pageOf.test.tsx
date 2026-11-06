@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router-dom')>()),
+  useNavigate: () => vi.fn(),
+}))
 vi.mock('./api/http', () => ({ getErrorMessage: (e: Error) => e?.message ?? 'err' }))
 vi.mock('./api/documents', () => ({
   listCourses: vi.fn().mockResolvedValue([]),

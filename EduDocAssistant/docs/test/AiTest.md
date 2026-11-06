@@ -2,7 +2,7 @@
 
 > 覆盖 03 切片 C-01~C-09 后端与 ai-service 接口（预览结构树、向量化流水线、摘要/要点任务、问答、润色成版与撤销、结果导出、ai-service 六类内部接口）。结构与 [AuthTest.md](AuthTest.md)、[DocumentTest.md](DocumentTest.md) 同源。
 > Apifox 可直接导入 [apifox/ai-processing.postman_collection.json](apifox/ai-processing.postman_collection.json)：9 组 38 个请求含全部反例；token/documentId/taskId/resultId/sessionId/polishId 链式变量自动串联，预览请求自动挑润色段与问句片段，按文件夹顺序执行即可走完全链路。
-> **回归基线**：2026-11-05 真库+真模型冒烟 **24/25**（唯一未过项为 P-05 时延校准，属既定裁决遗留，见「回归结果」）；1105 符合性审查 13 项整改后（含 READY 路径真机实证）；1106 C01-C14 全面审查 8 项整改后：`mvn test` **243/243**、`python -m pytest` **20/20**、`web vitest` **114/114（退出码 0）**、`tsc --noEmit`/`vite build` 通过。
+> **回归基线**：2026-11-05 真库+真模型冒烟 **24/25**（唯一未过项为 P-05 时延校准，属既定裁决遗留，见「回归结果」）；1105 符合性审查 13 项、1106 全面审查 8 项、1106 复审 4 项整改后：`mvn test` **243/243**、`python -m pytest` **20/20**、`web vitest` **25 文件/117 断言（退出码 0）**、`tsc --noEmit`/`vite build` 通过；桌面浏览器真实登录/预览入口/真实模型摘要 SUCCEEDED 复验通过（见 docs/review/1106 进一步复查报告）。
 
 ## 环境与前置
 

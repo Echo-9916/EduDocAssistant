@@ -12,6 +12,7 @@ interface Props {
   blocks: PreviewBlock[]
   onHighlight: HighlightFn
   allowed: boolean
+  indexing?: boolean
 }
 
 export interface Keypoint {
@@ -40,7 +41,7 @@ export function parseKeypoints(structuredJson: string | null): { keypoints: Keyp
   }
 }
 
-export default function KeypointPanel({ documentId, blocks, onHighlight, allowed }: Props) {
+export default function KeypointPanel({ documentId, blocks, onHighlight, allowed, indexing }: Props) {
   const ctrl = useGenerationTask(documentId, 'KEYPOINT', createKeypointTask)
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const { keypoints, underMin } = useMemo(
@@ -64,8 +65,7 @@ export default function KeypointPanel({ documentId, blocks, onHighlight, allowed
 
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
-      <TaskHeader ctrl={ctrl} label="要点" />
-      {ctrl.error && <Alert type="error" showIcon message={ctrl.error} />}
+      <TaskHeader ctrl={ctrl} label="要点" indexing={indexing} />
       {keypoints.length > 0 && underMin && (
         <Alert type="warning" showIcon message={`仅提取到 ${keypoints.length} 条要点（少于 5 条），请人工复核覆盖度`} />
       )}

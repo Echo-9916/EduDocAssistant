@@ -70,10 +70,10 @@ describe('Documents', () => {
     expect(await screen.findByText('解析失败')).toBeTruthy()
   })
 
-  it('READY 行提供预览入口（C-10）', async () => {
+  it('READY 行预览入口用相对段 {id}/view（1106 P1-1，配合 App 路由 .../documents 解析为 .../documents/{id}/view）', async () => {
     render(<Documents role="TEACHER" />)
     fireEvent.click(await screen.findByText('预览'))
-    expect(navigateMock).toHaveBeenCalledWith('documents/D1/view')
+    expect(navigateMock).toHaveBeenCalledWith('D1/view')
   })
 
   it('状态筛选透传 status 且重置页码（1104 审查 P2-1）', async () => {

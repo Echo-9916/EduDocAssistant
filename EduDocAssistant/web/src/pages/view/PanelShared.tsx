@@ -79,7 +79,6 @@ export function useGenerationTask(
       await track(taskId)
     } catch (e) {
       setError(getErrorMessage(e))
-      message.error(getErrorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -99,15 +98,20 @@ export function useGenerationTask(
   return { task, busy, error, start, cancel }
 }
 
-/** 任务状态头：徽标+进度条+取消（阶段与进度回写口径 §3.2.1）。 */
-export function TaskHeader({ ctrl, label }: { ctrl: TaskController; label: string }) {
+/** 任务状态头：徽标+进度条+取消（阶段与进度回写口径 §3.2.1）；indexing=向量索引未就绪（R3）。 */
+export function TaskHeader({ ctrl, label, indexing = false }: {
+  ctrl: TaskController
+  label: string
+  indexing?: boolean
+}) {
   const { task, busy, error, start, cancel } = ctrl
   if (error && !task) return <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="small">
+      {indexing && <Alert type="info" showIcon message="新版索引中，索引完成后可发起生成" />}
       <Space wrap>
-        <AppButton onClick={() => void start()} loading={busy}
-          disabled={!!task && ACTIVE.has(task.status)}>
+        <AppButton data-testid={`gen-${label}`} onClick={() => void start()} loading={busy}
+          disabled={(!!task && ACTIVE.has(task.status)) || indexing}>
           {task?.status === 'SUCCEEDED' ? `重新生成${label}` : `生成${label}`}
         </AppButton>
         {task && ACTIVE.has(task.status) && (
@@ -122,6 +126,7 @@ export function TaskHeader({ ctrl, label }: { ctrl: TaskController; label: strin
           </Tag>
         )}
       </Space>
+      {error && task && <Alert type="error" showIcon message={error} />}
       {task && ACTIVE.has(task.status) && <Progress percent={task.progress} size="small" />}
       {task?.status === 'FAILED' && (
         <Alert type="error" showIcon message={`处理失败（${task.errorCode ?? '未知错误'}），可重试或稍后再试`} />

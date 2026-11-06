@@ -14,6 +14,7 @@ interface Props {
   blocks: PreviewBlock[]
   onHighlight: HighlightFn
   allowed: boolean
+  indexing?: boolean
 }
 
 /** 引用 chip 文案：页码+片段前 40 字。 */
@@ -23,7 +24,7 @@ export function citationLabel(c: QaCitation, index: number): string {
   return `[${index + 1}] ${page}${quote}`
 }
 
-export default function QaPanel({ documentId, blocks, onHighlight, allowed }: Props) {
+export default function QaPanel({ documentId, blocks, onHighlight, allowed, indexing = false }: Props) {
   const [sessions, setSessions] = useState<QaSessionView[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<QaMessageView[]>([])
@@ -52,15 +53,30 @@ export default function QaPanel({ documentId, blocks, onHighlight, allowed }: Pr
   }, [documentId, allowed, loadMessages])
 
   const scrollBottom = () => {
-    requestAnimationFrame(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }))
+    // 1106 P1-3：jsdom 元素无 scrollTo，可选调用避免未处理异常挂掉测试门禁
+    requestAnimationFrame(() => listRef.current?.scrollTo?.({ top: listRef.current.scrollHeight }))
+  }
+
+  const current = sessions.find((s) => s.sessionId === sessionId)
+  const archived = current?.status === 'C'
+
+  const newSession = async () => {
+    try {
+      const created = await createQaSession(documentId)
+      setSessionId(created.sessionId)
+      setSessions((prev) => [created, ...prev])
+      setMessages([])
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    }
   }
 
   const send = async () => {
     const q = question.trim()
-    if (!q || q.length > MAX_QUESTION || sending) return
+    if (!q || q.length > MAX_QUESTION || sending || archived || indexing) return
     setSending(true)
+    let sid: string | null = sessionId
     try {
-      let sid = sessionId
       if (!sid) {
         const created = await createQaSession(documentId)
         sid = created.sessionId
@@ -75,7 +91,8 @@ export default function QaPanel({ documentId, blocks, onHighlight, allowed }: Pr
       if (result.status !== 'READY') message.info('该问题未在文档中找到依据')
     } catch (e) {
       message.error(getErrorMessage(e))
-      if (sessionId) loadMessages(sessionId) // 超时/失败也已落 FAILED 消息
+      // 1106 P2-2：用本次会话（含刚新建的）回载服务端已落库的 FAILED 消息
+      if (sid) loadMessages(sid)
     } finally {
       setSending(false)
     }
@@ -101,6 +118,14 @@ export default function QaPanel({ documentId, blocks, onHighlight, allowed }: Pr
           }
         }}
       />
+      {archived && (
+        <Alert
+          type="warning"
+          showIcon
+          message="归档会话只读，可新建会话后继续提问"
+          action={<AppButton size="small" onClick={() => void newSession()}>新建会话</AppButton>}
+        />
+      )}
       <div ref={listRef} style={{ maxHeight: 380, overflowY: 'auto', paddingRight: 4 }}>
         <List
           dataSource={messages}
@@ -139,8 +164,8 @@ export default function QaPanel({ documentId, blocks, onHighlight, allowed }: Pr
           value={question}
           maxLength={MAX_QUESTION}
           autoSize={{ minRows: 1, maxRows: 3 }}
-          placeholder="就本文档提问（连续追问会自动携带最近对话）"
-          disabled={sending}
+          placeholder={indexing ? '新版索引中，完成后可提问' : '就本文档提问（连续追问会自动携带最近对话）'}
+          disabled={sending || archived || indexing}
           onChange={(e) => setQuestion(e.target.value)}
           onPressEnter={(e) => {
             if (!e.shiftKey) {
@@ -149,7 +174,8 @@ export default function QaPanel({ documentId, blocks, onHighlight, allowed }: Pr
             }
           }}
         />
-        <AppButton data-testid="qa-send" loading={sending} disabled={!question.trim() || sending} onClick={() => void send()}>
+        <AppButton data-testid="qa-send" loading={sending}
+          disabled={!question.trim() || sending || archived || indexing} onClick={() => void send()}>
           提问
         </AppButton>
       </Space.Compact>

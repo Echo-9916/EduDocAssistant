@@ -21,6 +21,8 @@ export interface Preview {
   versionId: string
   versionNo: number
   blocks: PreviewBlock[]
+  /** 当前版本分块是否全部完成向量索引（R3/1106 P2-1） */
+  vectorReady: boolean
 }
 
 export const getPreview = (documentId: string, versionId?: string) =>
@@ -70,15 +72,28 @@ export const getAiTask = (taskId: string) => get<AiTaskView>(`/ai-tasks/${taskId
 
 export const cancelAiTask = (taskId: string) => post<void>(`/ai-tasks/${taskId}/cancel`)
 
-/** 导出走 header 鉴权，不能用直链；返回 Blob 由调用方 createObjectURL 触发下载。 */
-export async function fetchExportBlob(resultId: string, format: 'txt' | 'docx'): Promise<Blob> {
+/** 解析 Content-Disposition 的 filename*=UTF-8''…（RFC5987）或 filename="…"；失败返回 null。 */
+export function parseFilename(header: string | null): string | null {
+  if (!header) return null
+  const ext = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (ext?.[1]) {
+    try { return decodeURIComponent(ext[1].trim()) } catch { return ext[1].trim() }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header)
+  return plain?.[1]?.trim() ?? null
+}
+
+/** 导出走 header 鉴权，不能用直链；返回 Blob+后端文件名（1106 P3-2：文件名以 Content-Disposition 为准）。 */
+export async function fetchExportBlob(
+  resultId: string, format: 'txt' | 'docx',
+): Promise<{ blob: Blob; filename: string | null }> {
   const res = await fetch(`/api/v1/ai-results/${resultId}/export?format=${format}`, {
     headers: { Authorization: `Bearer ${getToken() ?? ''}` },
   })
   if (!res.ok) {
     throw new Error(`导出失败（HTTP ${res.status}）`)
   }
-  return res.blob()
+  return { blob: await res.blob(), filename: parseFilename(res.headers.get('Content-Disposition')) }
 }
 
 /** 任务断点恢复键（C-11 §4.2：刷新后从任务接口恢复）。 */

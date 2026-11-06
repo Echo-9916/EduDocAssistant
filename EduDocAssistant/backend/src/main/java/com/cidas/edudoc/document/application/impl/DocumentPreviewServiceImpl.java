@@ -39,10 +39,15 @@ public class DocumentPreviewServiceImpl implements DocumentPreviewService {
         }
         DocumentVersion version = versionRepository.findById(targetVersion)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.CONFLICT, "版本缺失"));
+        var chunks = chunkRepository.selectAllByVersion(targetVersion);
+        // R3/1106 P2-1：前端据此区分「文本 READY」与「索引 READY」
+        boolean vectorReady = !chunks.isEmpty()
+                && chunks.stream().allMatch(c -> "READY".equals(c.getIndexStatus()));
         return new Preview(doc.getId(), version.getId(), version.getVersionNo(),
-                chunkRepository.selectAllByVersion(targetVersion).stream()
+                chunks.stream()
                         .map(c -> new Block(c.getId(), c.getChunkNo(), c.getHeadingPath(), c.getPageNo(),
                                 c.getCharStart(), c.getCharEnd(), c.getContentText()))
-                        .toList());
+                        .toList(),
+                vectorReady);
     }
 }

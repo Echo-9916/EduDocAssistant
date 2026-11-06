@@ -234,7 +234,8 @@ export default function Documents({ role }: Props) {
               <Space>
                 <a onClick={() => setDetailId(row.id)}>详情</a>
                 {row.status === 'READY' && (
-                  <a onClick={() => navigate(`documents/${row.id}/view`)}>预览</a>
+                  // 1106 P1-1：当前路由已是 .../documents，相对段只补 `{id}/view`
+                  <a onClick={() => navigate(`${row.id}/view`)}>预览</a>
                 )}
                 {view === 'trash' ? (
                   <a onClick={() => onRestore(row.id)}>恢复</a>

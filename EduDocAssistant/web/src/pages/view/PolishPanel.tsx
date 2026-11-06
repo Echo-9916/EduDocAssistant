@@ -23,8 +23,12 @@ export function totalChars(blocks: PreviewBlock[]): number {
   return blocks.reduce((sum, b) => sum + b.text.trim().length, 0)
 }
 
-/** 表内 decision 无 REVERT 值（撤销后回写 PENDING，台账裁决）；UI 本地态额外允许 REVERT 标签。 */
-type RowState = Omit<PolishRow, 'decision'> & { decision: PolishRow['decision'] | 'REVERT' }
+/** 表内 decision 无 REVERT 值（撤销后回写 PENDING，台账裁决）；UI 本地态额外允许 REVERT 标签。
+ *  anchorStart=提交该段的块全文偏移，行与块按索引一一映射（1106 P1-2：同文重复段不得互串）。 */
+type RowState = Omit<PolishRow, 'decision'> & {
+  decision: PolishRow['decision'] | 'REVERT'
+  anchorStart?: number
+}
 
 export default function PolishPanel({ documentId, selectedBlocks, onHighlight, allowed, onChanged }: Props) {
   const [rows, setRows] = useState<RowState[]>([])
@@ -45,7 +49,8 @@ export default function PolishPanel({ documentId, selectedBlocks, onHighlight, a
         documentId,
         selectedBlocks.map((b) => ({ chunkId: b.chunkId, text: b.text.trim() })),
       )
-      setRows(result)
+      // 后端按提交顺序逐段回行 → 索引映射携带各自锚点，重复文本不互串（1106 P1-2）
+      setRows(result.map((r, i) => ({ ...r, anchorStart: selectedBlocks[i]?.charStart })))
       setAcceptedTexts(Object.fromEntries(result.map((r) => [r.polishId, r.polishedText])))
     } catch (e) {
       setError(getErrorMessage(e))
@@ -59,12 +64,11 @@ export default function PolishPanel({ documentId, selectedBlocks, onHighlight, a
     decision: 'ACCEPT' | 'PARTIAL' | 'REJECT' | 'REVERT',
     acceptedText?: string,
   ) => {
-    const source = selectedBlocks.find((b) => b.text.trim() === row.sourceText)
     try {
       const applied = await polishDecision(row.polishId, {
         decision,
         acceptedText,
-        charStart: source ? source.charStart : undefined,
+        charStart: row.anchorStart,
       })
       if (decision === 'ACCEPT' || decision === 'PARTIAL') {
         setLastApplied({ polishId: row.polishId, versionId: applied?.versionId ?? '' })
@@ -137,7 +141,7 @@ export default function PolishPanel({ documentId, selectedBlocks, onHighlight, a
                     onClick={() => void decide(row, 'REJECT')}>放弃</AppButton>
                   <AppButton size="small" type="link"
                     onClick={() => {
-                      const b = selectedBlocks.find((x) => x.text.trim() === row.sourceText)
+                      const b = selectedBlocks.find((x) => x.charStart === row.anchorStart)
                       if (b) onHighlight(b.charStart, b.charEnd)
                     }}>
                     查看原文位置

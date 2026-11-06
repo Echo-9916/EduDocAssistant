@@ -13,6 +13,7 @@ interface Props {
   blocks: PreviewBlock[]
   onHighlight: HighlightFn
   allowed: boolean
+  indexing?: boolean
 }
 
 interface Segment {
@@ -37,7 +38,7 @@ export function parseSummarySegments(structuredJson: string | null): Segment[] {
   }
 }
 
-export default function SummaryPanel({ documentId, blocks, onHighlight, allowed }: Props) {
+export default function SummaryPanel({ documentId, blocks, onHighlight, allowed, indexing }: Props) {
   const ctrl = useGenerationTask(documentId, 'SUMMARY', createSummaryTask)
   const [pendingDocx, setPendingDocx] = useState(false)
   const segments = useMemo(
@@ -57,7 +58,8 @@ export default function SummaryPanel({ documentId, blocks, onHighlight, allowed 
     if (!resultId) return
     setPendingDocx(true)
     try {
-      downloadBlob(await fetchExportBlob(resultId, 'docx'), '摘要.docx')
+      const { blob, filename } = await fetchExportBlob(resultId, 'docx')
+      downloadBlob(blob, filename ?? '摘要.docx')
     } catch (e) {
       message.error(getErrorMessage(e))
     } finally {
@@ -69,8 +71,7 @@ export default function SummaryPanel({ documentId, blocks, onHighlight, allowed 
 
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
-      <TaskHeader ctrl={ctrl} label="摘要" />
-      {ctrl.error && <Alert type="error" showIcon message={ctrl.error} />}
+      <TaskHeader ctrl={ctrl} label="摘要" indexing={indexing} />
       {segments.length > 0 && ctrl.task?.result && (
         <>
           <Space wrap>

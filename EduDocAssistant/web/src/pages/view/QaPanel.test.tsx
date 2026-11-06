@@ -81,6 +81,41 @@ describe('QaPanel（C-12）', () => {
     await waitFor(() => expect(api.askQa).toHaveBeenCalledWith('S9', '问'))
   })
 
+  it('首次提问失败也用本次新建会话回载 FAILED 消息（1106 P2-2）', async () => {
+    api.listQaSessions.mockResolvedValue([])
+    api.createQaSession.mockResolvedValue({ sessionId: 'S9', documentId: 'D1', title: null, status: 'A' })
+    api.askQa.mockRejectedValue({ code: 50401, message: '超时' })
+    render(<QaPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed />)
+    const textarea = await screen.findByPlaceholderText(/就本文档提问/)
+    fireEvent.change(textarea, { target: { value: '问' } })
+    fireEvent.click(screen.getByTestId('qa-send'))
+    await waitFor(() => expect(api.askQa).toHaveBeenCalled())
+    // 失败后必须 GET 新会话消息（服务端已落 FAILED 双消息），而非沿用旧 null sessionId
+    await waitFor(() => expect(api.listQaMessages).toHaveBeenCalledWith('S9'))
+  })
+
+  it('归档会话只读：输入与提问禁用，可新建会话（1106 P2-3）', async () => {
+    api.listQaSessions.mockResolvedValue([
+      { sessionId: 'S9', documentId: 'D1', title: '旧会话', status: 'C' },
+      { sessionId: 'S1', documentId: 'D1', title: '新会话', status: 'A' },
+    ])
+    render(<QaPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed />)
+    await screen.findByText('讲了向量检索。')
+    fireEvent.mouseDown(screen.getByText('新会话（进行中）'))
+    fireEvent.click(await screen.findByText('旧会话（已归档）'))
+    const textarea = await screen.findByPlaceholderText(/就本文档提问/)
+    await waitFor(() => expect((textarea as HTMLTextAreaElement).disabled).toBe(true))
+    expect((screen.getByTestId('qa-send') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/归档会话只读/)).toBeTruthy()
+  })
+
+  it('indexing=true 禁用提问（R3/1106 P2-1 前端门控）', async () => {
+    render(<QaPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed indexing />)
+    const textarea = await screen.findByPlaceholderText(/索引中/)
+    fireEvent.change(textarea, { target: { value: '问' } })
+    expect((screen.getByTestId('qa-send') as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('无权限提示', () => {
     render(<QaPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed={false} />)
     expect(screen.getByText(/AI_QA/)).toBeTruthy()

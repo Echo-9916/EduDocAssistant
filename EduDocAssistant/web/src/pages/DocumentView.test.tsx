@@ -36,7 +36,7 @@ import DocumentView from './DocumentView'
 import type { Preview } from '../api/ai'
 
 const preview: Preview = {
-  documentId: 'D1', versionId: 'V1', versionNo: 1,
+  documentId: 'D1', versionId: 'V1', versionNo: 1, vectorReady: true,
   blocks: [
     { chunkId: 'C1', chunkNo: 1, headingPath: '第一章', pageNo: 1, charStart: 0, charEnd: 4, text: 'hello' },
     { chunkId: 'C2', chunkNo: 2, headingPath: null, pageNo: 2, charStart: 5, charEnd: 9, text: '\nworld' },
@@ -98,11 +98,18 @@ describe('DocumentView（C-10）', () => {
     expect(api.getAiTask).toHaveBeenCalledWith('T1')
   })
 
+  it('vectorReady=false：显示索引横幅且禁用生成入口（1106 P2-1）', async () => {
+    api.getPreview.mockResolvedValue({ ...preview, vectorReady: false })
+    renderView()
+    expect((await screen.findAllByText(/新版索引中/)).length).toBeGreaterThanOrEqual(1)
+    expect((screen.getByTestId('gen-摘要') as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('PARSING 文档轮询预览直至 READY（R3 新版索引中提示）', async () => {
     getDocument.mockResolvedValue({ ...docDetail, status: 'PARSING' })
     renderView()
     expect(await screen.findByText(/索引重建中/)).toBeTruthy()
-    expect(await screen.findByText(/新版索引中/)).toBeTruthy()
+    expect((await screen.findAllByText(/新版索引中/)).length).toBeGreaterThanOrEqual(1)
     getDocument.mockResolvedValue(docDetail)
     await vi.waitFor(() => expect(getDocument.mock.calls.length).toBeGreaterThanOrEqual(2),
       { timeout: 4000, interval: 100 })

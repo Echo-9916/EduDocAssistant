@@ -72,7 +72,7 @@ describe('SummaryPanel（C-11）', () => {
     fireEvent.click(within(screen.getByTestId('segment-0')).getByText(/定\s*位/))
     expect(onHighlight).toHaveBeenLastCalledWith(0, 9)
 
-    api.fetchExportBlob.mockResolvedValue(new Blob(['PK']))
+    api.fetchExportBlob.mockResolvedValue({ blob: new Blob(['PK']), filename: '课程报告.docx' })
     fireEvent.click(screen.getByText('导出 .docx'))
     await waitFor(() => expect(api.fetchExportBlob).toHaveBeenCalledWith('R1', 'docx'))
     expect(URL.createObjectURL).toHaveBeenCalled()

@@ -13,7 +13,8 @@ public interface DocumentPreviewService {
                  int charStart, int charEnd, String text) {
     }
 
-    record Preview(String documentId, String versionId, int versionNo, List<Block> blocks) {
+    /** vectorReady：当前版本分块是否全部完成向量化索引（R3「新版索引中」前端判据，1106 P2-1）。 */
+    record Preview(String documentId, String versionId, int versionNo, List<Block> blocks, boolean vectorReady) {
     }
 
     Preview preview(String documentId, String versionId);

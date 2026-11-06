@@ -20,7 +20,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -71,6 +73,17 @@ class DocumentPreviewServiceTest {
             prevEnd = block.charEnd();
         }
         assertEquals(full.length() - 1, prevEnd);
+        assertTrue(preview.vectorReady(), "全 READY 块 → vectorReady=true");
+    }
+
+    @Test
+    void pendingChunksMakeVectorReadyFalse() {
+        // 1106 P2-1/R3：文本 READY 但索引未完成时必须暴露 vectorReady=false
+        when(chunkRepository.selectAllByVersion(VERSION)).thenReturn(List.of(
+                new DocumentChunk("C1", VERSION, 1, null, 1, 0, 4, "hello", 4, "h", "READY"),
+                new DocumentChunk("C2", VERSION, 2, "H1", 1, 5, 10, "\nworld", 4, "h", "PENDING")));
+
+        assertFalse(service.preview(DOC_ID, null).vectorReady());
     }
 
     @Test

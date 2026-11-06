@@ -88,23 +88,26 @@ export default function DocumentView() {
     )
   }
 
+  // 1106 P2-1/R3：文本 READY 但向量未 READY（或刚成版 PARSING）同样视为索引中，禁用 AI 生成入口
+  const indexing = doc?.status === 'PARSING' || preview?.vectorReady === false
+
   const tabItems = [
     {
       key: 'summary',
       label: '摘要',
-      children: <SummaryPanel documentId={docId!} blocks={blocks}
+      children: <SummaryPanel documentId={docId!} blocks={blocks} indexing={indexing}
         onHighlight={highlightRange} allowed={can(PermissionCode.AI_SUMMARY)} />,
     },
     {
       key: 'keypoint',
       label: '要点',
-      children: <KeypointPanel documentId={docId!} blocks={blocks}
+      children: <KeypointPanel documentId={docId!} blocks={blocks} indexing={indexing}
         onHighlight={highlightRange} allowed={can(PermissionCode.AI_KEYPOINT)} />,
     },
     {
       key: 'qa',
       label: '问答',
-      children: <QaPanel documentId={docId!} blocks={blocks}
+      children: <QaPanel documentId={docId!} blocks={blocks} indexing={indexing}
         onHighlight={highlightRange} allowed={can(PermissionCode.AI_QA)} />,
     },
     {
@@ -138,9 +141,9 @@ export default function DocumentView() {
         }
         size="small"
       >
-        {doc?.status === 'PARSING' && (
+        {indexing && (
           <Alert style={{ marginBottom: 8 }} type="info" showIcon
-            message="新版索引中：预览展示最新文本，问答/摘要在索引完成后即可用（R3 口径）" />
+            message="新版索引中：预览展示最新文本，摘要/要点/问答在索引完成后即可用（R3 口径）" />
         )}
         <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '4px 8px' }}>
           {blocks.map((block, i) => (

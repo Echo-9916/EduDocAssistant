@@ -17,6 +17,7 @@ import {
   listQaMessages,
   listQaSessions,
   loadTaskId,
+  parseFilename,
   polishDecision,
   polishParagraphs,
   saveTaskId,
@@ -69,15 +70,27 @@ describe('ai api（C-10 八端点封装）', () => {
     expect(post).toHaveBeenNthCalledWith(3, '/polish/P1/decision', { decision: 'REVERT' })
   })
 
-  it('fetchExportBlob 带 Authorization 头且非 2xx 抛错', async () => {
+  it('parseFilename 解析 RFC5987 与退化形式（1106 P3-2）', () => {
+    expect(parseFilename("attachment; filename*=UTF-8''%E8%AF%BE%E4%BB%B6-%E6%91%98%E8%A6%81.docx"))
+      .toBe('课件-摘要.docx')
+    expect(parseFilename('attachment; filename="report.docx"')).toBe('report.docx')
+    expect(parseFilename(null)).toBeNull()
+    expect(parseFilename('inline')).toBeNull()
+  })
+
+  it('fetchExportBlob 带 Authorization 头、回传后端文件名、非 2xx 抛错', async () => {
     const blob = new Blob(['x'])
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: () => blob })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => blob,
+      headers: { get: (k: string) => (k === 'Content-Disposition' ? 'attachment; filename="t.docx"' : null) },
+    })
     vi.stubGlobal('fetch', fetchMock)
-    await expect(fetchExportBlob('R1', 'docx')).resolves.toBe(blob)
+    await expect(fetchExportBlob('R1', 'docx')).resolves.toEqual({ blob, filename: 't.docx' })
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/ai-results/R1/export?format=docx')
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer TOK')
 
-    fetchMock.mockResolvedValue({ ok: false, status: 404 })
+    fetchMock.mockResolvedValue({ ok: false, status: 404, headers: { get: () => null } })
     await expect(fetchExportBlob('R1', 'txt')).rejects.toThrow('HTTP 404')
     vi.unstubAllGlobals()
   })

@@ -81,6 +81,25 @@ describe('PolishPanel（C-13）', () => {
     expect(onChanged).not.toHaveBeenCalled()
   })
 
+  it('两个相同文本块：各行采纳携带各自锚点（1106 P1-2）', async () => {
+    const dup = [block(1, 0, '重复段落'), block(2, 6, '重复段落')]
+    api.polishParagraphs.mockResolvedValue([
+      { polishId: 'P1', sourceText: '重复段落', polishedText: '润一', decision: 'PENDING' as const },
+      { polishId: 'P2', sourceText: '重复段落', polishedText: '润二', decision: 'PENDING' as const },
+    ])
+    api.polishDecision.mockResolvedValue(null)
+    render(<PolishPanel documentId="D1" selectedBlocks={dup} onHighlight={vi.fn()} allowed onChanged={vi.fn()} />)
+    fireEvent.click(screen.getByTestId('run-polish'))
+    await screen.findByTestId('accept-P2')
+
+    fireEvent.click(screen.getByTestId('accept-P2'))
+    await waitFor(() => expect(api.polishDecision).toHaveBeenCalledWith('P2',
+      { decision: 'ACCEPT', acceptedText: undefined, charStart: 6 }))
+    fireEvent.click(screen.getByTestId('accept-P1'))
+    await waitFor(() => expect(api.polishDecision).toHaveBeenCalledWith('P1',
+      { decision: 'ACCEPT', acceptedText: undefined, charStart: 0 }))
+  })
+
   it('无权限提示且不渲染操作', () => {
     render(<PolishPanel documentId="D1" selectedBlocks={[block(1, 0, '甲')]}
       onHighlight={vi.fn()} allowed={false} onChanged={vi.fn()} />)

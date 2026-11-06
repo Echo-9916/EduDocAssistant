@@ -78,6 +78,29 @@ describe('SummaryPanel（C-11）', () => {
     expect(URL.createObjectURL).toHaveBeenCalled()
   })
 
+  it('创建失败保留生成按钮可页面内重试（1106 复审 P2）', async () => {
+    api.createSummaryTask.mockRejectedValueOnce(new Error('模型服务失败'))
+    render(<SummaryPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed />)
+    fireEvent.click(screen.getByTestId('gen-摘要'))
+    await waitFor(() => expect(screen.getByText('模型服务失败')).toBeTruthy())
+    // 错误与入口共存：按钮仍在且可再次点击
+    expect(screen.getByTestId('gen-摘要')).toBeTruthy()
+    expect((screen.getByTestId('gen-摘要') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('FAILED 终态只出结构化失败条，不双重提示（1106 复审 P3）', async () => {
+    api.loadTaskId.mockReturnValue('T-F')
+    api.getAiTask.mockResolvedValue({
+      taskId: 'T-F', documentId: 'D1', taskType: 'SUMMARY', status: 'FAILED', progress: 40,
+      errorCode: '50401', result: null,
+    })
+    render(<SummaryPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed />)
+    await screen.findByText(/处理失败/)
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts.length).toBe(1)
+    expect(alerts[0].textContent).toContain('50401')
+  })
+
   it('挂载时从 localStorage 恢复未终态任务续轮询', async () => {
     api.loadTaskId.mockReturnValue('T-OLD')
     api.getAiTask.mockResolvedValue(succeeded)

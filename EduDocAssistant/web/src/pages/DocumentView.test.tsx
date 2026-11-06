@@ -105,6 +105,19 @@ describe('DocumentView（C-10）', () => {
     expect((screen.getByTestId('gen-摘要') as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('vectorReady false→true 自动恢复：持续轮询并解禁入口（1106 复审 P1）', async () => {
+    api.getPreview
+      .mockResolvedValueOnce({ ...preview, vectorReady: false })
+      .mockResolvedValue({ ...preview, vectorReady: true })
+    renderView()
+    expect((await screen.findAllByText(/新版索引中/)).length).toBeGreaterThanOrEqual(1)
+    expect((screen.getByTestId('gen-摘要') as HTMLButtonElement).disabled).toBe(true)
+    await vi.waitFor(() => {
+      expect((screen.getByTestId('gen-摘要') as HTMLButtonElement).disabled).toBe(false)
+    }, { timeout: 4500, interval: 100 })
+    expect(api.getPreview.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
   it('PARSING 文档轮询预览直至 READY（R3 新版索引中提示）', async () => {
     getDocument.mockResolvedValue({ ...docDetail, status: 'PARSING' })
     renderView()

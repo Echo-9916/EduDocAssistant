@@ -25,6 +25,7 @@ const msgs: QaMessageView[] = [
     citations: [{ chunkId: 'C1', pageNo: 3, charStart: 12, charEnd: 16, quoteText: '证据文本内容片段较长截取四十字符以内测试测试测试' }],
   },
   { messageId: 'M3', role: 'ASSISTANT', contentText: '未在文档中找到依据，无法回答该问题。', status: 'REFUSED', sequenceNo: 3, citations: [] },
+  { messageId: 'M4', role: 'ASSISTANT', contentText: '问答失败：模型服务失败', status: 'FAILED', sequenceNo: 4, citations: [] },
 ]
 
 describe('QaPanel（C-12）', () => {
@@ -44,6 +45,9 @@ describe('QaPanel（C-12）', () => {
     expect(await screen.findByText('讲了向量检索。')).toBeTruthy()
     expect(screen.getByText('文档讲了什么？')).toBeTruthy()
     expect(screen.getByText(/未在文档中找到依据/)).toBeTruthy()
+    // 1106 复审 P3：FAILED 用通用「失败」标签，不误导为超时
+    expect(screen.getByText('失败')).toBeTruthy()
+    expect(screen.queryByText('超时')).toBeNull()
 
     fireEvent.click(screen.getByText(/^\[1\] 第3页/))
     expect(onHighlight).toHaveBeenCalledWith(12, 16)

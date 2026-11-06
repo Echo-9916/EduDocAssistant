@@ -139,7 +139,8 @@ export default function QaPanel({ documentId, blocks, onHighlight, allowed, inde
                 border: m.status === 'REFUSED' || m.status === 'FAILED' ? '1px dashed #d48806' : '1px solid transparent',
               }}>
                 <Typography.Text>{m.contentText}</Typography.Text>
-                {m.status === 'FAILED' && <Tag color="error">超时</Tag>}
+                {/* 1106 复审 P3：FAILED 可能是超时/模型失败/网络失败，用通用「失败」不误导 */}
+                {m.status === 'FAILED' && <Tag color="error">失败</Tag>}
                 {m.citations?.length > 0 && (
                   <div style={{ marginTop: 4 }}>
                     {m.citations.map((c, i) => (

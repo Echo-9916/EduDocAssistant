@@ -105,11 +105,11 @@ export function TaskHeader({ ctrl, label, indexing = false }: {
   indexing?: boolean
 }) {
   const { task, busy, error, start, cancel } = ctrl
-  if (error && !task) return <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="small">
       {indexing && <Alert type="info" showIcon message="新版索引中，索引完成后可发起生成" />}
       <Space wrap>
+        {/* 1106 复审 P2：创建失败也保留生成按钮，支持页面内重试 */}
         <AppButton data-testid={`gen-${label}`} onClick={() => void start()} loading={busy}
           disabled={(!!task && ACTIVE.has(task.status)) || indexing}>
           {task?.status === 'SUCCEEDED' ? `重新生成${label}` : `生成${label}`}
@@ -126,10 +126,11 @@ export function TaskHeader({ ctrl, label, indexing = false }: {
           </Tag>
         )}
       </Space>
-      {error && task && <Alert type="error" showIcon message={error} />}
+      {/* 1106 复审 P3：FAILED 终态只出结构化失败条，避免与通用 error 双重提示 */}
+      {error && task?.status !== 'FAILED' && <Alert type="error" showIcon message={error} />}
       {task && ACTIVE.has(task.status) && <Progress percent={task.progress} size="small" />}
       {task?.status === 'FAILED' && (
-        <Alert type="error" showIcon message={`处理失败（${task.errorCode ?? '未知错误'}），可重试或稍后再试`} />
+        <Alert type="error" showIcon message={`处理失败（${task.errorCode ?? error ?? '未知错误'}），可重试或稍后再试`} />
       )}
       {task?.status === 'CANCELED' && <Alert type="warning" showIcon message="任务已取消" />}
     </Space>

@@ -41,12 +41,14 @@ export function usePreview(documentId: string | undefined) {
 
   useEffect(reload, [reload])
 
-  // 文档 PARSING（含采纳后的简化解析+向量化窗口）→ 2s 轮询至状态翻转
+  // 文档 PARSING（含采纳后的简化解析窗口）或 vectorReady=false（索引异步建立中）→ 2s 轮询至翻转。
+  // 1106 复审 P1：仅判 PARSING 会让「文本 READY+向量 PENDING」停在禁用态需手动刷新。
   useEffect(() => {
-    if (!documentId || doc?.status !== 'PARSING') return
+    if (!documentId) return
+    if (doc?.status !== 'PARSING' && preview?.vectorReady !== false) return
     const timer = setInterval(reload, 2000)
     return () => clearInterval(timer)
-  }, [documentId, doc?.status, reload])
+  }, [documentId, doc?.status, preview?.vectorReady, reload])
 
   return { preview, doc, error, loading, reload }
 }

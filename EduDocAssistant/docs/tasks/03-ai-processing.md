@@ -145,9 +145,9 @@
 
 - **验收标准**：
   - `docs/test/AiTest.md`（AuthTest/DocumentTest 同构：环境前置含 SiliconFlow 凭据与 ai-service 启动、逐接口 curl 正反例、redis/SQL 观测命令、建议顺序）。
-  - e2e（真实模型）：上传 30 页 PDF → 解析 → **向量 READY 全量**（`index_status` 计数）→ 摘要任务 SUCCEEDED ≤60s（P-04 含摘要计时）→ 引用回跳可核 → 要点 ≥5 条有序 → 问答命中 ≤5s + 引用正确 + 无依据问题 REFUSED（文档外主题）→ 润色采纳出新版本（EDIT）+ 撤销回旧 → 重解析后向量重建 STALE→READY。反例：向量未就绪发摘要 40901、润色段超限 40001、越权他人文档 40401、ai-service 停机 → AI 接口 50201 干净降级（启动不炸探针）。
+  - e2e（真实模型）：上传 30 页 PDF → 解析 → **向量 READY 全量**（`index_status` 计数）→ 摘要任务 SUCCEEDED ≤60s（P-04 含摘要计时）→ 引用回跳可核 → 要点 ≥5 条有序 → 问答命中 ≤5s + 引用正确 + 无依据问题 REFUSED（文档外主题）→ 润色采纳出新版本（EDIT）+ 撤销回旧 → 重解析后向量重建（旧行随旧块删除→PENDING→READY，C-03 裁决口径）。反例：向量未就绪发摘要 40901、润色段超限 40001、越权他人文档 40401、ai-service 停机 → AI 接口 50201 干净降级（启动不炸探针）。
   - 全绿口径：`mvn test`、`cd ai-service && python -m pytest`、`pnpm test`、`pnpm build`。
-- **依赖**：C-01~C-13 | **状态**：部分完成（AiTest.md 已建；后端+ai-service 真模型 e2e 24/25、web vitest 114（退出码 0）与 build 全绿、mvn 243；遗留：浏览器手工核验与真实课件样例复测 P-05）
+- **依赖**：C-01~C-13 | **状态**：部分完成（AiTest.md 已建；后端+ai-service 真模型 e2e 24/25、web vitest 25 文件/117 断言（退出码 0）与 build 全绿、mvn 243/243、pytest 20/20；遗留：真实课件样例复测 P-05、2 个真库 IT 需注入 EDUDOC_DB_* 执行）
 
 ---
 

@@ -2,7 +2,7 @@
 
 > 覆盖 03 切片 C-01~C-09 后端与 ai-service 接口（预览结构树、向量化流水线、摘要/要点任务、问答、润色成版与撤销、结果导出、ai-service 六类内部接口）。结构与 [AuthTest.md](AuthTest.md)、[DocumentTest.md](DocumentTest.md) 同源。
 > Apifox 可直接导入 [apifox/ai-processing.postman_collection.json](apifox/ai-processing.postman_collection.json)：9 组 38 个请求含全部反例；token/documentId/taskId/resultId/sessionId/polishId 链式变量自动串联，预览请求自动挑润色段与问句片段，按文件夹顺序执行即可走完全链路。
-> **回归基线**：2026-11-05 真库+真模型冒烟 **24/25**（唯一未过项为 P-05 时延校准，属既定裁决遗留，见「回归结果」）；1105 符合性审查 13 项整改后 `mvn test` **239 全绿**、`python -m pytest` **19 全绿**（含 READY 路径真机实证，见「1105 审查整改复测」）。
+> **回归基线**：2026-11-05 真库+真模型冒烟 **24/25**（唯一未过项为 P-05 时延校准，属既定裁决遗留，见「回归结果」）；1105 符合性审查 13 项整改后（含 READY 路径真机实证）；1106 C01-C14 全面审查 8 项整改后：`mvn test` **243/243**、`python -m pytest` **20/20**、`web vitest` **114/114（退出码 0）**、`tsc --noEmit`/`vite build` 通过。
 
 ## 环境与前置
 
@@ -198,6 +198,22 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/v1/embed 
 
 - 复测结果：默认配置（QA 预算 5s）冒烟 **24/25**，QA 命中项在 lorem 对抗性样例上于 504 契约路径（预算内 FAILED 双消息、不伪造答案）与模型自拒之间波动；放宽预算至 9s 后 READY+引用真机通过——坐实为上游时延而非代码缺陷。
 - **P-05 口径（用户 2026-11-06 决策）**：默认 5 秒成功目标暂不作为阻塞项、保持未关闭；机制（deadline + 分段预算 + FAILED 落库）已就绪，C-14 换真实课件样例复测后再定验收口径。
+
+### 1106 C01-C14 全面审查整改（3 P1 + 3 P2 + 2 P3，commit 5ea05e7）
+
+| 项 | 处置 |
+|---|---|
+| P1-1 预览入口相对路由生成 `documents/documents/{id}/view` 回落 /roles | 导航改 `{id}/view`；新增真实 MemoryRouter 集成测试断言命中 `.../documents/D1/view` |
+| P1-2 同文重复段两行采纳都带第一块 charStart | 行↔块按索引一一映射携带 `anchorStart`；重复文本双行用例（P2 采纳带 charStart=6） |
+| P1-3 `pnpm test` 因 jsdom 无 scrollTo 未处理异常退出码 1 | `scrollTo?.()` 可选调用；vitest 退出码实测 0，「全绿」基线恢复成立 |
+| P2-1 索引状态未呈现（文本 READY/向量 PENDING 不可区分） | 预览响应新增 `vectorReady`（块全 READY 判定）；前端横幅+摘要/要点/问答入口禁用直至索引完成（R3 落地），双端用例 |
+| P2-2 首次提问失败沿用旧 null sessionId 不回载 FAILED 消息 | catch 用本次 sid 回载；用例断言失败后 GET 新会话消息 |
+| P2-3 归档会话仍可提问 | 归档只读（输入/提问禁用+警示条+「新建会话」）；用例覆盖 |
+| P3-1 生成失败错误提示三重重复 | TaskHeader 单点呈现；去外层 Alert 与 toast |
+| P3-2 导出文件名丢弃后端 Content-Disposition | `parseFilename`（RFC5987+退化形式）解析并用作下载名，失败回退默认名；单测覆盖 |
+
+### 1105/1106 前端相关口径（预览契约）
+- `GET /documents/{id}/preview` 的 `data` 增 `vectorReady: boolean`；Apifox 集合的预览断言不受影响（新增字段向后兼容）。
 
 ### 1106 复审整改（5 P2 + 2 P3）
 | 项 | 处置 |

@@ -7,7 +7,12 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "httpx",
+    "python-multipart",
 ]
+
+[project.optional-dependencies]
+# 1106 审查 P2-3：PDF→DOCX 引擎为可选部署依赖（uv sync --extra convert），未安装时端点 503 干净降级
+convert = ["pdf2docx>=0.5.8"]
 
 [dependency-groups]
 dev = [

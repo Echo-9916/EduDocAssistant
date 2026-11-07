@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.template.infrastructure.FormatRuleMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO edudoc_format_rule (id, template_version_id, rule_type, target_selector,
+            severity, auto_fixable, rule_config_json, rule_order)
+        <foreach collection="rules" item="rule" separator=" UNION ALL ">
+            SELECT HEXTORAW(#{rule.id}), HEXTORAW(#{rule.templateVersionId}), #{rule.ruleType},
+                #{rule.targetSelector}, #{rule.severity}, #{rule.autoFixable},
+                CAST(#{rule.ruleConfigJson} AS JSON), #{rule.ruleOrder}
+            FROM DUAL
+        </foreach>
+    </insert>
+
+    <select id="selectByIds" resultType="com.cidas.edudoc.template.infrastructure.FormatRule">
+        SELECT RAWTOHEX(r.id) AS id, RAWTOHEX(r.template_version_id) AS templateVersionId,
+               r.rule_type AS ruleType, r.target_selector AS targetSelector,
+               r.severity, r.auto_fixable AS autoFixable,
+               JSON_SERIALIZE(r.rule_config_json RETURNING VARCHAR2(4000)) AS ruleConfigJson,
+               r.rule_order AS ruleOrder
+        FROM edudoc_format_rule r
+        WHERE r.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">HEXTORAW(#{id})</foreach>
+    </select>
+
+    <delete id="deleteByVersion">
+        DELETE FROM edudoc_format_rule WHERE template_version_id = HEXTORAW(#{versionId})
+    </delete>
+
+    <select id="selectByVersion" resultType="com.cidas.edudoc.template.infrastructure.FormatRule">
+        SELECT RAWTOHEX(r.id) AS id, RAWTOHEX(r.template_version_id) AS templateVersionId,
+               r.rule_type AS ruleType, r.target_selector AS targetSelector,
+               r.severity, r.auto_fixable AS autoFixable,
+               JSON_SERIALIZE(r.rule_config_json RETURNING VARCHAR2(4000)) AS ruleConfigJson,
+               r.rule_order AS ruleOrder
+        FROM edudoc_format_rule r
+        WHERE r.template_version_id = HEXTORAW(#{versionId})
+        ORDER BY r.rule_order, r.create_time
+    </select>
+</mapper>

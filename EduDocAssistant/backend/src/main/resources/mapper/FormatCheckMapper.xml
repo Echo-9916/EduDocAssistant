@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.template.infrastructure.FormatCheckMapper">
+
+    <sql id="checkColumns">
+        RAWTOHEX(c.id) AS id, RAWTOHEX(c.document_id) AS documentId,
+        RAWTOHEX(c.document_version_id) AS documentVersionId,
+        RAWTOHEX(c.template_version_id) AS templateVersionId, RAWTOHEX(c.requested_by) AS requestedBy,
+        c.status, c.total_issue_count AS totalIssueCount, c.blocking_issue_count AS blockingIssueCount,
+        TO_CHAR(c.started_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS startedAt,
+        TO_CHAR(c.finished_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS finishedAt,
+        c.result_summary AS resultSummary
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO edudoc_format_check (id, document_id, document_version_id, template_version_id,
+            requested_by, status)
+        VALUES (HEXTORAW(#{check.id}), HEXTORAW(#{check.documentId}), HEXTORAW(#{check.documentVersionId}),
+            HEXTORAW(#{check.templateVersionId}), HEXTORAW(#{check.requestedBy}), #{check.status})
+    </insert>
+
+    <insert id="insertError">
+        INSERT INTO edudoc_format_check (id, document_id, document_version_id, template_version_id,
+            requested_by, status, result_summary, started_at, finished_at)
+        VALUES (HEXTORAW(#{check.id}), HEXTORAW(#{check.documentId}), HEXTORAW(#{check.documentVersionId}),
+            HEXTORAW(#{check.templateVersionId}), HEXTORAW(#{check.requestedBy}), 'ERROR',
+            #{check.resultSummary, jdbcType=VARCHAR}, SYSTIMESTAMP, SYSTIMESTAMP)
+    </insert>
+
+    <select id="selectById" resultType="com.cidas.edudoc.template.infrastructure.FormatCheck">
+        SELECT <include refid="checkColumns"/>
+        FROM edudoc_format_check c
+        WHERE c.id = HEXTORAW(#{checkId})
+    </select>
+
+    <select id="selectActive" resultType="com.cidas.edudoc.template.infrastructure.FormatCheck">
+        SELECT <include refid="checkColumns"/>
+        FROM edudoc_format_check c
+        WHERE c.document_version_id = HEXTORAW(#{documentVersionId})
+          AND c.template_version_id = HEXTORAW(#{templateVersionId})
+          AND c.requested_by = HEXTORAW(#{requestedBy})
+          <!-- 终审 I7：RUNNING 超 30 分钟视为 worker 崩溃遗留，不再阻塞重新发起（QUEUED 不受限，事件必达） -->
+          AND (c.status = 'QUEUED'
+            OR (c.status = 'RUNNING' AND c.started_at > SYSTIMESTAMP - INTERVAL '30' MINUTE))
+        ORDER BY c.create_time DESC
+        FETCH FIRST 1 ROWS ONLY
+    </select>
+
+    <update id="markRunning">
+        UPDATE edudoc_format_check
+        SET status = 'RUNNING', started_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{checkId}) AND status = 'QUEUED'
+    </update>
+
+    <update id="updateResult">
+        UPDATE edudoc_format_check
+        SET status = #{status}, total_issue_count = #{totalIssueCount},
+            blocking_issue_count = #{blockingIssueCount}, result_summary = #{resultSummary},
+            finished_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{checkId}) AND status = 'RUNNING'
+    </update>
+
+    <update id="updateError">
+        UPDATE edudoc_format_check
+        SET status = 'ERROR', result_summary = #{resultSummary}, finished_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{checkId}) AND status = 'RUNNING'
+    </update>
+
+    <select id="selectDocumentTemplateBinding" resultType="string">
+        SELECT RAWTOHEX(d.template_version_id)
+        FROM edudoc_document d
+        WHERE d.id = HEXTORAW(#{documentId})
+    </select>
+
+    <select id="selectCoursePublishedTemplate" resultType="string">
+        SELECT RAWTOHEX(t.current_version_id)
+        FROM edudoc_template t
+        WHERE t.course_id = HEXTORAW(#{courseId}) AND t.status = 'P' AND t.current_version_id IS NOT NULL
+        ORDER BY t.update_time DESC
+        FETCH FIRST 1 ROWS ONLY
+    </select>
+</mapper>

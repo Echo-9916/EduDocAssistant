@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.template.infrastructure.TemplateMapper">
+
+    <insert id="insert">
+        INSERT INTO edudoc_template (id, course_id, template_name, description, owner_id, status)
+        VALUES (HEXTORAW(#{template.id}), HEXTORAW(#{template.courseId}), #{template.templateName},
+            #{template.description, jdbcType=VARCHAR}, HEXTORAW(#{template.ownerId}), #{template.status})
+    </insert>
+
+    <select id="selectById" resultType="com.cidas.edudoc.template.infrastructure.Template">
+        SELECT RAWTOHEX(t.id) AS id, RAWTOHEX(t.course_id) AS courseId, t.template_name AS templateName,
+               t.description, RAWTOHEX(t.owner_id) AS ownerId,
+               RAWTOHEX(t.current_version_id) AS currentVersionId, t.status
+        FROM edudoc_template t
+        WHERE t.id = HEXTORAW(#{templateId})
+    </select>
+
+    <sql id="viewSelect">
+        SELECT RAWTOHEX(t.id) AS id, RAWTOHEX(t.course_id) AS courseId, c.course_name AS courseName,
+               t.template_name AS templateName, t.description, RAWTOHEX(t.owner_id) AS ownerId, t.status,
+               RAWTOHEX(t.current_version_id) AS currentVersionId, cv.version_no AS currentVersionNo,
+               (SELECT COUNT(*) FROM edudoc_format_rule r
+                 WHERE r.template_version_id = t.current_version_id) AS ruleCount,
+               TO_CHAR(t.create_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS createTime,
+               TO_CHAR(t.update_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS updateTime
+        FROM edudoc_template t
+        LEFT JOIN edudoc_course c ON c.id = t.course_id
+        LEFT JOIN edudoc_template_version cv ON cv.id = t.current_version_id
+    </sql>
+
+    <!-- 可见性（D-01）：OPS 全量；教师=本人维护∪任教课程；学生=已发布∩课程范围 -->
+    <sql id="visibility">
+        <if test="!unrestricted">
+            <choose>
+                <when test="role == 'TEACHER'">
+                    AND (t.owner_id = HEXTORAW(#{ownerId})
+                    <if test="courseScope != null and !courseScope.isEmpty()">
+                        OR t.course_id IN
+                        <foreach collection="courseScope" item="sc" open="(" separator="," close=")">
+                            HEXTORAW(#{sc})
+                        </foreach>
+                    </if>
+                    )
+                </when>
+                <otherwise>
+                    AND t.status = 'P'
+                    <choose>
+                        <when test="courseScope != null and !courseScope.isEmpty()">
+                            AND t.course_id IN
+                            <foreach collection="courseScope" item="sc" open="(" separator="," close=")">
+                                HEXTORAW(#{sc})
+                            </foreach>
+                        </when>
+                        <otherwise>AND 1 = 0</otherwise>
+                    </choose>
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <sql id="filters">
+        <if test="courseId != null and courseId != ''">AND t.course_id = HEXTORAW(#{courseId})</if>
+        <if test="status != null and status != ''">AND t.status = #{status}</if>
+    </sql>
+
+    <select id="selectView" resultType="com.cidas.edudoc.template.infrastructure.TemplateViewRow">
+        <include refid="viewSelect"/>
+        WHERE t.id = HEXTORAW(#{templateId})
+    </select>
+
+    <select id="selectPage" resultType="com.cidas.edudoc.template.infrastructure.TemplateViewRow">
+        <include refid="viewSelect"/>
+        WHERE 1 = 1
+        <include refid="visibility"/>
+        <include refid="filters"/>
+        ORDER BY t.update_time DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*) FROM edudoc_template t
+        WHERE 1 = 1
+        <include refid="visibility"/>
+        <include refid="filters"/>
+    </select>
+
+    <update id="updateStatus">
+        UPDATE edudoc_template SET status = #{status} WHERE id = HEXTORAW(#{templateId})
+    </update>
+
+    <update id="updateCurrentVersion">
+        UPDATE edudoc_template SET current_version_id = HEXTORAW(#{versionId}) WHERE id = HEXTORAW(#{templateId})
+    </update>
+
+    <delete id="deleteDraft">
+        DELETE FROM edudoc_template t
+        WHERE t.id = HEXTORAW(#{templateId}) AND t.status = 'D' AND t.current_version_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM edudoc_template_version v WHERE v.template_id = t.id)
+    </delete>
+</mapper>

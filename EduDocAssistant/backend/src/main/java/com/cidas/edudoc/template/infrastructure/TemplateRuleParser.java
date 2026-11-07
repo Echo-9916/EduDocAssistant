@@ -100,6 +100,7 @@ public class TemplateRuleParser {
         // 第五轮 P2-4：链尾仍未取到属性时回退 docDefaults——与提取器同一解析顺序，
         // 否则「仅 docDefaults 声明默认字体」的合法模板会丢规则（生成退回默认值、校验缺期望）
         if (defaults != null) {
+            // (docDefaults fallback applied below)
             CTRPr defaultRPr = defaults.isSetRPrDefault() ? defaults.getRPrDefault().getRPr() : null;
             if (ascii == null) {
                 ascii = DocxStyleExtractor.rPrFont(defaultRPr, true);
@@ -116,15 +117,29 @@ public class TemplateRuleParser {
             }
         }
         // 第四轮 P2-1：两槽各自独立成键，East Asia-only 不再复制填充 ASCII 规则
+        // 真实语料修正：w:rFonts 可为分号回退链（如「黑体;SimHei」）——拆主名入 expect/fix，
+        // 其余入 tolerance.aliases，否则整串期望永远比对不上（假阳性）且会污染生成样式
         Map<String, Object> expect = new LinkedHashMap<>();
+        Map<String, Object> fix = new LinkedHashMap<>();
+        List<String> aliases = new ArrayList<>();
         if (ascii != null) {
-            expect.put("family", ascii);
+            expect.put("family", primaryFont(ascii));
+            fix.put("family", primaryFont(ascii));
+            aliases.addAll(aliasFonts(ascii));
         }
         if (eastAsia != null) {
-            expect.put("eastAsia", eastAsia);
+            expect.put("eastAsia", primaryFont(eastAsia));
+            fix.put("eastAsia", primaryFont(eastAsia));
+            aliases.addAll(aliasFonts(eastAsia));
         }
         if (!expect.isEmpty()) {
-            out.add(draft("FONT", selector, heading, config(Map.of("expect", expect, "fix", expect))));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("expect", expect);
+            if (!aliases.isEmpty()) {
+                payload.put("tolerance", Map.of("aliases", aliases.stream().distinct().toList()));
+            }
+            payload.put("fix", fix);
+            out.add(draft("FONT", selector, heading, config(payload)));
         }
         if (pt != null) {
             out.add(draft("SIZE", selector, heading,
@@ -254,6 +269,24 @@ public class TemplateRuleParser {
     private static CTDocDefaults defaults(XWPFStyles styles) {
         return styles.getCtStyles() != null && styles.getCtStyles().isSetDocDefaults()
                 ? styles.getCtStyles().getDocDefaults() : null;
+    }
+
+    /** 真实语料：字体回退链「主名;别名1;别名2」拆分（Word w:rFonts 允许分号多值）。 */
+    static String primaryFont(String value) {
+        int semi = value.indexOf(';');
+        return (semi < 0 ? value : value.substring(0, semi)).trim();
+    }
+
+    static List<String> aliasFonts(String value) {
+        String[] parts = value.split(";");
+        List<String> aliases = new ArrayList<>();
+        for (int i = 1; i < parts.length; i++) {
+            String alias = parts[i].trim();
+            if (!alias.isEmpty()) {
+                aliases.add(alias);
+            }
+        }
+        return aliases;
     }
 
     private static String normalize(String name) {

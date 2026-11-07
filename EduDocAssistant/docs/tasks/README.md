@@ -9,3 +9,4 @@
 - [01-fullstack-auth.md](01-fullstack-auth.md) —— 登录切片：认证种子数据、登录/登出/令牌撤销、登录页/角色入口/账号受限/找回密码/权限申请、端到端联调。
 - [02-document-access.md](02-document-access.md) —— 文档接入切片：真实 OSS STS 直传（含断点续传）、Outbox + Redis Stream 异步解析（Tika 分块）、我的文档列表/详情/回收站、学生与教师双端页面、端到端联调。
 - [03-ai-processing.md](03-ai-processing.md) —— 智能处理切片：Oracle 向量检索与分块向量化、摘要/要点异步任务、问答（证据阈值+拒答）、润色采纳成版、ai-service 模型适配层（OpenAI 兼容）、预览文本阅读视图与三类面板、端到端联调。
+- [04-template-format.md](04-template-format.md) —— 格式与模板切片：课程模板版本与规则解析发布、文档结构树、格式校验任务与问题清单、一键修复成版与复审、Word/PDF 格式转换、按模板新建、教师/学生模板页与校验/修复/转换面板、端到端联调（J1–J4 已于 2026-11-06 按推荐口径拍板）。

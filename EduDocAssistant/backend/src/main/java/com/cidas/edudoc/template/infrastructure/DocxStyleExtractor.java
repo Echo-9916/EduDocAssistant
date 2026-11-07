@@ -247,14 +247,15 @@ public class DocxStyleExtractor {
         String rule = spacing.isSetLineRule()
                 ? spacing.getLineRule().toString().toLowerCase(Locale.ROOT) : "auto";
         boolean fixed = rule.startsWith("exact") || rule.startsWith("atleast");
+        // 真实语料修正：lineRule 固定但 w:line 缺失=无具体约束值——不得终止继承，
+        // 否则解析产出缺 pt 的规则被保存闸拒绝（两处契约打架）
         if (!spacing.isSetLine()) {
-            // EXACT/AT_LEAST 但无磅值：语义仍是固定（不可比倍数），照常终止继承
-            return fixed ? new LineSpacing(rule.startsWith("exact") ? "EXACT" : "AT_LEAST", null) : null;
+            return null;
         }
         try {
             double line = Double.parseDouble(String.valueOf(spacing.getLine()));
             if (line <= 0) {
-                return fixed ? new LineSpacing(ruleKind(rule), null) : null;
+                return null;
             }
             return fixed
                     ? new LineSpacing(ruleKind(rule), round2(line / 20))   // 固定磅值：twips→pt

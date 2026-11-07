@@ -286,6 +286,52 @@ class TemplateRuleParserTest {
         }
     }
 
+    /** 真实语料（C 语言模板冒烟）：w:eastAsia 字体回退链「黑体;SimHei」须拆主名+别名。 */
+    @Test
+    void fontFallbackChainSplitsPrimaryAndAliases() throws Exception {
+        try (XWPFDocument doc = new XWPFDocument()) {
+            XWPFStyles styles = doc.createStyles();
+            CTStyle h1 = CTStyle.Factory.newInstance();
+            h1.setStyleId("H1");
+            h1.setType(STStyleType.PARAGRAPH);
+            h1.addNewName().setVal("heading 1");
+            h1.addNewRPr().addNewRFonts().setEastAsia("黑体;SimHei;黑体-简");
+            styles.addStyle(new XWPFStyle(h1));
+            doc.createParagraph().setStyle("H1");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            doc.write(out);
+
+            var expect = mapper.readTree(find(parser.parse(out.toByteArray()), "FONT", "HEADING_1")
+                    .ruleConfigJson());
+            org.junit.jupiter.api.Assertions.assertEquals("黑体",
+                    expect.path("expect").path("eastAsia").asText());
+            var aliases = new java.util.ArrayList<String>();
+            expect.path("tolerance").path("aliases").forEach(n -> aliases.add(n.asText()));
+            org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of("SimHei", "黑体-简"), aliases);
+        }
+    }
+
+    /** 真实语料：lineRule 固定但无 w:line 值=无具体约束，不得产出缺 pt 的规则（保存闸会拒）。 */
+    @Test
+    void fixedLineRuleWithoutLineValueProducesNoSpacingRule() throws Exception {
+        try (XWPFDocument doc = new XWPFDocument()) {
+            XWPFStyles styles = doc.createStyles();
+            CTStyle normal = CTStyle.Factory.newInstance();
+            normal.setStyleId("N");
+            normal.setType(STStyleType.PARAGRAPH);
+            normal.addNewName().setVal("Normal");
+            CTSpacing spacing = normal.addNewPPr().addNewSpacing();
+            spacing.setLineRule(STLineSpacingRule.AT_LEAST); // 无 setLine
+            styles.addStyle(new XWPFStyle(normal));
+            doc.createParagraph();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            doc.write(out);
+
+            assertTrue(parser.parse(out.toByteArray()).stream()
+                    .noneMatch(r -> r.ruleType().equals("LINE_SPACING")));
+        }
+    }
+
     /** 第四轮 P2-1：模板只声明中文槽时，规则不得把中文槽复制填充成 ASCII 期望。 */
     @Test
     void eastAsiaOnlyStyleKeepsSlotsSeparate() throws Exception {

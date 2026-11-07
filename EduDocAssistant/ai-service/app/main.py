@@ -10,12 +10,13 @@ import time
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from . import prompts
 from .config import Settings
+from .converter import ConvertError, convert
 from .model_client import ModelClient, ModelError
 
 log = logging.getLogger("edudoc.ai")
@@ -136,6 +137,12 @@ def create_app(settings: Settings | None = None,
             response.headers["Retry-After"] = exc.retry_after
         return response
 
+    @app.exception_handler(ConvertError)
+    async def convert_error_handler(_: Request, exc: ConvertError):
+        status = {"ENGINE_UNAVAILABLE": 503, "TIMEOUT": 504, "UNSUPPORTED": 415,
+                  "ENCRYPTED": 422, "CORRUPTED": 422, "BAD_INPUT": 400}.get(exc.code, 502)
+        return _error(status, exc.code, exc.message)
+
     @app.exception_handler(ValueError)
     async def value_error_handler(_: Request, exc: ValueError):
         return _error(400, "BAD_INPUT", f"输入非法：{exc}")
@@ -206,6 +213,14 @@ def create_app(settings: Settings | None = None,
     def rerank(req: RerankRequest):
         results = app.state.client.rerank(req.query, req.documents, req.topN)
         return {"results": results}
+
+    # 终审 C5：soffice/pdf2docx 均为阻塞子进程/库调用——必须同步端点（FastAPI 线程池），
+    # async def 会把整服务事件循环冻结最长 120s，拖死 embed/answer/health
+    @app.post("/v1/convert")
+    def convert_endpoint(targetFormat: str = Form(...), file: UploadFile = File(...)):
+        data = file.file.read()
+        content, mime = convert(data, targetFormat)
+        return Response(content=content, media_type=mime)
 
     return app
 

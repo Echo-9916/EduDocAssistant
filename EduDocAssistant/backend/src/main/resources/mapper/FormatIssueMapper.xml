@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.template.infrastructure.FormatIssueMapper">
+
+    <sql id="issueColumns">
+        RAWTOHEX(i.id) AS id, RAWTOHEX(i.format_check_id) AS formatCheckId,
+        RAWTOHEX(i.rule_id) AS ruleId, i.issue_type AS issueType, i.location_type AS locationType,
+        JSON_SERIALIZE(i.location_ref RETURNING VARCHAR2(4000)) AS locationRef,
+        i.expected_value AS expectedValue, i.actual_value AS actualValue,
+        i.severity, i.auto_fixable AS autoFixable, i.fix_status AS fixStatus, i.guidance
+    </sql>
+
+    <insert id="insertBatch">
+        INSERT INTO edudoc_format_issue (id, format_check_id, rule_id, issue_type, location_type,
+            location_ref, expected_value, actual_value, severity, auto_fixable, fix_status, guidance)
+        <foreach collection="issues" item="i" separator=" UNION ALL ">
+            SELECT HEXTORAW(#{i.id}), HEXTORAW(#{i.formatCheckId}), HEXTORAW(#{i.ruleId, jdbcType=VARCHAR}),
+                #{i.issueType}, #{i.locationType},
+                CAST(#{i.locationRef, jdbcType=VARCHAR} AS JSON),
+                #{i.expectedValue, jdbcType=VARCHAR}, #{i.actualValue, jdbcType=VARCHAR},
+                #{i.severity}, #{i.autoFixable}, #{i.fixStatus}, #{i.guidance, jdbcType=VARCHAR}
+            FROM DUAL
+        </foreach>
+    </insert>
+
+    <select id="selectByCheck" resultType="com.cidas.edudoc.template.infrastructure.FormatIssue">
+        SELECT <include refid="issueColumns"/>
+        FROM edudoc_format_issue i
+        WHERE i.format_check_id = HEXTORAW(#{checkId})
+        <if test="severity != null and severity != ''">AND i.severity = #{severity}</if>
+        ORDER BY DECODE(i.severity, 'BLOCKER', 0, 'WARNING', 1, 2), i.create_time
+        OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="countByCheck" resultType="long">
+        SELECT COUNT(*) FROM edudoc_format_issue i
+        WHERE i.format_check_id = HEXTORAW(#{checkId})
+        <if test="severity != null and severity != ''">AND i.severity = #{severity}</if>
+    </select>
+
+    <select id="selectByIds" resultType="com.cidas.edudoc.template.infrastructure.FormatIssue">
+        SELECT <include refid="issueColumns"/>
+        FROM edudoc_format_issue i
+        WHERE i.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">HEXTORAW(#{id})</foreach>
+    </select>
+
+    <update id="updateFixStatusByIds">
+        UPDATE edudoc_format_issue SET fix_status = #{fixStatus}
+        WHERE fix_status = 'OPEN' AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">HEXTORAW(#{id})</foreach>
+    </update>
+</mapper>

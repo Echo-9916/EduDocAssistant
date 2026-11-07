@@ -148,6 +148,38 @@ public class OssStorageAdapter {
         }
     }
 
+    /** 服务端二进制小对象写入（模板 docx/修复版/转换结果）；异常原文只进日志（S6 口径）。 */
+    public ObjectInfo putBytes(String objectKey, byte[] bytes, String contentType) {
+        ObjectMetadata meta = new ObjectMetadata();
+        meta.setContentType(contentType);
+        meta.setContentLength(bytes.length);
+        try {
+            var result = ossClient().putObject(properties.bucket(), objectKey,
+                    new java.io.ByteArrayInputStream(bytes), meta);
+            log.info("对象写入 objectKey={} size={}", objectKey, bytes.length);
+            return new ObjectInfo(bytes.length, result.getETag(), result.getVersionId(), "SSE-OSS");
+        } catch (OSSException | com.aliyun.oss.ClientException e) {
+            log.error("对象写入失败 objectKey={}", objectKey, e);
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "OSS 对象写入失败", true, Map.of());
+        }
+    }
+
+    /** 短期签名下载 URL（概要红线：私有 Bucket + 签名 URL，浏览器不持有长期凭据）。 */
+    public String presignGet(String objectKey, long ttlSeconds) {
+        var ossClient = ossClient();
+        try {
+            java.util.Date expiration = java.util.Date.from(
+                    java.time.Instant.now().plusSeconds(ttlSeconds));
+            java.net.URL url = ossClient.generatePresignedUrl(properties.bucket(), objectKey, expiration);
+            return url.toString();
+        } catch (Exception e) {
+            log.warn("OSS 签名 URL 生成失败 objectKey={}", objectKey, e);
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "下载链接生成失败，请稍后重试", true, Map.of());
+        }
+    }
+
     public record UploadCredentials(String accessKeyId, String accessKeySecret, String securityToken,
                                     String expiration, String bucket, String region, String endpoint) {
     }

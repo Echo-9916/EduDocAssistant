@@ -21,6 +21,20 @@
         WHERE d.id = HEXTORAW(#{documentId})
     </select>
 
+    <update id="updateCurrentVersionCas">
+        UPDATE edudoc_document SET current_version_id = HEXTORAW(#{newVersionId})
+        WHERE id = HEXTORAW(#{documentId}) AND current_version_id = HEXTORAW(#{expectedVersionId})
+    </update>
+
+    <update id="updateTemplateVersion">
+        UPDATE edudoc_document SET template_version_id = HEXTORAW(#{templateVersionId})
+        WHERE id = HEXTORAW(#{documentId})
+    </update>
+
+    <select id="selectForUpdate" resultType="string">
+        SELECT RAWTOHEX(d.id) FROM edudoc_document d WHERE d.id = HEXTORAW(#{documentId}) FOR UPDATE
+    </select>
+
     <update id="updateStatus">
         UPDATE edudoc_document SET status = #{status} WHERE id = HEXTORAW(#{documentId})
     </update>

@@ -12,7 +12,18 @@ public interface DocumentMapper {
 
     int updateCurrentVersion(@Param("documentId") String documentId, @Param("versionId") String versionId);
 
+    int updateTemplateVersion(@Param("documentId") String documentId,
+                              @Param("templateVersionId") String templateVersionId);
+
+    /** 条件前移（终审 I1）：仅当 current_version_id 仍是期望版本才成功，并发双写返回 0。 */
+    int updateCurrentVersionCas(@Param("documentId") String documentId,
+                                @Param("expectedVersionId") String expectedVersionId,
+                                @Param("newVersionId") String newVersionId);
+
     Document selectById(@Param("documentId") String documentIdHex);
+
+    /** 行锁（1106 审查 P3-1）：校验任务「查活跃+插入」去重的原子性锚点，事务内 FOR UPDATE。 */
+    String selectForUpdate(@Param("documentId") String documentIdHex);
 
     int updateStatus(@Param("documentId") String documentIdHex, @Param("status") String status);
 

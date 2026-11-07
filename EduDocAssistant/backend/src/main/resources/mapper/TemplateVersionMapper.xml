@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.template.infrastructure.TemplateVersionMapper">
+
+    <insert id="insert">
+        INSERT INTO edudoc_template_version (id, template_id, version_no, source_object_id,
+            validation_status, change_summary)
+        VALUES (HEXTORAW(#{version.id}), HEXTORAW(#{version.templateId}), #{version.versionNo},
+            HEXTORAW(#{version.sourceObjectId, jdbcType=VARCHAR}), #{version.validationStatus},
+            #{version.changeSummary, jdbcType=VARCHAR})
+    </insert>
+
+    <sql id="versionColumns">
+        RAWTOHEX(v.id) AS id, RAWTOHEX(v.template_id) AS templateId, v.version_no AS versionNo,
+        RAWTOHEX(v.source_object_id) AS sourceObjectId, v.validation_status AS validationStatus,
+        RAWTOHEX(v.published_by) AS publishedBy,
+        TO_CHAR(v.published_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS publishedAt,
+        v.change_summary AS changeSummary
+    </sql>
+
+    <select id="selectById" resultType="com.cidas.edudoc.template.infrastructure.TemplateVersion">
+        SELECT <include refid="versionColumns"/>
+        FROM edudoc_template_version v
+        WHERE v.id = HEXTORAW(#{versionId})
+    </select>
+
+    <select id="selectMaxVersionNo" resultType="int">
+        SELECT MAX(v.version_no) FROM edudoc_template_version v WHERE v.template_id = HEXTORAW(#{templateId})
+    </select>
+
+    <select id="selectListByTemplate" resultType="com.cidas.edudoc.template.infrastructure.TemplateVersion">
+        SELECT <include refid="versionColumns"/>,
+               (SELECT COUNT(*) FROM edudoc_format_rule r
+                 WHERE r.template_version_id = v.id) AS ruleCount
+        FROM edudoc_template_version v
+        WHERE v.template_id = HEXTORAW(#{templateId})
+        ORDER BY v.version_no DESC
+    </select>
+
+    <update id="updateValidation">
+        UPDATE edudoc_template_version SET validation_status = #{validationStatus}
+        WHERE id = HEXTORAW(#{versionId})
+    </update>
+
+    <update id="markPublished">
+        UPDATE edudoc_template_version
+        SET published_by = HEXTORAW(#{publishedBy}), published_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{versionId}) AND published_at IS NULL
+    </update>
+</mapper>

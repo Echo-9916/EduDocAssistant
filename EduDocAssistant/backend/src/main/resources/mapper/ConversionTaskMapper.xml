@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.template.infrastructure.ConversionTaskMapper">
+
+    <sql id="taskColumns">
+        RAWTOHEX(t.id) AS id, RAWTOHEX(t.document_id) AS documentId,
+        RAWTOHEX(t.source_version_id) AS sourceVersionId, RAWTOHEX(t.source_object_id) AS sourceObjectId,
+        t.target_format AS targetFormat, t.status, t.progress,
+        RAWTOHEX(t.result_object_id) AS resultObjectId,
+        t.failure_code AS failureCode, t.failure_message AS failureMessage,
+        RAWTOHEX(t.requested_by) AS requestedBy, t.retry_count AS retryCount,
+        TO_CHAR(t.started_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS startedAt,
+        TO_CHAR(t.finished_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS finishedAt
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO edudoc_conversion_task (id, document_id, source_version_id, source_object_id,
+            target_format, status, requested_by)
+        VALUES (HEXTORAW(#{task.id}), HEXTORAW(#{task.documentId}), HEXTORAW(#{task.sourceVersionId}),
+            HEXTORAW(#{task.sourceObjectId}), #{task.targetFormat}, #{task.status},
+            HEXTORAW(#{task.requestedBy}))
+    </insert>
+
+    <select id="selectById" resultType="com.cidas.edudoc.template.infrastructure.ConversionTask">
+        SELECT <include refid="taskColumns"/>
+        FROM edudoc_conversion_task t
+        WHERE t.id = HEXTORAW(#{taskId})
+    </select>
+
+    <update id="markRunning">
+        UPDATE edudoc_conversion_task
+        SET status = 'RUNNING', progress = 10, started_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{taskId}) AND status = 'QUEUED'
+    </update>
+
+    <update id="updateSucceeded">
+        UPDATE edudoc_conversion_task
+        SET status = 'SUCCEEDED', progress = 100, result_object_id = HEXTORAW(#{resultObjectId}),
+            finished_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{taskId}) AND status = 'RUNNING'
+    </update>
+
+    <update id="updateFailed">
+        UPDATE edudoc_conversion_task
+        SET status = 'FAILED', failure_code = #{failureCode}, failure_message = #{failureMessage},
+            finished_at = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{taskId}) AND status = 'RUNNING'
+    </update>
+
+    <select id="selectByDocument" resultType="com.cidas.edudoc.template.infrastructure.ConversionTask">
+        SELECT <include refid="taskColumns"/>
+        FROM edudoc_conversion_task t
+        WHERE t.document_id = HEXTORAW(#{documentId}) AND t.requested_by = HEXTORAW(#{requestedBy})
+        ORDER BY t.create_time DESC
+        FETCH FIRST 50 ROWS ONLY
+    </select>
+</mapper>

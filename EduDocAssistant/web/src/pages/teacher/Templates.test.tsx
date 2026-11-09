@@ -38,24 +38,24 @@ describe('validateRules（镜像后端不变量）', () => {
 
   it('selector 越词表 / 非修复面标 Y / 固定行距缺 pt / Y 无 fix 均拒绝', () => {
     expect(validateRules([rule({ targetSelector: 'HEADING_9' })]))
-      .toContainEqual(expect.stringContaining('不在词表'))
+      .toContainEqual(expect.stringContaining('不匹配'))
     expect(validateRules([rule({ ruleType: 'CAPTION', targetSelector: 'FIGURE_CAPTION', autoFixable: 'Y',
       ruleConfigJson: '{"expect":{"perChapter":true}}' })]))
-      .toContainEqual(expect.stringContaining('autoFixable 必须为 N'))
+      .toContainEqual(expect.stringContaining('取消勾选'))
     expect(validateRules([rule({ ruleType: 'LINE_SPACING',
       ruleConfigJson: '{"expect":{"lineRule":"exact"},"fix":{"multiplier":1.5}}' })]))
-      .toContainEqual(expect.stringContaining('必须带 pt'))
+      .toContainEqual(expect.stringContaining('固定行距必须带磅值'))
     expect(validateRules([rule({ ruleConfigJson: '{"expect":{"eastAsia":"黑体"}}' })]))
-      .toContainEqual(expect.stringContaining('有效 fix'))
+      .toContainEqual(expect.stringContaining('修复值不能为空'))
   })
 
   it('CAPTION 坏正则拒绝；present 非布尔 true 拒绝', () => {
     expect(validateRules([rule({ ruleType: 'CAPTION', targetSelector: 'FIGURE_CAPTION', autoFixable: 'N',
       ruleConfigJson: '{"expect":{"pattern":"^(("}}' })]))
-      .toContainEqual(expect.stringContaining('合法正则'))
+      .toContainEqual(expect.stringContaining('正则'))
     expect(validateRules([rule({ ruleType: 'HEADER_FOOTER', targetSelector: 'HEADER', autoFixable: 'N',
       ruleConfigJson: '{"expect":{"present":"yes"}}' })]))
-      .toContainEqual(expect.stringContaining('true'))
+      .toContainEqual(expect.stringContaining('必须存在'))
   })
 })
 
@@ -97,7 +97,9 @@ describe('Templates 页（D-09）', () => {
   it('完整链：版本加载→规则分组回显→保存→发布确认弹窗→确认发布', async () => {
     render(<Templates />)
     fireEvent.click(await screen.findByText('编辑'))
-    // P2-3：规则按类型分组，出现分组标题「字体」与 JSON 编辑器
+    // 验收 M-01-3：编辑面默认口语化描述，JSON 编辑器收进「改配置」弹层
+    expect((await screen.findAllByText('中文 黑体')).length).toBeGreaterThanOrEqual(2)
+    fireEvent.click(screen.getByRole('button', { name: '改配置' }))
     expect(await screen.findByTestId('rule-json')).toBeTruthy()
     expect(screen.getByText('字体')).toBeTruthy()
     expect(screen.getByText(/学生端效果预览/)).toBeTruthy()
@@ -132,6 +134,6 @@ describe('Templates 页（D-09）', () => {
   it('MARGIN 字符串类型键被前端校验拒绝（P2-1 镜像）', () => {
     expect(validateRules([rule({ ruleType: 'MARGIN', targetSelector: 'PAGE', autoFixable: 'N',
       ruleConfigJson: '{"expect":{"top":"bad","left":20}}' })]))
-      .toContainEqual(expect.stringContaining('必须为正数 mm'))
+      .toContainEqual(expect.stringContaining('正数毫米值'))
   })
 })

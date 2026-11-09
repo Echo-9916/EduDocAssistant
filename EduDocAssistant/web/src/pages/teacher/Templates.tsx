@@ -2,7 +2,8 @@
 // 前端校验镜像后端 RuleConfig 不变量（保存闸），服务端仍是最终裁判；
 // 历史版本发布后规则只读回显（UT-13），编辑面仅对未发布版本开放。
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, Collapse, Input, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd'
+import { Alert, Badge, Collapse, Dropdown, Input, Popconfirm, Popover, Select, Space, Table, Tag, Typography, Upload, message } from 'antd'
+import { DeleteOutlined } from '@ant-design/icons'
 import { AppButton, AppModal } from '../../components'
 import { getErrorMessage } from '../../api/http'
 import { listCourses } from '../../api/documents'
@@ -47,23 +48,28 @@ export function groupRules(rules: RuleView[]): { type: RuleView['ruleType']; ite
         .filter((g) => g.items.length > 0)
 }
 
+/** 浏览器验收 M-03：错误信息面向教师口语化（类型/对象用中文标签；后端 RuleConfig 仍是最终裁判） */
+const MARGIN_KEY_LABEL: Record<string, string> = {
+    top: '上边距', bottom: '下边距', left: '左边距', right: '右边距', width: '页宽', height: '页高',
+}
+
 /** 保存前镜像校验；返回错误列表，空=可提交 */
 export function validateRules(rules: RuleView[]): string[] {
     const errors: string[] = []
     for (const r of rules) {
-        const tag = `${r.ruleType}/${r.targetSelector}`
+        const tag = `${RULE_TYPE_LABEL[r.ruleType] ?? r.ruleType}（${SELECTOR_LABEL[r.targetSelector] ?? r.targetSelector}）`
         if (!(SELECTORS_BY_TYPE[r.ruleType] ?? []).includes(r.targetSelector)) {
-            errors.push(`${tag}: targetSelector 不在词表`)
+            errors.push(`${tag}：作用对象与格式类型不匹配`)
             continue
         }
         if (r.autoFixable === 'Y' && !FIXABLE_TYPES.includes(r.ruleType)) {
-            errors.push(`${tag}: 该类型不在修复面，autoFixable 必须为 N`)
+            errors.push(`${tag}：该格式不支持自动修复，请取消勾选“可自动修复”`)
         }
         let config: Record<string, unknown>
         try {
             config = JSON.parse(r.ruleConfigJson)
         } catch {
-            errors.push(`${tag}: ruleConfigJson 非法 JSON`)
+            errors.push(`${tag}：规则配置格式有误（不是有效 JSON），点“改配置”修正`)
             continue
         }
         const root = config as { expect?: Record<string, unknown>; tolerance?: Record<string, unknown>; fix?: Record<string, unknown> }
@@ -72,46 +78,46 @@ export function validateRules(rules: RuleView[]): string[] {
         const num = (v: unknown) => typeof v === 'number' && v > 0
         switch (r.ruleType) {
             case 'FONT':
-                if (!expect.family && !expect.eastAsia) errors.push(`${tag}: 需 family 或 eastAsia`)
+                if (!expect.family && !expect.eastAsia) errors.push(`${tag}：请至少填写西文字体或中文字体之一`)
                 break
             case 'SIZE':
-                if (!num(expect.pt) || (expect.pt as number) > 100) errors.push(`${tag}: pt 需 (0,100]`)
+                if (!num(expect.pt) || (expect.pt as number) > 100) errors.push(`${tag}：字号需为大于 0 且不超过 100 的磅值（如 12）`)
                 break
             case 'LINE_SPACING': {
                 const fixed = expect.lineRule === 'exact' || expect.lineRule === 'atLeast'
                 if (!num(expect.multiplier) && !fixed) {
-                    errors.push(`${tag}: 需 multiplier 或 lineRule(exact|atLeast)+pt`)
+                    errors.push(`${tag}：请填行距倍数（如 1.5）或固定磅值（lineRule 选 exact/atLeast 并配 pt）`)
                 } else if (fixed && !num(expect.pt)) {
-                    errors.push(`${tag}: 固定行距必须带 pt`)
+                    errors.push(`${tag}：固定行距必须带磅值 pt（如 23）`)
                 }
                 break
             }
             case 'MARGIN': {
                 const keys = ['top', 'bottom', 'left', 'right', 'width', 'height']
                 for (const k of keys) {
-                    if (expect[k] !== undefined && !num(expect[k])) errors.push(`${tag}: ${k} 必须为正数 mm`)
+                    if (expect[k] !== undefined && !num(expect[k])) errors.push(`${tag}：${MARGIN_KEY_LABEL[k]}需为正数毫米值`)
                 }
-                if (!keys.some((k) => num(expect[k]))) errors.push(`${tag}: 需至少一个正数边距/纸型键`)
+                if (!keys.some((k) => num(expect[k]))) errors.push(`${tag}：请至少填写一项页边距或纸张尺寸`)
                 break
             }
             case 'CAPTION': {
                 const pattern = typeof expect.pattern === 'string' && expect.pattern.trim() ? expect.pattern : null
                 if (!pattern && expect.perChapter !== true) {
-                    errors.push(`${tag}: 需非空 pattern 或 perChapter=true（空串视为未配置）`)
+                    errors.push(`${tag}：请填写编号格式（正则）或开启“按章编号”`)
                 }
                 if (pattern) {
-                    try { new RegExp(pattern) } catch { errors.push(`${tag}: pattern 不是合法正则`) }
+                    try { new RegExp(pattern) } catch { errors.push(`${tag}：编号格式不是有效正则`) }
                 }
                 break
             }
             case 'CODE':
-                if (typeof expect.style !== 'string' || !expect.style) errors.push(`${tag}: 需声明 expect.style`)
+                if (typeof expect.style !== 'string' || !expect.style) errors.push(`${tag}：请填写代码样式名称`)
                 break
             case 'REFERENCE':
-                if (typeof expect.standard !== 'string' || !expect.standard) errors.push(`${tag}: 需声明 expect.standard`)
+                if (typeof expect.standard !== 'string' || !expect.standard) errors.push(`${tag}：请填写参考文献标准（如 GB/T 7714）`)
                 break
             case 'HEADER_FOOTER':
-                if (expect.present !== true) errors.push(`${tag}: present 必须为 true（JSON 布尔）`)
+                if (expect.present !== true) errors.push(`${tag}：请开启“必须存在”要求`)
                 break
             default:
                 break
@@ -124,7 +130,7 @@ export function validateRules(rules: RuleView[]): string[] {
             const keys = fixKeys[r.ruleType] ?? []
             const okFix = keys.some((k) => (typeof expect[k] === 'string' || k === 'lineRule')
                 ? Boolean(fix[k]) : num(fix[k]))
-            if (!okFix) errors.push(`${tag}: auto_fixable=Y 必须携带有效 fix`)
+            if (!okFix) errors.push(`${tag}：开启自动修复时，修复值不能为空`)
         }
     }
     return errors
@@ -142,9 +148,26 @@ const VALIDATION_META: Record<string, { label: string; color: string }> = {
     INVALID: { label: '解析失败', color: 'error' },
 }
 
-const EMPTY_RULE: RuleView = {
-    id: '', ruleType: 'FONT', targetSelector: 'HEADING_1', severity: 'BLOCKER',
-    autoFixable: 'Y', ruleConfigJson: '{"expect":{},"fix":{}}', ruleOrder: 10,
+/** 验收 M-01-4：按族给可保存的默认配置（修复面四族默认带 fix；其余族不可自动修复） */
+const RULE_DEFAULTS: Record<string, { selector: string; severity: string; fixable: string; config: string; order: number }> = {
+    FONT: { selector: 'HEADING_1', severity: 'WARNING', fixable: 'Y', config: '{"expect":{"eastAsia":"黑体"},"fix":{"eastAsia":"黑体"}}', order: 10 },
+    SIZE: { selector: 'HEADING_1', severity: 'WARNING', fixable: 'Y', config: '{"expect":{"pt":14},"fix":{"pt":14}}', order: 11 },
+    LINE_SPACING: { selector: 'HEADING_1', severity: 'WARNING', fixable: 'Y', config: '{"expect":{"multiplier":1.5},"fix":{"multiplier":1.5}}', order: 12 },
+    MARGIN: { selector: 'PAGE', severity: 'BLOCKER', fixable: 'Y', config: '{"expect":{"top":25,"bottom":25,"left":30,"right":25,"unit":"mm"},"fix":{"top":25,"bottom":25,"left":30,"right":25}}', order: 13 },
+    CAPTION: { selector: 'FIGURE_CAPTION', severity: 'WARNING', fixable: 'N', config: '{"expect":{"perChapter":true,"pattern":"^图\\\\s*\\\\d+\\\\s*[-－]\\\\s*\\\\d+"}}', order: 20 },
+    CODE: { selector: 'CODE_BLOCK', severity: 'WARNING', fixable: 'N', config: '{"expect":{"style":"代码","keepIndent":true}}', order: 30 },
+    REFERENCE: { selector: 'REFERENCE', severity: 'WARNING', fixable: 'N', config: '{"expect":{"standard":"GB/T 7714"}}', order: 40 },
+    HEADER_FOOTER: { selector: 'FOOTER', severity: 'WARNING', fixable: 'N', config: '{"expect":{"present":true}}', order: 14 },
+}
+
+function newRuleOfType(type: string): RuleView {
+    const d = RULE_DEFAULTS[type]
+    return {
+        id: `local-${type}-${Date.now()}`, ruleType: type as RuleView['ruleType'],
+        targetSelector: d.selector, severity: d.severity as RuleView['severity'],
+        autoFixable: d.fixable as RuleView['autoFixable'],
+        ruleConfigJson: d.config, ruleOrder: d.order,
+    }
 }
 
 export default function Templates() {
@@ -278,19 +301,28 @@ export default function Templates() {
                 : <Select size="small" value={v} style={{ width: '100%' }}
                     options={(SELECTORS_BY_TYPE[r.ruleType] ?? []).map((s) => ({ value: s, label: SELECTOR_LABEL[s] ?? s }))}
                     onChange={(nv) => patchRule(indexOfRule(r), { targetSelector: nv })} /> },
-        { title: '严重度', dataIndex: 'severity', width: 90, render: (v: string) => v },
-        { title: '可修复', dataIndex: 'autoFixable', width: 70, render: (v: string) => v },
+        // 验收 M-01-3：严重度/可修复由格式类型自动决定，不再作为教师编辑列
         { title: '期望要求', key: 'expect',
-            render: (_: unknown, r: RuleView) => readOnly
-                ? describeExpect(r)
-                : <input data-testid="rule-json" style={{
-                    width: '100%', fontFamily: 'monospace', fontSize: 12,
-                    border: '1px solid #d9d9d9', borderRadius: 4, padding: '2px 6px',
-                }} defaultValue={r.ruleConfigJson}
-                    onBlur={(ev) => patchRule(indexOfRule(r), { ruleConfigJson: ev.target.value })} /> },
+            render: (_: unknown, r: RuleView) => readOnly ? describeExpect(r) : (
+                <Space>
+                    <Typography.Text>{describeExpect(r)}</Typography.Text>
+                    <Popover
+                        trigger="click" placement="left"
+                        title={`${RULE_TYPE_LABEL[r.ruleType] ?? ''} 配置（JSON）`}
+                        content={
+                            <Input.TextArea data-testid="rule-json" rows={5} style={{ width: 380, fontFamily: 'monospace', fontSize: 12 }}
+                                defaultValue={r.ruleConfigJson}
+                                onBlur={(ev) => patchRule(indexOfRule(r), { ruleConfigJson: ev.target.value })} />
+                        }
+                    >
+                        <AppButton type="link" size="small">改配置</AppButton>
+                    </Popover>
+                </Space>
+            ) },
         ...(readOnly ? [] : [{ title: '', key: 'del', width: 40,
             render: (_: unknown, r: RuleView) => (
-                <AppButton type="link" danger onClick={() => setRules((prev) => prev.filter((x) => x.id !== r.id || x.ruleOrder !== r.ruleOrder))}>删</AppButton>
+                <AppButton type="text" danger aria-label="删除规则" icon={<DeleteOutlined />}
+                    onClick={() => setRules((prev) => prev.filter((x) => x.id !== r.id || x.ruleOrder !== r.ruleOrder))} />
             ) }]),
     ])
     const indexOfRule = (r: RuleView) => rules.indexOf(r)
@@ -442,9 +474,14 @@ export default function Templates() {
                                 ))}
                                 {editable && (
                                     <Badge count={rules.length}>
-                                        <AppButton onClick={() => setRules((prev) => [...prev, { ...EMPTY_RULE, id: `local-${prev.length}-${Date.now()}` }])}>
-                                            添加规则
-                                        </AppButton>
+                                        <Dropdown
+                                            menu={{
+                                                items: RULE_TYPES.map((t) => ({ key: t, label: RULE_TYPE_LABEL[t] ?? t })),
+                                                onClick: ({ key }) => setRules((prev) => [...prev, newRuleOfType(key)]),
+                                            }}
+                                        >
+                                            <AppButton>添加规则</AppButton>
+                                        </Dropdown>
                                     </Badge>
                                 )}
                                 {ruleErrors.length > 0 && (

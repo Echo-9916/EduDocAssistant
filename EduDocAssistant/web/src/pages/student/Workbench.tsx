@@ -3,6 +3,7 @@
 import { Card, Col, Row, Statistic } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { AppButton } from '../../components'
+import { rolePath } from '../../routes'
 
 const SHORTCUTS = [
   { key: 'upload', label: '上传文档', desc: 'Word/PDF 课件、作业、报告', to: 'documents' },
@@ -27,7 +28,8 @@ export default function StudentWorkbench() {
             <Col span={6} key={s.key}>
               <Card size="small" title={s.label}>
                 <p>{s.desc}</p>
-                <AppButton onClick={() => navigate(s.to)}>前往</AppButton>
+                {/* 验收 M-06：绝对路径直达，杜绝相对解析在不同进入方式下的落空 */}
+                <AppButton onClick={() => navigate(`${rolePath.STUDENT}/${s.to}`)}>前往</AppButton>
               </Card>
             </Col>
           ))}

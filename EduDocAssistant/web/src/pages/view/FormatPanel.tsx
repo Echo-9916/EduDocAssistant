@@ -7,7 +7,6 @@ import { Alert, Badge, Progress, Space, Table, Tag, Typography, message } from '
 import { AppButton, AppModal } from '../../components'
 import { ApiError, getErrorMessage } from '../../api/http'
 import {
-  clearCheckId,
   createFormatCheck,
   fixFormatIssues,
   getFormatCheck,
@@ -89,10 +88,12 @@ export default function FormatPanel({ documentId, documentReady, allowed, canEdi
       if (ACTIVE.has(view.status)) {
         timer.current = setTimeout(() => void track(checkId), POLL_MS)
       } else {
-        clearCheckId(documentId)
+        // 验收 M-07-2：终态不清断点——刷新后仍可恢复上次校验结果（重开会被新发起覆盖）
+        saveCheckId(documentId, checkId)
         if (view.status !== 'QUEUED') void loadIssues(checkId)
       }
     } catch (e) {
+      // 断点 id 失效只报错不清除：下次发起校验自然覆盖（保持「刷新可恢复」语义简单）
       if (alive.current) setError(getErrorMessage(e))
     }
   }, [documentId, loadIssues])
@@ -116,6 +117,7 @@ export default function FormatPanel({ documentId, documentReady, allowed, canEdi
         void track(view.id)
       } else {
         // J1：PDF 等直接 ERROR 行，无事件
+        saveCheckId(documentId, view.id)
         void loadIssues(view.id)
       }
     } catch (e) {
@@ -207,7 +209,7 @@ export default function FormatPanel({ documentId, documentReady, allowed, canEdi
           size="small"
           rowKey="id"
           dataSource={issues}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 个问题` }}
           rowSelection={canEdit ? {
             selectedRowKeys: selected,
             onChange: (keys) => setSelected(keys as string[]),

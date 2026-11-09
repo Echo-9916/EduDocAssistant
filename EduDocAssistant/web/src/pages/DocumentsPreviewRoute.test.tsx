@@ -17,6 +17,7 @@ vi.mock('../api/documents', () => ({
   restoreDocument: vi.fn(),
   reparseDocument: vi.fn(),
 }))
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: null }) }))
 vi.mock('./DocumentUploadModal', () => ({ default: () => null }))
 vi.mock('./DocumentDetailDrawer', () => ({ default: () => null }))
 

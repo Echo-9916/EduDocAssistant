@@ -16,6 +16,15 @@ import type { CourseView, DocumentListParams, DocumentSummary } from '../api/doc
 import type { PageResult, RoleCodeValue } from '../api/types'
 import DocumentUploadModal from './DocumentUploadModal'
 import DocumentDetailDrawer from './DocumentDetailDrawer'
+import ConversionModal, { directionOf } from './ConversionModal'
+import ConversionHistoryDrawer from './ConversionHistoryDrawer'
+
+/** 行级转换入口可见性：仅 Word/PDF（与批量方向匹配同口径） */
+export function directionReady(row: DocumentSummary): boolean {
+  return directionOf(row) !== null
+}
+import { useAuth } from '../auth/AuthContext'
+import { PermissionCode } from '../api/types'
 
 export const DOC_TYPE_LABEL: Record<string, string> = {
   COURSEWARE: '课件',
@@ -57,6 +66,12 @@ export default function Documents({ role }: Props) {
   const [reloadKey, setReloadKey] = useState(0)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
+  // D-13：批量转换（多选 + Modal）
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+  const [convertOpen, setConvertOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const { user } = useAuth()
+  const canConvert = !!user?.permissions.includes(PermissionCode.FORMAT_CONVERT)
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
 
@@ -193,12 +208,25 @@ export default function Documents({ role }: Props) {
           }}
         />
         {view === 'mine' && <AppButton onClick={() => setUploadOpen(true)}>上传文档</AppButton>}
+        {view === 'mine' && canConvert && (
+          <AppButton type="default" disabled={selectedKeys.length === 0}
+            onClick={() => setConvertOpen(true)}>
+            格式转换
+          </AppButton>
+        )}
+        {view === 'mine' && canConvert && (
+          <AppButton type="text" onClick={() => setHistoryOpen(true)}>转换记录</AppButton>
+        )}
       </Space>
 
       <AppTable<DocumentSummary>
         rowKey="id"
         loading={loading}
         dataSource={data.items}
+        rowSelection={view === 'mine' && canConvert ? {
+          selectedRowKeys: selectedKeys,
+          onChange: (keys) => setSelectedKeys(keys as string[]),
+        } : undefined}
         pagination={{
           current: data.page,
           pageSize: data.pageSize,
@@ -242,6 +270,13 @@ export default function Documents({ role }: Props) {
                 ) : (
                   <>
                     {row.status === 'FAILED' && <a onClick={() => onReparse(row.id)}>重新解析</a>}
+                    {canConvert && directionReady(row) && (
+                      // 1107 P2-7：行级转换入口（单选走同一 Modal）
+                      <a onClick={() => {
+                        setSelectedKeys([row.id])
+                        setConvertOpen(true)
+                      }}>转换</a>
+                    )}
                     <Popconfirm title="移入回收站？" onConfirm={() => onDelete(row.id)}>
                       <a>删除</a>
                     </Popconfirm>
@@ -261,6 +296,11 @@ export default function Documents({ role }: Props) {
         onUploaded={reload}
       />
       <DocumentDetailDrawer docId={detailId} onClose={() => setDetailId(null)} onChanged={reload} />
+      <ConversionModal open={convertOpen}
+        docs={data.items.filter((d) => selectedKeys.includes(d.id))}
+        onClose={() => setConvertOpen(false)} />
+      <ConversionHistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)}
+        initialDocumentId={selectedKeys.length === 1 ? selectedKeys[0] : null} />
     </div>
   )
 }

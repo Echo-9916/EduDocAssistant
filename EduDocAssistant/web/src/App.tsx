@@ -10,6 +10,9 @@ import Forbidden from './pages/Forbidden'
 import SectionPlaceholder from './pages/SectionPlaceholder'
 import Documents from './pages/Documents'
 import DocumentView from './pages/DocumentView'
+import FormatSection from './pages/FormatSection'
+import TeacherTemplates from './pages/teacher/Templates'
+import StudentWorkbench from './pages/student/Workbench'
 import Demo from './pages/Demo'
 import { roleNav, rolePath } from './routes'
 import type { NavItem } from './routes'
@@ -19,6 +22,10 @@ import type { RoleCodeValue } from './api/types'
 /** B-12：nav key → 真实页面映射；未接线的 key 仍走占位（其余切片逐个替换）。 */
 export function pageOf(role: RoleCodeValue, item: NavItem) {
   if (item.key === 'documents') return <Documents role={role} />
+  // 04 切片 D-09/D-10/D-14：格式与模板分组 + 教师模板管理 + 学生工作台快捷入口
+  if (item.key === 'format') return <FormatSection />
+  if (item.key === 'templates') return <TeacherTemplates />
+  if (role === 'STUDENT' && item.key === 'workbench') return <StudentWorkbench />
   return <SectionPlaceholder title={item.label} />
 }
 

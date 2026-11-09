@@ -32,12 +32,18 @@ describe('学生工作台快捷入口（1107 P2-4）', () => {
     expect(navigateMock).toHaveBeenCalledWith('/student/format')
   })
 
-  it('查看作业：缺 SUBMISSION_READ 权限时入口禁用，不再跳 403（验收反馈 2）', async () => {
+  it('查看作业入口直达课程与作业页（门面页已上线，不再按权限禁用）', async () => {
     render(<StudentWorkbench />)
     const cards = screen.getAllByText('查看作业')
-    const btn = cards[0].closest('.ant-card')!.querySelector('button')!
-    expect(btn.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(cards[0].closest('.ant-card')!.querySelector('button')!)
+    expect(navigateMock).toHaveBeenCalledWith('/student/courses')
     fireEvent.click(screen.getByText('上传文档').closest('.ant-card')!.querySelector('button')!)
     expect(navigateMock).toHaveBeenCalledWith('/student/documents')
+  })
+
+  it('未读消息卡取演示消息数', async () => {
+    render(<StudentWorkbench />)
+    expect(await screen.findByText('未读消息')).toBeTruthy()
+    expect(screen.getByText('3')).toBeTruthy()
   })
 })

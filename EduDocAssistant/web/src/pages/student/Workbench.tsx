@@ -1,29 +1,28 @@
 // D-10（1107 P2-4）：学生工作台快捷入口——设计 05 明文四项：上传文档 / 按模板新建 / 查看作业 / 教学消息。
 // 本切片接线「按模板新建」到格式与模板页；其余入口跳对应一级导航；统计卡随 05/06 切片填充。
-import { Card, Col, Row, Statistic, Tooltip } from 'antd'
+import { Card, Col, Row, Statistic } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { AppButton } from '../../components'
 import { rolePath } from '../../routes'
-import { useAuth } from '../../auth/AuthContext'
-import { PermissionCode } from '../../api/types'
+import { messagesOf } from '../../mock/domain/messages'
 
-// perm=落地页所需权限点；当前账号缺失时入口禁用而非跳 403（验收反馈 2）
 const SHORTCUTS = [
   { key: 'upload', label: '上传文档', desc: 'Word/PDF 课件、作业、报告', to: 'documents' },
   { key: 'from-template', label: '按模板新建', desc: '选课程模板生成大纲初稿', to: 'format' },
-  { key: 'assignments', label: '查看作业', desc: '课程作业与提交状态', to: 'courses', perm: PermissionCode.SUBMISSION_READ },
+  // 作业门面页以 mock 呈现，不再按 SUBMISSION_READ 禁用入口（该权限点语义属教师/运维，作业切片落地时重新收口）
+  { key: 'assignments', label: '查看作业', desc: '课程作业与提交状态', to: 'courses' },
   { key: 'messages', label: '教学消息', desc: '提醒与反馈通知', to: 'messages' },
 ]
 
 export default function StudentWorkbench() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const unread = messagesOf('STUDENT').filter((m) => !m.read).length
   return (
     <div>
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}><Card><Statistic title="我的文档" value="-" suffix="（随统计切片）" /></Card></Col>
         <Col span={6}><Card><Statistic title="待提交作业" value="-" /></Card></Col>
-        <Col span={6}><Card><Statistic title="未读消息" value="-" /></Card></Col>
+        <Col span={6}><Card><Statistic title="未读消息" value={unread} /></Card></Col>
         <Col span={6}><Card><Statistic title="进行中协作" value="-" /></Card></Col>
       </Row>
       <Card title="快捷入口">
@@ -32,14 +31,8 @@ export default function StudentWorkbench() {
             <Col span={6} key={s.key}>
               <Card size="small" title={s.label}>
                 <p>{s.desc}</p>
-                {/* 验收 M-06：绝对路径直达；perm 缺失时禁用并提示随切片开放，不再跳 403 */}
-                {s.perm && !user?.permissions.includes(s.perm) ? (
-                  <Tooltip title="作业功能随「课程与作业」切片开放">
-                    <AppButton disabled>前往</AppButton>
-                  </Tooltip>
-                ) : (
-                  <AppButton onClick={() => navigate(`${rolePath.STUDENT}/${s.to}`)}>前往</AppButton>
-                )}
+                {/* 验收 M-06：绝对路径直达 */}
+                <AppButton onClick={() => navigate(`${rolePath.STUDENT}/${s.to}`)}>前往</AppButton>
               </Card>
             </Col>
           ))}

@@ -74,6 +74,12 @@ export async function request<T>(config: AxiosRequestConfig): Promise<T> {
 
 export const get = <T>(url: string, config?: AxiosRequestConfig) =>
   request<T>({ ...config, method: 'GET', url })
+
+/** 二进制流请求（格式视图预览）：响应不走 envelope 解包。 */
+export async function getBlob(url: string): Promise<Blob> {
+  const res = await http.get(url, { responseType: 'blob', timeout: 60000 })
+  return res.data as Blob
+}
 export const post = <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
   request<T>({ ...config, method: 'POST', url, data })
 export const put = <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>

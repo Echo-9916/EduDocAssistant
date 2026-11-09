@@ -32,7 +32,9 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -490,5 +492,107 @@ class TemplateVersionServiceTest {
                 () -> service.replaceRules(TPL, VER, List.of(new RuleCommand("FONT", "BODY",
                         "WARNING", "Y", "{\"expect\":{\"size\":3}}", 10))));
         assertEquals(40001, e.errorCode().code());
+    }
+
+    // ==================== 验收反馈：编辑另存新版本（fork） ====================
+
+    private static TemplateVersion publishedV1() {
+        TemplateVersion v = new TemplateVersion();
+        v.setId(VER);
+        v.setTemplateId(TPL);
+        v.setVersionNo(1);
+        v.setSourceObjectId("C0B2C3D4E5F60708090A0B0C0D0E0F10");
+        v.setValidationStatus("VALID");
+        v.setPublishedAt("2026-11-01T00:00:00");
+        return v;
+    }
+
+    @Test
+    void forkFromPublishedVersionCreatesNextVersionReusingSourceObject() {
+        teacherPrincipal();
+        when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("P")));
+        when(versionRepository.findById(VER)).thenReturn(Optional.of(publishedV1()));
+        when(versionRepository.maxVersionNo(TPL)).thenReturn(1);
+
+        var view = service.fork(TPL, VER, List.of(new RuleCommand("SIZE", "BODY", "WARNING", "Y",
+                "{\"expect\":{\"pt\":12},\"fix\":{\"pt\":12}}", 11)), null);
+
+        assertEquals(2, view.versionNo());
+        assertEquals("VALID", view.validationStatus());
+        assertEquals("基于 v1 编辑另存", view.changeSummary());
+        assertEquals(publishedV1().getSourceObjectId(), view.sourceObjectId()); // 引用沿用不复制
+        ArgumentCaptor<TemplateVersion> captor = ArgumentCaptor.forClass(TemplateVersion.class);
+        verify(versionRepository).insert(captor.capture());
+        assertNull(captor.getValue().getPublishedAt()); // 新版本未发布
+    }
+
+    @Test
+    void forkRejectsInvalidRulesWithoutPersisting() {
+        teacherPrincipal();
+        when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("P")));
+        when(versionRepository.findById(VER)).thenReturn(Optional.of(publishedV1()));
+        when(versionRepository.maxVersionNo(TPL)).thenReturn(1);
+
+        assertThrows(CidasBusinessException.class, () -> service.fork(TPL, VER,
+                List.of(new RuleCommand("SIZE", "BODY", "WARNING", "Y",
+                        "{\"expect\":{\"pt\":12}}", 11)), null)); // Y 无 fix
+        verify(versionRepository, never()).insert(any());
+    }
+
+    @Test
+    void forkUnknownBaseVersionNotFound() {
+        teacherPrincipal();
+        when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("P")));
+        when(versionRepository.findById(VER)).thenReturn(Optional.empty());
+
+        var e = assertThrows(CidasBusinessException.class,
+                () -> service.fork(TPL, VER, List.of(), null));
+        assertEquals(40401, e.errorCode().code());
+    }
+
+    // ==================== 验收决议①：上传预览（不落版本） ====================
+
+    @Test
+    void previewRulesReturnsDraftsWithoutPersistingAnything() {
+        teacherPrincipal();
+        when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("D")));
+        when(parser.parse(any())).thenReturn(List.of(
+                new RuleDraft("FONT", "HEADING_1", "BLOCKER", "Y", "{\"expect\":{\"family\":\"黑体\"}}", 10),
+                new RuleDraft("MARGIN", "PAGE", "BLOCKER", "Y", "{\"expect\":{\"top\":25}}", 13)));
+
+        var rows = service.previewRules(TPL, "t.docx".getBytes(), "t.docx");
+
+        assertEquals(2, rows.size());
+        assertEquals("", rows.get(0).id()); // 预览行无落库 id
+        assertEquals("FONT", rows.get(0).ruleType());
+        assertEquals("MARGIN", rows.get(1).ruleType());
+        verify(ossStorageAdapter, never()).putBytes(anyString(), any(), anyString());
+        verify(versionRepository, never()).insert(any());
+        verify(ruleRepository, never()).insertBatch(any());
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void previewRejectsMissingOrNonDocxFile() {
+        teacherPrincipal();
+        when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("D")));
+
+        assertEquals(40001, assertThrows(CidasBusinessException.class,
+                () -> service.previewRules(TPL, null, null)).errorCode().code());
+        assertEquals(40001, assertThrows(CidasBusinessException.class,
+                () -> service.previewRules(TPL, "x".getBytes(), "t.pdf")).errorCode().code());
+    }
+
+    @Test
+    void previewParseFailureIsCleanErrorWithoutSideEffects() {
+        teacherPrincipal();
+        when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("D")));
+        when(parser.parse(any())).thenThrow(new TemplateParseException("坏文件"));
+
+        var e = assertThrows(CidasBusinessException.class,
+                () -> service.previewRules(TPL, "t.docx".getBytes(), "t.docx"));
+        assertEquals(40001, e.errorCode().code());
+        assertTrue(e.getMessage().contains("模板解析失败"));
+        verify(versionRepository, never()).insert(any());
     }
 }

@@ -1,6 +1,6 @@
 // D-08：格式校验/修复/转换/结构元素 API（契约=后端 FormatCheckController/FormatFixController/
 // ConversionController/DocumentElementController，见 docs/tasks/04-template-format.md）。
-import { get, post } from './http'
+import { get, getBlob, post } from './http'
 import type { PageResult } from './types'
 
 export interface CheckView {
@@ -45,6 +45,7 @@ export interface ConversionView {
   failureCode: string | null
   failureMessage: string | null
   downloadUrl: string | null
+  previewUrl?: string | null
   startedAt: string | null
   finishedAt: string | null
 }
@@ -80,6 +81,9 @@ export const getConversion = (taskId: string) => get<ConversionView>(`/conversio
 
 export const listConversions = (documentId: string) =>
   get<ConversionView[]>(`/conversions`, { params: { documentId } })
+
+/** 格式视图字节流：SUCCEEDED 任务的 PDF 产物（后端代理读 OSS，绕开默认域强制下载与 CORS） */
+export const fetchConversionPreview = (taskId: string) => getBlob(`/conversions/${taskId}/preview`)
 
 /** 轮询断点恢复（沿用 C-11 localStorage 口径，key 前缀 edudoc-fmtcheck-） */
 export const saveCheckId = (documentId: string, checkId: string) =>

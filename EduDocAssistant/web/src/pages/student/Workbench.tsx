@@ -1,19 +1,23 @@
 // D-10（1107 P2-4）：学生工作台快捷入口——设计 05 明文四项：上传文档 / 按模板新建 / 查看作业 / 教学消息。
 // 本切片接线「按模板新建」到格式与模板页；其余入口跳对应一级导航；统计卡随 05/06 切片填充。
-import { Card, Col, Row, Statistic } from 'antd'
+import { Card, Col, Row, Statistic, Tooltip } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { AppButton } from '../../components'
 import { rolePath } from '../../routes'
+import { useAuth } from '../../auth/AuthContext'
+import { PermissionCode } from '../../api/types'
 
+// perm=落地页所需权限点；当前账号缺失时入口禁用而非跳 403（验收反馈 2）
 const SHORTCUTS = [
   { key: 'upload', label: '上传文档', desc: 'Word/PDF 课件、作业、报告', to: 'documents' },
   { key: 'from-template', label: '按模板新建', desc: '选课程模板生成大纲初稿', to: 'format' },
-  { key: 'assignments', label: '查看作业', desc: '课程作业与提交状态', to: 'courses' },
+  { key: 'assignments', label: '查看作业', desc: '课程作业与提交状态', to: 'courses', perm: PermissionCode.SUBMISSION_READ },
   { key: 'messages', label: '教学消息', desc: '提醒与反馈通知', to: 'messages' },
 ]
 
 export default function StudentWorkbench() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   return (
     <div>
       <Row gutter={16} style={{ marginBottom: 24 }}>
@@ -28,8 +32,14 @@ export default function StudentWorkbench() {
             <Col span={6} key={s.key}>
               <Card size="small" title={s.label}>
                 <p>{s.desc}</p>
-                {/* 验收 M-06：绝对路径直达，杜绝相对解析在不同进入方式下的落空 */}
-                <AppButton onClick={() => navigate(`${rolePath.STUDENT}/${s.to}`)}>前往</AppButton>
+                {/* 验收 M-06：绝对路径直达；perm 缺失时禁用并提示随切片开放，不再跳 403 */}
+                {s.perm && !user?.permissions.includes(s.perm) ? (
+                  <Tooltip title="作业功能随「课程与作业」切片开放">
+                    <AppButton disabled>前往</AppButton>
+                  </Tooltip>
+                ) : (
+                  <AppButton onClick={() => navigate(`${rolePath.STUDENT}/${s.to}`)}>前往</AppButton>
+                )}
               </Card>
             </Col>
           ))}

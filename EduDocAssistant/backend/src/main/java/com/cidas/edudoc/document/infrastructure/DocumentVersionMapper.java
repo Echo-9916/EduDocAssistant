@@ -3,10 +3,14 @@ package com.cidas.edudoc.document.infrastructure;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
+
 @Mapper
 public interface DocumentVersionMapper {
 
     int insert(@Param("version") DocumentVersion version);
+
+    List<DocumentVersionRow> selectListByDocument(@Param("documentIdHex") String documentIdHex);
 
     Integer selectMaxVersionNo(@Param("documentIdHex") String documentIdHex);
 

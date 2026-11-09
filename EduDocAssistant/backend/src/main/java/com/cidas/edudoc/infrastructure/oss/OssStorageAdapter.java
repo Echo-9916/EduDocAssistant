@@ -116,6 +116,25 @@ public class OssStorageAdapter {
         }
     }
 
+    /** 预览字节流：上限护栏内整读小对象（版式预览 PDF/原件内嵌用），超限拒绝并提示走下载。 */
+    public byte[] readBytes(String objectKey, long maxBytes) {
+        var ossClient = ossClient();
+        try (OSSObject object = ossClient.getObject(properties.bucket(), objectKey)) {
+            long size = object.getObjectMetadata().getContentLength();
+            if (size > maxBytes) {
+                throw new CidasBusinessException(ErrorCode.BAD_REQUEST,
+                        "预览文件超过 " + (maxBytes / 1024 / 1024) + "MB，请改用下载查看");
+            }
+            return object.getObjectContent().readAllBytes();
+        } catch (CidasBusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("OSS 预览读取失败 objectKey={}", objectKey, e);
+            throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                    "文件内容读取失败，请稍后重试", true, Map.of());
+        }
+    }
+
     /** 对象下载到本地临时文件（解析 worker 用，防 20MB 堆内膨胀）。 */
     public void downloadTo(String objectKey, java.nio.file.Path target) {
         var ossClient = ossClient();
@@ -167,12 +186,26 @@ public class OssStorageAdapter {
 
     /** 短期签名下载 URL（概要红线：私有 Bucket + 签名 URL，浏览器不持有长期凭据）。 */
     public String presignGet(String objectKey, long ttlSeconds) {
+        return presign(objectKey, ttlSeconds, false);
+    }
+
+    /** 浏览器内嵌预览用签名：response-content-disposition=inline 覆盖对象元数据，iframe 显示而非弹下载。 */
+    public String presignGetInline(String objectKey, long ttlSeconds) {
+        return presign(objectKey, ttlSeconds, true);
+    }
+
+    private String presign(String objectKey, long ttlSeconds, boolean inline) {
         var ossClient = ossClient();
         try {
-            java.util.Date expiration = java.util.Date.from(
-                    java.time.Instant.now().plusSeconds(ttlSeconds));
-            java.net.URL url = ossClient.generatePresignedUrl(properties.bucket(), objectKey, expiration);
-            return url.toString();
+            var req = new com.aliyun.oss.model.GeneratePresignedUrlRequest(
+                    properties.bucket(), objectKey, com.aliyun.oss.HttpMethod.GET);
+            req.setExpiration(java.util.Date.from(java.time.Instant.now().plusSeconds(ttlSeconds)));
+            if (inline) {
+                var overrides = new com.aliyun.oss.model.ResponseHeaderOverrides();
+                overrides.setContentDisposition("inline");
+                req.setResponseHeaders(overrides);
+            }
+            return ossClient.generatePresignedUrl(req).toString();
         } catch (Exception e) {
             log.warn("OSS 签名 URL 生成失败 objectKey={}", objectKey, e);
             throw new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,

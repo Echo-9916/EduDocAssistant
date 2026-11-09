@@ -1,5 +1,6 @@
 package com.cidas.edudoc.template.infrastructure;
 
+import com.cidas.edudoc.template.domain.RuleConfig;
 import com.cidas.edudoc.template.domain.RuleDraft;
 import com.cidas.edudoc.template.domain.TemplateParseException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -387,5 +388,25 @@ class TemplateRuleParserTest {
     @Test
     void rejectsNonDocxBytes() {
         assertThrows(TemplateParseException.class, () -> parser.parse("not a docx".getBytes()));
+    }
+
+    /** D-15 错题集发现：PDF 转换件页边距可为 0——解析端与保存闸同值域，0/越界键不产出。 */
+    @Test
+    void marginKeysOutsideSaveGateDomainAreNotEmitted() throws Exception {
+        try (XWPFDocument doc = new XWPFDocument()) {
+            CTPageMar mar = doc.getDocument().getBody().addNewSectPr().addNewPgMar();
+            mar.setTop(BigInteger.ZERO); // (0,100] 之外 → 不产
+            mar.setLeft(BigInteger.valueOf(1440)); // 25.4mm → 产
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            doc.write(out);
+
+            var expect = mapper.readTree(find(parser.parse(out.toByteArray()), "MARGIN", "PAGE")
+                    .ruleConfigJson()).path("expect");
+            assertFalse(expect.has("top"), "0 值边距键不得产出：" + expect);
+            assertEquals(25.4, expect.path("left").asDouble(), 0.01);
+            // 且必须能过保存闸（两处契约同源）
+            RuleConfig.parse("MARGIN", find(parser.parse(out.toByteArray()), "MARGIN", "PAGE")
+                    .ruleConfigJson(), mapper);
+        }
     }
 }

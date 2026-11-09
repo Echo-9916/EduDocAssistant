@@ -101,7 +101,8 @@ public class TemplateVersionServiceImpl implements TemplateVersionService {
             }
         }
         TemplateVersion version = new TemplateVersion(versionId, template.getId(), versionNo,
-                object == null ? null : object.getId(), validation, null, null, changeSummary, null);
+                object == null ? null : object.getId(), validation, null, null, changeSummary, null,
+                failureReason);
         txWriter.persistNewVersion(object, version, rules);
         return new TemplateVersionView(versionId, template.getId(), versionNo, validation, null,
                 changeSummary, version.getSourceObjectId(), rules.size(), failureReason);
@@ -181,7 +182,9 @@ public class TemplateVersionServiceImpl implements TemplateVersionService {
                 .map(version -> new TemplateVersionView(version.getId(), version.getTemplateId(),
                         version.getVersionNo(), version.getValidationStatus(), version.getPublishedAt(),
                         version.getChangeSummary(), version.getSourceObjectId(),
-                        version.getRuleCount() == null ? 0 : version.getRuleCount(), null))
+                        version.getRuleCount() == null ? 0 : version.getRuleCount(),
+                        // 1107 P2-2：INVALID 原因持久化后重开编辑页仍可解释
+                        version.getParseError()))
                 .toList();
     }
 

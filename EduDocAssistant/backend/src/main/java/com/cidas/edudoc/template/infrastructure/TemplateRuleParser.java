@@ -224,14 +224,16 @@ public class TemplateRuleParser {
         Map<String, Object> expect = new LinkedHashMap<>();
         if (sectPr.isSetPgMar()) {
             CTPageMar mar = sectPr.getPgMar();
-            putIfPresent(expect, "top", mar.getTop());
-            putIfPresent(expect, "bottom", mar.getBottom());
-            putIfPresent(expect, "left", mar.getLeft());
-            putIfPresent(expect, "right", mar.getRight());
+            putIfPresent(expect, "top", mar.getTop(), 0, 100);
+            putIfPresent(expect, "bottom", mar.getBottom(), 0, 100);
+            putIfPresent(expect, "left", mar.getLeft(), 0, 100);
+            putIfPresent(expect, "right", mar.getRight(), 0, 100);
         }
         if (sectPr.isSetPgSz()) {
-            putIfPresent(expect, "width", sectPr.getPgSz().getW());
-            putIfPresent(expect, "height", sectPr.getPgSz().getH());
+            // D-15 错题集契约一致：PDF 转换件页边距可为 0/纸型可越界——解析端与保存闸同值域，
+            // 不产出会被 RuleConfig 拒绝的规则（同「atLeast 缺值不产规则」先例）
+            putIfPresent(expect, "width", sectPr.getPgSz().getW(), 50, 1000);
+            putIfPresent(expect, "height", sectPr.getPgSz().getH(), 50, 1000);
         }
         if (!expect.isEmpty()) {
             expect.put("unit", "mm");
@@ -248,9 +250,10 @@ public class TemplateRuleParser {
         }
     }
 
-    private static void putIfPresent(Map<String, Object> into, String key, Object twips) {
+    private static void putIfPresent(Map<String, Object> into, String key, Object twips,
+                                     double exclusiveMin, double max) {
         Double mm = twipsToMm(twips);
-        if (mm != null) {
+        if (mm != null && mm > exclusiveMin && mm <= max) {
             into.put(key, mm);
         }
     }

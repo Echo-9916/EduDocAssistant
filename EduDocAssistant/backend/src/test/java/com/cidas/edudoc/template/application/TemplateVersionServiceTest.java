@@ -79,7 +79,7 @@ class TemplateVersionServiceTest {
     }
 
     private TemplateVersion version(String validation, String publishedAt) {
-        return new TemplateVersion(VER, TPL, 2, null, validation, null, publishedAt, null, null);
+        return new TemplateVersion(VER, TPL, 2, null, validation, null, publishedAt, null, null, null);
     }
 
     @Test
@@ -130,8 +130,11 @@ class TemplateVersionServiceTest {
         TemplateVersionView view = service.create(TPL, null, "bad.docx".getBytes(), "bad.docx");
 
         assertEquals("INVALID", view.validationStatus());
-        // 终审 Minor：解析失败原因经响应回显（表 3-23 无承载列，D-09 表单展示）
         assertNotNull(view.failureReason());
+        // 1107 P2-2：失败原因随行持久化（重开编辑页 listVersions 仍可解释 INVALID）
+        ArgumentCaptor<TemplateVersion> persisted = ArgumentCaptor.forClass(TemplateVersion.class);
+        verify(versionRepository).insert(persisted.capture());
+        assertNotNull(persisted.getValue().getParseError());
         verify(ruleRepository, never()).insertBatch(any());
     }
 
@@ -171,7 +174,7 @@ class TemplateVersionServiceTest {
         teacherPrincipal();
         when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("P")));
         when(versionRepository.listByTemplate(TPL)).thenReturn(List.of(
-                new TemplateVersion(VER, TPL, 2, null, "VALID", "T1", "2026-11-06T00:00:00", null, 7)));
+                new TemplateVersion(VER, TPL, 2, null, "VALID", "T1", "2026-11-06T00:00:00", null, 7, null)));
 
         var views = service.listVersions(TPL);
 
@@ -227,6 +230,24 @@ class TemplateVersionServiceTest {
                 () -> service.replaceRules(TPL, VER, List.of(
                         new RuleCommand("CAPTION", "FIGURE_CAPTION", "WARNING", "Y", "{\"expect\":{}}", 20))));
         assertEquals(40001, e.errorCode().code());
+    }
+
+    /** 1107 P2-1：空串 pattern、非法类型边距键、CODE 缺 style 均拒绝——不允许「可保存但无动作」配置。 */
+    @Test
+    void replaceRulesRejectsNoopOrWrongTypedConfigs() {
+        teacherPrincipal();
+        when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("D")));
+        when(versionRepository.findById(VER)).thenReturn(Optional.of(version("PENDING", null)));
+        String[][] bad = {
+            {"CAPTION", "FIGURE_CAPTION", "{\"expect\":{\"pattern\":\"\",\"perChapter\":false}}"},
+            {"MARGIN", "PAGE", "{\"expect\":{\"top\":\"bad\",\"left\":20}}"},
+            {"CODE", "CODE_BLOCK", "{\"expect\":{}}"},
+        };
+        for (String[] c : bad) {
+            var e = assertThrows(CidasBusinessException.class, () -> service.replaceRules(TPL, VER,
+                    List.of(new RuleCommand(c[0], c[1], "WARNING", "N", c[2], 20))));
+            assertEquals(40001, e.errorCode().code(), () -> "应拒绝 " + c[2]);
+        }
     }
 
     /** 复审 P2-4：CAPTION 规则 pattern 非法正则在保存阶段拒绝，不得标记 VALID 后静默失效。 */
@@ -292,7 +313,8 @@ class TemplateVersionServiceTest {
         teacherPrincipal();
         when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("D")));
         when(versionRepository.findById(VER)).thenReturn(Optional.of(
-                new TemplateVersion(VER, "F1B2C3D4E5F60708090A0B0C0D0E0F10", 1, null, "VALID", null, null, null, null)));
+                new TemplateVersion(VER, "F1B2C3D4E5F60708090A0B0C0D0E0F10", 1, null, "VALID",
+                        null, null, null, null, null)));
         var e = assertThrows(CidasBusinessException.class, () -> service.publish(TPL, VER));
         assertEquals(40401, e.errorCode().code());
     }

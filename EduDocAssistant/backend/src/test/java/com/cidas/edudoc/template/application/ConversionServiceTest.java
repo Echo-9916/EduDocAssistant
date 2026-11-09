@@ -151,4 +151,24 @@ class ConversionServiceTest {
         when(taskRepository.findByDocument(DOC_ID, "U1")).thenReturn(List.of());
         assertEquals(List.of(), service.listByDocument(DOC_ID));
     }
+
+    /** 1107 P2-7：历史列表的 SUCCEEDED 行同样携带签名下载 URL。 */
+    @Test
+    void listByDocumentSignsSucceededRows() {
+        owner();
+        ConversionTask done = new ConversionTask();
+        done.setId(TASK_ID);
+        done.setDocumentId(DOC_ID);
+        done.setStatus("SUCCEEDED");
+        done.setResultObjectId(RESULT_OBJ);
+        when(taskRepository.findByDocument(DOC_ID, "U1")).thenReturn(List.of(done));
+        when(ossObjectRepository.findById(RESULT_OBJ)).thenReturn(Optional.of(new OssObject(
+                RESULT_OBJ, "bucket", "cn-beijing", "edudoc/conversions/a.pdf", null, "etag", "hash",
+                50, "application/pdf", "NONE", "CONVERTED")));
+        when(ossStorageAdapter.presignGet("edudoc/conversions/a.pdf", 900L)).thenReturn("https://oss/signed2");
+
+        var views = service.listByDocument(DOC_ID);
+
+        assertEquals("https://oss/signed2", views.get(0).downloadUrl());
+    }
 }

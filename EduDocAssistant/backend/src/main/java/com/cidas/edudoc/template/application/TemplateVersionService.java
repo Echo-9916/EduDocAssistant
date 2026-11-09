@@ -27,7 +27,7 @@ public interface TemplateVersionService {
                        String ruleConfigJson, Integer ruleOrder) {
     }
 
-    /** failureReason：解析失败原因经响应回显（表 3-23 无承载列，D-09 表单展示）。 */
+    /** failureReason：解析失败原因，持久化于 parse_error 列（1107 P2-2 迁移），listVersions 同样返回。 */
     record TemplateVersionView(String id, String templateId, int versionNo, String validationStatus,
                                String publishedAt, String changeSummary, String sourceObjectId, int ruleCount,
                                String failureReason) {

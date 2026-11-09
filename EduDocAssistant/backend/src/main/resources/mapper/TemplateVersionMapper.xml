@@ -4,10 +4,10 @@
 
     <insert id="insert">
         INSERT INTO edudoc_template_version (id, template_id, version_no, source_object_id,
-            validation_status, change_summary)
+            validation_status, change_summary, parse_error)
         VALUES (HEXTORAW(#{version.id}), HEXTORAW(#{version.templateId}), #{version.versionNo},
             HEXTORAW(#{version.sourceObjectId, jdbcType=VARCHAR}), #{version.validationStatus},
-            #{version.changeSummary, jdbcType=VARCHAR})
+            #{version.changeSummary, jdbcType=VARCHAR}, #{version.parseError, jdbcType=VARCHAR})
     </insert>
 
     <sql id="versionColumns">
@@ -15,7 +15,7 @@
         RAWTOHEX(v.source_object_id) AS sourceObjectId, v.validation_status AS validationStatus,
         RAWTOHEX(v.published_by) AS publishedBy,
         TO_CHAR(v.published_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS publishedAt,
-        v.change_summary AS changeSummary
+        v.change_summary AS changeSummary, v.parse_error AS parseError
     </sql>
 
     <select id="selectById" resultType="com.cidas.edudoc.template.infrastructure.TemplateVersion">

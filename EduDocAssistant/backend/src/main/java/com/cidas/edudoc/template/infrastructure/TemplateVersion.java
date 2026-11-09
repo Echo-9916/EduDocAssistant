@@ -20,4 +20,6 @@ public class TemplateVersion {
     private String changeSummary;
     /** 行内规则数子查询（listVersions 用，终审 Minor 消 N+1；selectById 不查则为 null）。 */
     private Integer ruleCount;
+    /** 解析失败原因（1107 P2-2：INVALID 可解释，重开编辑页仍在；非 INVALID 为 null）。 */
+    private String parseError;
 }

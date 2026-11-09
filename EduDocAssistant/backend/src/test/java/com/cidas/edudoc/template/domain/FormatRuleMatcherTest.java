@@ -3,6 +3,7 @@ package com.cidas.edudoc.template.domain;
 import com.cidas.edudoc.template.domain.StyleSnapshot.LineSpacing;
 import com.cidas.edudoc.template.domain.StyleSnapshot.PageFacts;
 import com.cidas.edudoc.template.domain.StyleSnapshot.ParagraphFact;
+import com.cidas.edudoc.template.domain.StyleSnapshot.RunFact;
 import com.cidas.edudoc.template.infrastructure.FormatRule;
 import org.junit.jupiter.api.Test;
 
@@ -141,6 +142,51 @@ class FormatRuleMatcherTest {
         assertEquals(2, issues.size());
         assertTrue(issues.stream().anyMatch(i -> i.actualValue().contains("西文槽未声明")));
         assertTrue(issues.stream().anyMatch(i -> i.actualValue().contains("字号未声明")));
+    }
+
+    /** 1108 复审 P2-1 残余：CODE keepIndent 真正消费——缩进丢失逐段报，保留缩进不报。 */
+    @Test
+    void codeKeepIndentViolationsReported() {
+        ParagraphFact noIndent = new ParagraphFact(7, "CODE_BLOCK", "Consolas", null,
+                10.5, new LineSpacing("AUTO", 1.0), "int main() {}",
+                List.of(new RunFact(0, 13, "int main() {}", null, null, null)));
+        ParagraphFact indented = new ParagraphFact(9, "CODE_BLOCK", "Consolas", null,
+                10.5, new LineSpacing("AUTO", 1.0), "int main() {}",
+                List.of(new RunFact(0, 17, "    int main() {}", null, null, null)));
+        StyleSnapshot page = new StyleSnapshot(List.of(noIndent, indented),
+                new PageFacts(25.4, 25.4, 31.75, 25.4, 210.0, 297.0, true, true));
+        List<FormatRule> rules = List.of(rule("CODE", "CODE_BLOCK", "WARNING", "N",
+                "{\"expect\":{\"style\":\"Code\",\"keepIndent\":true}}", 30));
+
+        var issues = matcher.match(rules, page);
+
+        assertEquals(1, issues.size());
+        assertEquals("int main() {}", issues.get(0).actualValue());
+        assertTrue(issues.get(0).locationRef().contains("\"paragraphIndex\":7"));
+    }
+
+    /** 1107 P1-2：字体回退别名（根级 tolerance.aliases）命中即通过。 */
+    @Test
+    void fontAliasSatisfiesExpectation() {
+        StyleSnapshot snapshot = new StyleSnapshot(List.of(
+                new ParagraphFact(0, "HEADING_1", "SimHei", null, 16.0,
+                        new LineSpacing("AUTO", 1.5), "绪论")),
+                new PageFacts(25.4, 25.4, 31.75, 25.4, 210.0, 297.0, true, true));
+        List<FormatRule> rules = List.of(rule("FONT", "HEADING_1", "BLOCKER", "Y",
+                "{\"expect\":{\"family\":\"黑体\"},\"tolerance\":{\"aliases\":[\"SimHei\"]},"
+                        + "\"fix\":{\"family\":\"黑体\"}}", 10));
+        assertEquals(List.of(), matcher.match(rules, snapshot));
+    }
+
+    /** 1107 P1-2：根级自定义容差必须生效（0.2 时 12.4 vs 12 报问题；误读默认 0.5 则漏报）。 */
+    @Test
+    void rootTolerancePtIsConsumed() {
+        StyleSnapshot snapshot = new StyleSnapshot(List.of(
+                new ParagraphFact(0, "BODY", null, null, 12.4, new LineSpacing("AUTO", 1.0), "正文")),
+                new PageFacts(25.4, 25.4, 31.75, 25.4, 210.0, 297.0, true, true));
+        List<FormatRule> rules = List.of(rule("SIZE", "BODY", "WARNING", "Y",
+                "{\"expect\":{\"pt\":12},\"tolerance\":{\"pt\":0.2},\"fix\":{\"pt\":12}}", 11));
+        assertEquals(1, matcher.match(rules, snapshot).size());
     }
 
     /** 第三轮 P2-1：文档未声明 pgMar 时页边距不得静默通过（与缺 pgSz 同类缺陷补齐）。 */

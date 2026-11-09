@@ -53,7 +53,7 @@ public class FormatRuleMatcher {
                 case "HEADER_FOOTER" -> matchHeaderFooter(rule, snapshot.page(), issues);
                 case "CAPTION" -> matchCaption(rule, config, snapshot, issues);
                 case "REFERENCE" -> matchReference(rule, snapshot, issues);
-                case "CODE" -> matchCode(rule, snapshot, issues);
+                case "CODE" -> matchCode(rule, config, snapshot, issues);
                 default -> {
                     // 未知类型在配置非法分支已兜底，这里不动作
                 }
@@ -65,15 +65,16 @@ public class FormatRuleMatcher {
     private void matchFont(FormatRule rule, RuleConfig config, StyleSnapshot snapshot, List<IssueDraft> out) {
         String expect = config.family();
         String expectEastAsia = config.eastAsia();
+        // 1107 P1-2：消费根级 tolerance.aliases——字体回退链次名（如 SimHei）视为符合主名期望
+        List<String> aliases = config.aliases();
         for (ParagraphFact p : snapshot.withSelector(rule.getTargetSelector())) {
             if (expect != null) {
-                violation(rule, p, "family", expect, out,
-                        r -> p.familyOf(r), RunFact::family, "将该段落西文字体设置为「" + expect + "」");
+                violation(rule, p, "family", expect, aliases, out,
+                        p::familyOf, "将该段落西文字体设置为「" + expect + "」");
             }
             if (expectEastAsia != null) {
-                violation(rule, p, "eastAsia", expectEastAsia, out,
-                        r -> p.eastAsiaOf(r), RunFact::eastAsia,
-                        "将该段落中文字体设置为「" + expectEastAsia + "」");
+                violation(rule, p, "eastAsia", expectEastAsia, aliases, out,
+                        p::eastAsiaOf, "将该段落中文字体设置为「" + expectEastAsia + "」");
             }
         }
     }
@@ -83,9 +84,8 @@ public class FormatRuleMatcher {
      * 「未声明」与具体错误值分别成条，location 取首个违规 run 的字符区间（P3-1）。
      */
     private void violation(FormatRule rule, ParagraphFact p, String slot, String expect,
-                           List<IssueDraft> out,
+                           List<String> aliases, List<IssueDraft> out,
                            java.util.function.Function<RunFact, String> effective,
-                           java.util.function.Function<RunFact, String> explicit,
                            String guidance) {
         Set<String> offenders = new LinkedHashSet<>();
         RunFact first = null;
@@ -94,12 +94,14 @@ public class FormatRuleMatcher {
                 continue;
             }
             String value = effective.apply(run);
+            boolean ok = value != null && (expect.equalsIgnoreCase(value)
+                    || aliases.stream().anyMatch(a -> a.equalsIgnoreCase(value)));
             if (value == null) {
                 offenders.add(slot.equals("eastAsia") ? "中文槽未声明" : "西文槽未声明");
-            } else if (!expect.equalsIgnoreCase(value)) {
+            } else if (!ok) {
                 offenders.add(value);
             }
-            if (first == null && (value == null || !expect.equalsIgnoreCase(value))) {
+            if (first == null && !ok) {
                 first = run;
             }
         }
@@ -249,11 +251,43 @@ public class FormatRuleMatcher {
         }
     }
 
-    private void matchCode(FormatRule rule, StyleSnapshot snapshot, List<IssueDraft> out) {
-        if (snapshot.withSelector("CODE_BLOCK").isEmpty()) {
+    /**
+     * CODE 规则消费 style+keepIndent（1108 复审 P2-1 残余）：
+     * style 语义已由提取端样式分类承载（CODE_BLOCK selector 即按代码样式归类，样式 id 跨文档不可比，
+     * 文档已注释）；keepIndent=true 时逐代码段检查首 run 原文是否保留行首缩进，
+     * 缩进丢失逐段报告（run 明细缺失的段落证据不足不报，宁缺勿误）。
+     */
+    private void matchCode(FormatRule rule, RuleConfig config, StyleSnapshot snapshot, List<IssueDraft> out) {
+        List<ParagraphFact> codes = snapshot.withSelector("CODE_BLOCK");
+        if (codes.isEmpty()) {
             out.add(new IssueDraft(rule.getId(), "CODE", "ELEMENT", "{}",
                     "存在模板定义的代码块样式段落", "缺失", rule.getSeverity(), rule.getAutoFixable(),
                     "代码段落请应用模板定义的代码样式（保留缩进）"));
+            return;
+        }
+        if (!config.keepIndent()) {
+            return;
+        }
+        for (ParagraphFact p : codes) {
+            if (p.runs() == null || p.runs().isEmpty()) {
+                continue; // 无 run 原文证据，不据此报
+            }
+            RunFact firstContent = null;
+            for (RunFact run : p.runs()) {
+                if (run.text() != null && !run.text().isBlank()) {
+                    firstContent = run;
+                    break;
+                }
+            }
+            if (firstContent == null) {
+                continue;
+            }
+            String head = firstContent.text();
+            if (!(head.startsWith(" ") || head.startsWith("\t"))) {
+                out.add(new IssueDraft(rule.getId(), "CODE", "PARAGRAPH", location(p, firstContent),
+                        "代码段保留行首缩进", head.strip(),
+                        rule.getSeverity(), "N", "重新粘贴代码并保留缩进（或应用代码样式段落缩进）"));
+            }
         }
     }
 

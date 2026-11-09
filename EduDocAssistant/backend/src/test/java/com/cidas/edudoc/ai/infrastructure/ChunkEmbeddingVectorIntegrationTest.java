@@ -36,12 +36,12 @@ class ChunkEmbeddingVectorIntegrationTest {
     private static final String USER = System.getenv("EDUDOC_DB_USERNAME");
     private static final String PASS = System.getenv("EDUDOC_DB_PASSWORD");
 
-    private static final String USER_ID = "BB000000000000000000000000000E1";
-    private static final String OBJECT_ID = "BB000000000000000000000000000E2";
-    private static final String DOC_ID = "BB000000000000000000000000000E3";
-    private static final String VERSION_ID = "BB000000000000000000000000000E4";
-    private static final String CHUNK_ID = "BB000000000000000000000000000E5";
-    private static final String PROFILE_ID = "BB000000000000000000000000000E6";
+    private static final String USER_ID = "BB0000000000000000000000000000E1";
+    private static final String OBJECT_ID = "BB0000000000000000000000000000E2";
+    private static final String DOC_ID = "BB0000000000000000000000000000E3";
+    private static final String VERSION_ID = "BB0000000000000000000000000000E4";
+    private static final String CHUNK_ID = "BB0000000000000000000000000000E5";
+    private static final String PROFILE_ID = "BB0000000000000000000000000000E6";
     private static final String PROFILE_CODE = "EMB_IT_TEST";
 
     private static Connection setupConn;
@@ -75,6 +75,8 @@ class ChunkEmbeddingVectorIntegrationTest {
             System.err.println("[IT-SKIP] ChunkEmbeddingVectorIntegrationTest Oracle 不可达: " + e.getMessage());
             Assumptions.abort("Oracle 不可达: " + e.getMessage());
         }
+        // seedChain/cleanup 走显式 commit：Oracle 驱动在 autoCommit 下 commit 抛 ORA-17273，须先关闭自动提交
+        setupConn.setAutoCommit(false);
         Configuration configuration = new Configuration();
         configuration.setEnvironment(new Environment("embed-it",
                 new JdbcTransactionFactory(),
@@ -94,14 +96,14 @@ class ChunkEmbeddingVectorIntegrationTest {
             st.execute("INSERT INTO edudoc_user (id, username, display_name, auth_source, account_status) "
                     + "VALUES (HEXTORAW('" + USER_ID + "'), 'embed_it_user', '向量集成', 'LOCAL', 'A')");
             st.execute("INSERT INTO edudoc_oss_object (id, bucket_name, region, object_key, size_bytes, "
-                    + "mime_type, encryption_type, object_role) VALUES (HEXTORAW('" + OBJECT_ID + "'), "
-                    + "'b', 'r', 'k', 1, 'application/pdf', 'SSE-OSS', 'ORIGINAL')");
+                    + "mime_type, encryption_type, object_role, content_hash) VALUES (HEXTORAW('" + OBJECT_ID + "'), "
+                    + "'b', 'r', 'k', 1, 'application/pdf', 'SSE-OSS', 'ORIGINAL', 'h')");
             st.execute("INSERT INTO edudoc_document (id, owner_id, title, doc_type, status) "
                     + "VALUES (HEXTORAW('" + DOC_ID + "'), HEXTORAW('" + USER_ID + "'), "
-                    + "'it', 'PDF', 'READY')");
+                    + "'it', 'REPORT', 'READY')");
             st.execute("INSERT INTO edudoc_document_version (id, document_id, version_no, version_type, "
-                    + "source_object_id, content_hash, version_status) VALUES (HEXTORAW('" + VERSION_ID + "'), "
-                    + "HEXTORAW('" + DOC_ID + "'), 1, 'ORIGINAL', HEXTORAW('" + OBJECT_ID + "'), 'h', 'CURRENT')");
+                    + "source_object_id, editor_id, content_hash, version_status) VALUES (HEXTORAW('" + VERSION_ID + "'), "
+                    + "HEXTORAW('" + DOC_ID + "'), 1, 'UPLOAD', HEXTORAW('" + OBJECT_ID + "'), HEXTORAW('" + USER_ID + "'), 'h', 'A')");
             st.execute("INSERT INTO edudoc_document_chunk (id, document_version_id, chunk_no, char_start, "
                     + "char_end, content_text, token_count, content_hash, index_status) VALUES (HEXTORAW('"
                     + CHUNK_ID + "'), HEXTORAW('" + VERSION_ID + "'), 1, 0, 4, '文本', 2, 'h1', 'PENDING')");

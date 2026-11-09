@@ -91,13 +91,7 @@ public class ConversionServiceImpl implements ConversionService {
         if (!task.getRequestedBy().equalsIgnoreCase(AuthContext.require().userId())) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "转换任务不存在");
         }
-        String downloadUrl = null;
-        if ("SUCCEEDED".equals(task.getStatus()) && task.getResultObjectId() != null) {
-            downloadUrl = ossObjectRepository.findById(task.getResultObjectId())
-                    .map(object -> ossStorageAdapter.presignGet(object.getObjectKey(), 900L))
-                    .orElse(null);
-        }
-        return toView(task, downloadUrl);
+        return toView(task, signedUrlIfSucceeded(task));
     }
 
     @Override
@@ -106,9 +100,19 @@ public class ConversionServiceImpl implements ConversionService {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文档 ID 格式不合法");
         }
         // 记录列表按「发起人=当前用户」过滤即可自证可见性，不再重复文档归属查询
+        // 1107 P2-7：SUCCEEDED 记录逐行签名（历史页可直接下载，不再显示"链接已过期"）
         return taskRepository.findByDocument(documentId, AuthContext.require().userId()).stream()
-                .map(task -> toView(task, null))
+                .map(task -> toView(task, signedUrlIfSucceeded(task)))
                 .toList();
+    }
+
+    private String signedUrlIfSucceeded(ConversionTask task) {
+        if (!"SUCCEEDED".equals(task.getStatus()) || task.getResultObjectId() == null) {
+            return null;
+        }
+        return ossObjectRepository.findById(task.getResultObjectId())
+                .map(object -> ossStorageAdapter.presignGet(object.getObjectKey(), 900L))
+                .orElse(null);
     }
 
     private Document loadOwnedDocument(String documentId) {

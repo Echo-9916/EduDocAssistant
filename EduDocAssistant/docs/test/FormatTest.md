@@ -68,3 +68,11 @@
 | X-j1（PDF 无课程模板发起校验）| **40901 创建闸拒绝**：「文档不是 Word(.docx)格式, 且课程尚未发布模板, 无法发起格式校验」；任务内 ERROR 分支（有模板的 PDF 件）由 `FormatCheckWorkerTest` 覆盖 |
 
 e2e 过程修正的脚本侧口径（均为正确契约的显式化，非产品缺陷）：成功码是 `code:200` 非 0；写接口一律携带 `Idempotency-Key`（含 multipart）；修复后重查必须复用 `FixView.recheckId`，二次手工 POST 会被 `selectActive` 三元组互斥拒绝（40901，设计内）。
+
+### 验收决议增补实测（2026-11-09 12:4x，backend 重启后）
+
+- 决议① `POST /templates/{id}/versions/preview`：Web开发件返回 `[FONT,SIZE,MARGIN]` 3 规则；同模板 `GET /versions` 仍 0 版本（**确认不落库**）；`t.pdf` 反例 40001「仅支持 .docx」。
+- 决议④ `GET /documents/{id}/versions`：上午 e2e 修复件 4 行 `v4 EDIT current=True / v3 / v2 / v1 UPLOAD`（真库 selectListByDocument 降序），每行 presigned 900s，下载头 `PK\x03\x04`；非 owner 40401。
+- 格式视图演进（两轮用户反馈）：v1 docx-preview 近似渲染（效果不佳）→ v2 iframe 加载 OSS 签名链（**实测默认域强制 attachment，`response-content-disposition=inline` 覆盖参数被云端策略忽略→弹下载不显示**）→ **v3 后端字节流+blob 内嵌（最终方案）**：`GET /conversions/{id}/preview`（PDF 产物）与 `GET /documents/{id}/versions/{vid}/file`（原件），带 Bearer 鉴权、20MB 护栏；前端 `getBlob→createObjectURL→iframe`，inline 显示与 CORS/域策略彻底解耦。**docx-preview 已移除**。HTTP 实测：preview 200 `Content-Disposition: inline` 魔数 `%PDF`；version-file 200 `%PDF`；匿名 401。旧产物按 `finishedAt≥doc.updateTime` 复用，修复/编辑后自动重转。FormatPane 5 例、后端 previewPdf 2 例+versionContent 2 例。
+- fork 另存新版本 HTTP 实测（2026-11-09 16:1x）：v1 发布后 fork→v2 `VALID` 未发布、changeSummary「基于 v1 编辑另存」、**源对象引用沿用不复制**；v2 规则 `SIZE expect{pt:14} tolerance{pt:0.5} fix{pt:14}`（副本改动生效）；非法规则（pt=0）→ 40001 保存闸拦截且**版本数不变**；v1 发布态全程不动（UT-13）。
+- 基线：mvn **408/408**、vitest **181/181**、build ✓、pytest 33/33。

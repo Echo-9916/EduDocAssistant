@@ -31,6 +31,7 @@ import {
   createFormatCheck,
   fixFormatIssues,
   getFormatCheck,
+  loadCheckId,
   saveCheckId,
 } from '../../api/format'
 import type { CheckView, IssueView } from '../../api/format'
@@ -71,17 +72,28 @@ describe('FormatPanel（D-11/D-12）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    // clearAllMocks 不重置 mockReturnValue——恢复用例注入的断点必须每例归零，防跨例泄漏
+    vi.mocked(loadCheckId).mockReturnValue(null)
     vi.mocked(createFormatCheck).mockResolvedValue(check({ status: 'QUEUED' }))
     vi.mocked(getFormatCheck).mockResolvedValue(check())
   })
 
-  it('发起校验：入队→断点保存→轮询→终态清断点', async () => {
+  it('发起校验：入队→断点保存→轮询→终态保留断点（验收 M-07-2 修正）', async () => {
     renderPanel()
     fireEvent.click(await screen.findByRole('button', { name: /开始校验/ }))
     await waitFor(() => expect(createFormatCheck).toHaveBeenCalledWith('D1'))
     expect(saveCheckId).toHaveBeenCalledWith('D1', 'C1')
     await waitFor(() => expect(getFormatCheck).toHaveBeenCalledWith('C1'))
-    await waitFor(() => expect(clearCheckId).toHaveBeenCalledWith('D1'))
+    // 终态不再清断点：刷新后可恢复上次结果；仅接口失败时才清
+    await waitFor(() => expect(clearCheckId).not.toHaveBeenCalled())
+    expect(saveCheckId).toHaveBeenLastCalledWith('D1', 'C1')
+  })
+
+  it('刷新恢复：mount 时按 localStorage 断点续查终态', async () => {
+    vi.mocked(loadCheckId).mockReturnValue('C7')
+    renderPanel()
+    await waitFor(() => expect(getFormatCheck).toHaveBeenCalledWith('C7'))
+    expect(await screen.findByText(/校验通过/)).toBeTruthy()
   })
 
   it('FAILED 结论横幅显示阻断计数', async () => {

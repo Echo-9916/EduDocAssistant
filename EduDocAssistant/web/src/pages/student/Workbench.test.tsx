@@ -22,6 +22,6 @@ describe('学生工作台快捷入口（1107 P2-4）', () => {
     const cards = screen.getAllByText('按模板新建')
     const card = cards[0].closest('.ant-card')!
     fireEvent.click(card.querySelector('button')!)
-    expect(navigateMock).toHaveBeenCalledWith('format')
+    expect(navigateMock).toHaveBeenCalledWith('/student/format')
   })
 })

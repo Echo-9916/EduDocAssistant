@@ -1,7 +1,8 @@
 // C-10：文档预览页（D2 文本阅读视图）——左正文块流+右四面板 Tabs；引用回跳=滚动至块并 <mark> 高亮；
 // 块勾选为润色选择面；文档 PARSING 时 2s 轮询直至 READY（复用文档态停步逻辑）。
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Card, Checkbox, Spin, Tabs, Tag } from 'antd'
+import { Alert, Card, Checkbox, Segmented, Spin, Tabs, Tag } from 'antd'
+import FormatPane from './view/FormatPane'
 import { useLocation, useParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/http'
 import { getDocument } from '../api/documents'
@@ -59,6 +60,8 @@ export default function DocumentView() {
   const { docId } = useParams()
   const location = useLocation()
   const { preview, doc, error, loading, reload } = usePreview(docId)
+  // 格式视图开关（docx-preview 版式还原 / PDF iframe；文本视图承载 AI 与问题定位）
+  const [viewMode, setViewMode] = useState<'text' | 'format'>('text')
   const [highlight, setHighlight] = useState<Highlight | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const { user } = useAuth()
@@ -172,6 +175,19 @@ export default function DocumentView() {
         }
         size="small"
       >
+        <Segmented
+          value={viewMode}
+          onChange={(v) => setViewMode(v as 'text' | 'format')}
+          options={[
+            { label: '文本视图（AI/定位）', value: 'text' },
+            { label: '格式视图（版式）', value: 'format' },
+          ]}
+          style={{ marginBottom: 8 }}
+        />
+        {viewMode === 'format' ? (
+          <FormatPane documentId={docId!} mimeType={doc?.mimeType} documentUpdateTime={doc?.updateTime} />
+        ) : (
+        <>
         {indexing && (
           <Alert style={{ marginBottom: 8 }} type="info" showIcon
             message="新版索引中：预览展示最新文本，摘要/要点/问答在索引完成后即可用（R3 口径）" />
@@ -179,11 +195,11 @@ export default function DocumentView() {
         <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '4px 8px' }}>
           {blocks.map((block, i) => (
             <div key={block.chunkId}>
-              {blocks[i - 1]?.pageNo !== block.pageNo && (
-                // 1108 P2-5/P2-8：页分隔标记带锚点 id，供定位退化「跳至该页标记」
-                <div id={block.pageNo != null ? `page-anchor-${block.pageNo}` : undefined}
+              {/* 验收 M-05：无页号的块流不再渲染「第 ? 页」占位分隔线；有页号才带锚点 */}
+              {block.pageNo != null && blocks[i - 1]?.pageNo !== block.pageNo && (
+                <div id={`page-anchor-${block.pageNo}`}
                   style={{ textAlign: 'center', color: '#999', margin: '8px 0' }}>
-                  — 第 {block.pageNo ?? '?'} 页 —
+                  — 第 {block.pageNo} 页 —
                 </div>
               )}
               <div
@@ -217,6 +233,8 @@ export default function DocumentView() {
           ))}
           {blocks.length === 0 && <Alert type="warning" showIcon message="暂无分块，请先解析文档" />}
         </div>
+        </>
+        )}
       </Card>
       <Card size="small" title="智能处理">
         <Tabs size="small" items={tabItems} destroyOnHidden />

@@ -61,6 +61,27 @@ public class DocumentController {
         return ApiResponse.ok(documentQueryService.detail(documentId));
     }
 
+    /** 验收决议④：版本历史（owner 可见；版本号降序 + 每版本源文件短期签名下载）。 */
+    @GetMapping("/{documentId}/versions")
+    @RequirePermission(PermissionCode.DOCUMENT_READ)
+    public ApiResponse<java.util.List<com.cidas.edudoc.document.application.DocumentQueryService.VersionView>>
+            versions(@PathVariable("documentId") String documentId) {
+        return ApiResponse.ok(documentQueryService.listVersions(documentId));
+    }
+
+    /** 格式视图字节流：某版本源文件（前端 fetch→blob 内嵌；owner 校验同 detail）。 */
+    @GetMapping("/{documentId}/versions/{versionId}/file")
+    @RequirePermission(PermissionCode.DOCUMENT_READ)
+    public org.springframework.http.ResponseEntity<byte[]> versionFile(
+            @PathVariable("documentId") String documentId,
+            @PathVariable("versionId") String versionId) {
+        var content = documentQueryService.versionContent(documentId, versionId);
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(content.contentType()))
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .body(content.content());
+    }
+
     @DeleteMapping("/{documentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @RequirePermission(PermissionCode.DOCUMENT_DELETE)

@@ -75,6 +75,20 @@ export const createVersion = (templateId: string, file: File, changeSummary?: st
   )
 }
 
+/** 验收决议①：上传预览——解析规则草稿返回，不落版本；确认后走 createVersion */
+export const previewTemplateRules = (templateId: string, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return post<RuleView[]>(`/templates/${templateId}/versions/preview`, form)
+}
+
+/** 验收反馈：基于既有版本（含已发布）编辑另存新版本，rules 全量替换语义 */
+export const forkTemplateVersion = (templateId: string, body: {
+  baseVersionId: string
+  rules: Omit<RuleView, 'id'>[]
+  changeSummary?: string
+}) => post<TemplateVersionView>(`/templates/${templateId}/versions/fork`, body)
+
 export const listRules = (templateId: string, versionId: string) =>
   get<RuleView[]>(`/templates/${templateId}/versions/${versionId}/rules`)
 

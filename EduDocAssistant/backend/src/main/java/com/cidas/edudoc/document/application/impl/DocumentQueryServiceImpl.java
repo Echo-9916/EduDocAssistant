@@ -7,11 +7,16 @@ import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.document.application.DocumentQueryService;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
+import com.cidas.edudoc.document.infrastructure.DocumentVersionRepository;
+import com.cidas.edudoc.document.infrastructure.DocumentVersionRow;
 import com.cidas.edudoc.document.infrastructure.DocumentViewRow;
+import com.cidas.edudoc.document.infrastructure.OssObjectRepository;
+import com.cidas.edudoc.infrastructure.oss.OssStorageAdapter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -20,7 +25,12 @@ public class DocumentQueryServiceImpl implements DocumentQueryService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
 
+    private static final long VERSION_URL_TTL_SECONDS = 900;
+
     private final DocumentRepository documentRepository;
+    private final DocumentVersionRepository versionRepository;
+    private final OssObjectRepository ossObjectRepository;
+    private final OssStorageAdapter ossStorageAdapter;
 
     @Override
     public PageResult<Summary> list(ListQuery query) {
@@ -61,6 +71,60 @@ public class DocumentQueryServiceImpl implements DocumentQueryService {
                 row.getVersionNo(), row.getCurrentVersionId(), row.getContentHash(),
                 row.getChunkCount(), row.getCreateTime(), row.getUpdateTime(),
                 row.getDeletedAt(), row.getPurgeAt());
+    }
+
+    @Override
+    public List<VersionView> listVersions(String documentId) {
+        if (!Ids.isHex16(documentId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文档 ID 格式不合法");
+        }
+        String ownerId = AuthContext.require().userId();
+        DocumentViewRow row = documentRepository.detail(documentId)
+                .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在"));
+        if (!ownerId.equalsIgnoreCase(row.getOwnerId())) {
+            throw new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在");
+        }
+        return versionRepository.listByDocument(documentId).stream()
+                .map(v -> new VersionView(v.getVersionId(), v.getVersionNo(), v.getVersionType(),
+                        v.getCreateTime(), v.getChangeSummary(), presignSource(v.getSourceObjectId(), false),
+                        presignSource(v.getSourceObjectId(), true),
+                        v.getVersionId().equalsIgnoreCase(row.getCurrentVersionId())))
+                .toList();
+    }
+
+    @Override
+    public VersionContent versionContent(String documentId, String versionId) {
+        if (!Ids.isHex16(documentId) || !Ids.isHex16(versionId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "ID 格式不合法");
+        }
+        String ownerId = AuthContext.require().userId();
+        DocumentViewRow row = documentRepository.detail(documentId)
+                .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在"));
+        if (!ownerId.equalsIgnoreCase(row.getOwnerId())) {
+            throw new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在");
+        }
+        com.cidas.edudoc.document.infrastructure.DocumentVersion version =
+                versionRepository.findById(versionId)
+                        .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "版本不存在"));
+        if (!version.getDocumentId().equalsIgnoreCase(documentId)) {
+            throw new CidasBusinessException(ErrorCode.NOT_FOUND, "版本不存在");
+        }
+        byte[] bytes = ossObjectRepository.findById(version.getSourceObjectId())
+                .map(obj -> ossStorageAdapter.readBytes(obj.getObjectKey(), 20L * 1024 * 1024))
+                .orElseThrow(() -> new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                        "版本对象缺失，请重新上传", true, Map.of()));
+        return new VersionContent(bytes, row.getMimeType() == null ? "application/octet-stream" : row.getMimeType());
+    }
+
+    private String presignSource(String sourceObjectIdHex, boolean inline) {
+        if (sourceObjectIdHex == null) {
+            return null;
+        }
+        return ossObjectRepository.findById(sourceObjectIdHex)
+                .map(obj -> inline
+                        ? ossStorageAdapter.presignGetInline(obj.getObjectKey(), VERSION_URL_TTL_SECONDS)
+                        : ossStorageAdapter.presignGet(obj.getObjectKey(), VERSION_URL_TTL_SECONDS))
+                .orElse(null);
     }
 
     private static int clampPageSize(Integer pageSize) {

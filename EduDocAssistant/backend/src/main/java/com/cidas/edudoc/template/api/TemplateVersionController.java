@@ -49,6 +49,33 @@ public class TemplateVersionController {
         return ApiResponse.ok(templateVersionService.create(templateId, changeSummary, bytes, fileName));
     }
 
+    /** 验收反馈：编辑既有版本另存为新版本（body 带基版本、全量规则与可选说明）。 */
+    @PostMapping("/fork")
+    @RequirePermission(PermissionCode.TEMPLATE_MANAGE)
+    public ApiResponse<TemplateVersionService.TemplateVersionView> fork(
+            @PathVariable("templateId") String templateId,
+            @RequestBody ForkRequest request) {
+        return ApiResponse.ok(templateVersionService.fork(templateId, request.baseVersionId(),
+                request.rules(), request.changeSummary()));
+    }
+
+    /** 规则另存请求：rules 为全量替换语义（走与保存闸同一套校验）。 */
+    public record ForkRequest(String baseVersionId,
+                              List<com.cidas.edudoc.template.application.TemplateVersionService.RuleCommand> rules,
+                              String changeSummary) {
+    }
+
+    /** 验收决议①：上传预览——解析规则草稿即返即走，不产生版本；确认后再调 POST /versions。 */
+    @PostMapping("/preview")
+    @RequirePermission(PermissionCode.TEMPLATE_MANAGE)
+    public ApiResponse<List<TemplateVersionService.RuleView>> previewRules(
+            @PathVariable("templateId") String templateId,
+            @RequestPart(value = "file", required = false) MultipartFile file) throws IOException {
+        byte[] bytes = file == null || file.isEmpty() ? null : file.getBytes();
+        String fileName = file == null ? null : file.getOriginalFilename();
+        return ApiResponse.ok(templateVersionService.previewRules(templateId, bytes, fileName));
+    }
+
     @GetMapping("/{versionId}/rules")
     @RequirePermission(PermissionCode.TEMPLATE_MANAGE)
     public ApiResponse<List<TemplateVersionService.RuleView>> listRules(

@@ -1,6 +1,6 @@
 // B-09：文档接入 API（契约=后端 DocumentController/UploadController/CourseController，
 // 见 docs/test/DocumentTest.md 与 apifox/document-access.postman_collection.json）
-import { del, get, post } from './http'
+import { del, get, getBlob, post } from './http'
 import type { DocStatusValue, DocTypeValue, PageResult } from './types'
 
 export interface CourseView {
@@ -84,3 +84,22 @@ export const restoreDocument = (id: string) => post<void>(`/documents/${id}/rest
 
 export const reparseDocument = (id: string, versionId?: string) =>
   post<{ taskId: string }>(`/documents/${id}/parse`, versionId ? { versionId } : {})
+
+/** 验收决议④：文档版本历史行（版本号降序；current=文档当前版本；downloadUrl 900s 短期签名） */
+export interface DocumentVersionRow {
+  versionId: string
+  versionNo: number
+  versionType: 'UPLOAD' | 'EDIT' | 'COLLABORATION' | 'RESTORE' | 'SUBMISSION'
+  createTime: string
+  changeSummary: string | null
+  downloadUrl: string | null
+  previewUrl?: string | null
+  current: boolean
+}
+
+export const listDocumentVersions = (id: string) =>
+  get<DocumentVersionRow[]>(`/documents/${id}/versions`)
+
+/** 格式视图字节流：某版本源文件（PDF 原件内嵌显示用） */
+export const fetchVersionFile = (id: string, versionId: string) =>
+  getBlob(`/documents/${id}/versions/${versionId}/file`)

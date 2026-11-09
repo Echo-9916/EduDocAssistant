@@ -108,6 +108,26 @@ public class TemplateVersionServiceImpl implements TemplateVersionService {
                 changeSummary, version.getSourceObjectId(), rules.size(), failureReason);
     }
 
+    /** 验收决议①：仅解析返回草稿（id 空=未落库）；不上传对象、不建版本、不写审计。 */
+    @Override
+    public List<RuleView> previewRules(String templateId, byte[] fileBytes, String fileName) {
+        requireManageable(templateId);
+        if (fileBytes == null || fileBytes.length == 0) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "必须上传 .docx 模板文件");
+        }
+        if (fileName == null || !fileName.toLowerCase().endsWith(".docx")) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "模板文件仅支持 .docx");
+        }
+        try {
+            return ruleParser.parse(fileBytes).stream()
+                    .map(d -> new RuleView("", d.ruleType(), d.targetSelector(), d.severity(),
+                            d.autoFixable(), d.ruleConfigJson(), d.ruleOrder()))
+                    .toList();
+        } catch (TemplateParseException e) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "模板解析失败：" + e.getMessage());
+        }
+    }
+
     @Override
     public void replaceRules(String templateId, String versionId, List<RuleCommand> commands) {
         Template template = requireManageable(templateId);
@@ -115,7 +135,35 @@ public class TemplateVersionServiceImpl implements TemplateVersionService {
         if (version.getPublishedAt() != null) {
             throw new CidasBusinessException(ErrorCode.CONFLICT, "已发布版本不可修改，请新建版本");
         }
-        List<FormatRule> rules = commands.stream().map(command -> {
+        List<FormatRule> rules = buildRules(version.getId(), commands);
+        txWriter.replaceRules(version.getId(), template.getId(), rules,
+                rules.isEmpty() ? "PENDING" : "VALID");
+    }
+
+    /** 验收反馈：在已发布版本上编辑→另存新版本（复用基版本源对象引用，规则走同一保存闸）。 */
+    @Override
+    public TemplateVersionView fork(String templateId, String baseVersionId,
+                                    List<RuleCommand> commands, String changeSummary) {
+        Template template = requireManageable(templateId);
+        TemplateVersion base = loadOwnedVersion(template, baseVersionId);
+        int versionNo = versionRepository.maxVersionNo(template.getId()) + 1;
+        String versionId = Ids.hex16();
+        List<FormatRule> rules = buildRules(versionId, commands);
+        TemplateVersion version = new TemplateVersion(versionId, template.getId(), versionNo,
+                base.getSourceObjectId(), rules.isEmpty() ? "PENDING" : "VALID", null, null,
+                changeSummary == null || changeSummary.isBlank()
+                        ? "基于 v" + base.getVersionNo() + " 编辑另存" : changeSummary,
+                null, null);
+        // 不新建对象行：source_object_id 直接沿用基版本原件（可追溯，零复制）
+        txWriter.persistNewVersion(null, version, rules);
+        return new TemplateVersionView(versionId, template.getId(), versionNo,
+                version.getValidationStatus(), null, version.getChangeSummary(),
+                version.getSourceObjectId(), rules.size(), null);
+    }
+
+    /** 规则命令 → 实体的完整校验映射（replaceRules 与 fork 共用，保存闸单点）。 */
+    private List<FormatRule> buildRules(String versionId, List<RuleCommand> commands) {
+        return commands.stream().map(command -> {
             if (!RULE_TYPES.contains(command.ruleType())) {
                 throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "规则类型不合法：" + command.ruleType());
             }
@@ -153,12 +201,10 @@ public class TemplateVersionServiceImpl implements TemplateVersionService {
             } catch (IllegalArgumentException invalid) {
                 throw new CidasBusinessException(ErrorCode.BAD_REQUEST, invalid.getMessage());
             }
-            return new FormatRule(Ids.hex16(), version.getId(), command.ruleType(),
+            return new FormatRule(Ids.hex16(), versionId, command.ruleType(),
                     command.targetSelector().trim(), command.severity(), command.autoFixable(),
                     command.ruleConfigJson(), command.ruleOrder() == null ? 0 : command.ruleOrder());
         }).toList();
-        txWriter.replaceRules(version.getId(), template.getId(), rules,
-                rules.isEmpty() ? "PENDING" : "VALID");
     }
 
     @Override

@@ -171,4 +171,39 @@ class ConversionServiceTest {
 
         assertEquals("https://oss/signed2", views.get(0).downloadUrl());
     }
+
+    /** 格式视图 v3：SUCCEEDED 产物字节流预览（blob 方案的后端半边）。 */
+    @Test
+    void previewPdfStreamsSucceededArtifact() {
+        owner();
+        ConversionTask task = new ConversionTask();
+        task.setId(TASK_ID);
+        task.setDocumentId(DOC_ID);
+        task.setRequestedBy("U1");
+        task.setStatus("SUCCEEDED");
+        task.setResultObjectId(RESULT_OBJ);
+        when(taskRepository.findById(TASK_ID)).thenReturn(Optional.of(task));
+        when(ossObjectRepository.findById(RESULT_OBJ)).thenReturn(Optional.of(new OssObject(
+                RESULT_OBJ, "bucket", "cn-beijing", "edudoc/conversions/a.pdf", null, "etag", "hash", 50,
+                "application/pdf", "NONE", "CONVERTED")));
+        when(ossStorageAdapter.readBytes("edudoc/conversions/a.pdf", 20L * 1024 * 1024))
+                .thenReturn(new byte[]{'%', 'P', 'D', 'F'});
+
+        assertEquals("%PDF", new String(service.previewPdf(TASK_ID), java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void previewPdfRejectsTaskWithoutArtifact() {
+        owner();
+        ConversionTask task = new ConversionTask();
+        task.setId(TASK_ID);
+        task.setDocumentId(DOC_ID);
+        task.setRequestedBy("U1");
+        task.setStatus("RUNNING");
+        when(taskRepository.findById(TASK_ID)).thenReturn(Optional.of(task));
+
+        var e = assertThrows(com.cidas.edudoc.common.api.CidasBusinessException.class,
+                () -> service.previewPdf(TASK_ID));
+        assertEquals(40001, e.errorCode().code());
+    }
 }

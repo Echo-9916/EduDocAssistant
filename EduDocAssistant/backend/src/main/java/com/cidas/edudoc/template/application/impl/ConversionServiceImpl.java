@@ -78,7 +78,7 @@ public class ConversionServiceImpl implements ConversionService {
         String taskId = taskRepository.insert(task);
         outboxEventRepository.publish("CONVERSION_TASK", taskId, "CONVERSION_REQUESTED", Map.of(
                 "schemaVersion", 1, "taskId", taskId, "documentId", documentId));
-        return toView(taskWithId(taskId, task), null);
+        return toView(taskWithId(taskId, task), null, null);
     }
 
     @Override
@@ -91,7 +91,7 @@ public class ConversionServiceImpl implements ConversionService {
         if (!task.getRequestedBy().equalsIgnoreCase(AuthContext.require().userId())) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "转换任务不存在");
         }
-        return toView(task, signedUrlIfSucceeded(task));
+        return toView(task, signedUrlIfSucceeded(task), previewUrlIfSucceeded(task));
     }
 
     @Override
@@ -102,8 +102,27 @@ public class ConversionServiceImpl implements ConversionService {
         // 记录列表按「发起人=当前用户」过滤即可自证可见性，不再重复文档归属查询
         // 1107 P2-7：SUCCEEDED 记录逐行签名（历史页可直接下载，不再显示"链接已过期"）
         return taskRepository.findByDocument(documentId, AuthContext.require().userId()).stream()
-                .map(task -> toView(task, signedUrlIfSucceeded(task)))
+                .map(task -> toView(task, signedUrlIfSucceeded(task), previewUrlIfSucceeded(task)))
                 .toList();
+    }
+
+    @Override
+    public byte[] previewPdf(String taskId) {
+        if (!Ids.isHex16(taskId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "任务 ID 格式不合法");
+        }
+        ConversionTask task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "转换任务不存在"));
+        if (!task.getRequestedBy().equalsIgnoreCase(AuthContext.require().userId())) {
+            throw new CidasBusinessException(ErrorCode.NOT_FOUND, "转换任务不存在");
+        }
+        if (!"SUCCEEDED".equals(task.getStatus()) || task.getResultObjectId() == null) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "任务尚无成功的转换产物可预览");
+        }
+        return ossObjectRepository.findById(task.getResultObjectId())
+                .map(object -> ossStorageAdapter.readBytes(object.getObjectKey(), 20L * 1024 * 1024))
+                .orElseThrow(() -> new CidasBusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                        "预览对象缺失，请重新发起转换", true, Map.of()));
     }
 
     private String signedUrlIfSucceeded(ConversionTask task) {
@@ -112,6 +131,16 @@ public class ConversionServiceImpl implements ConversionService {
         }
         return ossObjectRepository.findById(task.getResultObjectId())
                 .map(object -> ossStorageAdapter.presignGet(object.getObjectKey(), 900L))
+                .orElse(null);
+    }
+
+    /** 内联预览签名（iframe 显示不弹下载），与下载链同对象不同 disposition。 */
+    private String previewUrlIfSucceeded(ConversionTask task) {
+        if (!"SUCCEEDED".equals(task.getStatus()) || task.getResultObjectId() == null) {
+            return null;
+        }
+        return ossObjectRepository.findById(task.getResultObjectId())
+                .map(object -> ossStorageAdapter.presignGetInline(object.getObjectKey(), 900L))
                 .orElse(null);
     }
 
@@ -129,9 +158,9 @@ public class ConversionServiceImpl implements ConversionService {
         return task;
     }
 
-    private static ConversionView toView(ConversionTask task, String downloadUrl) {
+    private static ConversionView toView(ConversionTask task, String downloadUrl, String previewUrl) {
         return new ConversionView(task.getId(), task.getDocumentId(), task.getTargetFormat(),
                 task.getStatus(), task.getProgress(), task.getFailureCode(), task.getFailureMessage(),
-                downloadUrl, task.getStartedAt(), task.getFinishedAt());
+                downloadUrl, previewUrl, task.getStartedAt(), task.getFinishedAt());
     }
 }

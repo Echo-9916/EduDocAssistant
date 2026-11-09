@@ -22,6 +22,17 @@
         SELECT MAX(version_no) FROM edudoc_document_version WHERE document_id = HEXTORAW(#{documentIdHex})
     </select>
 
+    <!-- 验收决议④：文档版本历史列表（版本号降序，含变更说明与源对象定位） -->
+    <select id="selectListByDocument" resultType="com.cidas.edudoc.document.infrastructure.DocumentVersionRow">
+        SELECT RAWTOHEX(v.id) AS versionId, v.version_no AS versionNo,
+               v.version_type AS versionType,
+               TO_CHAR(v.create_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS createTime,
+               v.change_summary AS changeSummary, RAWTOHEX(v.source_object_id) AS sourceObjectId
+        FROM edudoc_document_version v
+        WHERE v.document_id = HEXTORAW(#{documentIdHex})
+        ORDER BY v.version_no DESC
+    </select>
+
     <select id="selectByDocumentAndVersionNo" resultType="com.cidas.edudoc.document.infrastructure.DocumentVersion">
         SELECT RAWTOHEX(v.id) AS id, RAWTOHEX(v.document_id) AS documentId, v.version_no AS versionNo,
                v.version_type AS versionType, RAWTOHEX(v.source_object_id) AS sourceObjectId,

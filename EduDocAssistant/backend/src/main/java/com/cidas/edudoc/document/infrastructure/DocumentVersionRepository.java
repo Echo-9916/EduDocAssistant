@@ -33,4 +33,9 @@ public class DocumentVersionRepository {
     public Optional<DocumentVersion> findByDocumentAndVersionNo(String documentIdHex, int versionNo) {
         return Optional.ofNullable(mapper.selectByDocumentAndVersionNo(documentIdHex, versionNo));
     }
+
+    /** 验收决议④：版本历史（版本号降序）。 */
+    public java.util.List<DocumentVersionRow> listByDocument(String documentIdHex) {
+        return mapper.selectListByDocument(documentIdHex);
+    }
 }

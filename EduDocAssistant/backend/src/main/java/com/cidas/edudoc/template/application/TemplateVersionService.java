@@ -10,6 +10,12 @@ public interface TemplateVersionService {
 
     TemplateVersionView create(String templateId, String changeSummary, byte[] fileBytes, String fileName);
 
+    /** 验收决议①：上传预览——解析规则草稿返回，不落版本不落对象；确认后走 create。 */
+    List<RuleView> previewRules(String templateId, byte[] fileBytes, String fileName);
+
+    /** 验收反馈：基于既有版本（含已发布）编辑另存新版本；源对象引用沿用基版本。 */
+    TemplateVersionView fork(String templateId, String baseVersionId, List<RuleCommand> rules, String changeSummary);
+
     void replaceRules(String templateId, String versionId, List<RuleCommand> rules);
 
     void publish(String templateId, String versionId);

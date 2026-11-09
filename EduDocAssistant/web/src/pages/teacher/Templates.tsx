@@ -1,9 +1,9 @@
 // D-09：教师课程模板库（原型屏 09 列表 / 10 编辑（规则分组+学生端效果示意） / 11 发布确认）。
 // 前端校验镜像后端 RuleConfig 不变量（保存闸），服务端仍是最终裁判；
 // 历史版本发布后规则只读回显（UT-13），编辑面仅对未发布版本开放。
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Alert, Badge, Collapse, Dropdown, Input, Popconfirm, Popover, Select, Space, Table, Tag, Typography, Upload, message } from 'antd'
-import { DeleteOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { AppButton, AppModal } from '../../components'
 import { getErrorMessage } from '../../api/http'
 import { listCourses } from '../../api/documents'
@@ -19,6 +19,8 @@ import {
     listRules,
     listTemplates,
     listVersions,
+    forkTemplateVersion,
+    previewTemplateRules,
     publishVersion,
     replaceRules,
 } from '../../api/template'
@@ -136,6 +138,67 @@ export function validateRules(rules: RuleView[]): string[] {
     return errors
 }
 
+// ==================== 规则 JSON 编辑弹层（验收反馈：编辑图标 + 美观 JSON 展示） ====================
+
+function prettyJson(raw: string): string {
+    try { return JSON.stringify(JSON.parse(raw), null, 2) } catch { return raw }
+}
+
+const JSON_TOKEN = /("(?:\\.|[^"\\])*")(\s*:)|("(?:\\.|[^"\\])*")|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b|([{}[\],])/g
+
+/** 轻量语法着色：键=蓝、字符串值=绿、数字=橙、布尔/null=紫、标点=灰（无第三方依赖）。 */
+function JsonTokens({ text }: { text: string }) {
+    const nodes: ReactNode[] = []
+    let last = 0
+    let m: RegExpExecArray | null
+    JSON_TOKEN.lastIndex = 0
+    while ((m = JSON_TOKEN.exec(text)) !== null) {
+        if (m.index > last) nodes.push(<span key={last} style={{ color: '#333' }}>{text.slice(last, m.index)}</span>)
+        if (m[1]) {
+            nodes.push(<span key={m.index} style={{ color: '#1677ff', fontWeight: 500 }}>{m[1]}</span>)
+            nodes.push(<span key={m.index + 1} style={{ color: '#999' }}>{m[2]}</span>)
+        } else if (m[3]) nodes.push(<span key={m.index} style={{ color: '#389e0d' }}>{m[3]}</span>)
+        else if (m[4]) nodes.push(<span key={m.index} style={{ color: '#d46b08' }}>{m[4]}</span>)
+        else if (m[5]) nodes.push(<span key={m.index} style={{ color: '#722ed1' }}>{m[5]}</span>)
+        else nodes.push(<span key={m.index} style={{ color: '#999' }}>{m[6]}</span>)
+        last = m.index + m[0].length
+    }
+    if (last < text.length) nodes.push(<span key={last} style={{ color: '#333' }}>{text.slice(last)}</span>)
+    return <>{nodes}</>
+}
+
+function RuleJsonEditor({ rule, onCommit }: { rule: RuleView; onCommit: (json: string) => void }) {
+    const [editing, setEditing] = useState(false)
+    const text = prettyJson(rule.ruleConfigJson)
+    if (editing) {
+        return (
+            <Input.TextArea
+                data-testid="rule-json" autoFocus defaultValue={text}
+                autoSize={{ minRows: 5, maxRows: 16 }}
+                style={{ width: 420, fontFamily: 'monospace', fontSize: 12, lineHeight: 1.7 }}
+                onBlur={(ev) => {
+                    const raw = ev.target.value
+                    let compact = raw
+                    try { compact = JSON.stringify(JSON.parse(raw)) } catch { /* 原文交回，validateRules 负责红字拦截 */ }
+                    onCommit(compact)
+                    setEditing(false)
+                }} />
+        )
+    }
+    return (
+        <div style={{ width: 420 }}>
+            <pre data-testid="rule-json-view"
+                style={{ margin: 0, padding: '10px 14px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, fontFamily: 'monospace', fontSize: 12, lineHeight: 1.7, maxHeight: 340, overflow: 'auto' }}>
+                <JsonTokens text={text} />
+            </pre>
+            <Space style={{ marginTop: 8 }}>
+                <AppButton size="small" onClick={() => setEditing(true)}>编辑 JSON</AppButton>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>失焦即生效</Typography.Text>
+            </Space>
+        </div>
+    )
+}
+
 const STATUS_META: Record<string, { label: string; color: string }> = {
     D: { label: '草稿', color: 'default' },
     P: { label: '已发布', color: 'success' },
@@ -189,6 +252,10 @@ export default function Templates() {
     const [ruleErrors, setRuleErrors] = useState<string[]>([])
     // 1107 P2-3：发布确认弹窗（屏 11）
     const [publishOpen, setPublishOpen] = useState(false)
+    // 验收决议①：上传→预览草稿→确认才落版本（pending 期间规则表编辑的是未落库草稿）
+    const [pending, setPending] = useState<{ file: File; drafts: RuleView[] } | null>(null)
+    // 验收反馈：已发布版本→「基于此版本编辑另存新版本」（forkDraft=基版本，rules 为可编辑副本）
+    const [forkDraft, setForkDraft] = useState<TemplateVersionView | null>(null)
 
     const reload = useCallback(() => setReloadKey((k) => k + 1), [])
 
@@ -209,6 +276,8 @@ export default function Templates() {
     const openEditor = useCallback(async (tpl: TemplateView) => {
         setEditing(tpl)
         setRuleErrors([])
+        setPending(null)
+        setForkDraft(null)
         try {
             const vs = await listVersions(tpl.id)
             setVersions(vs)
@@ -236,6 +305,45 @@ export default function Templates() {
         [versions, activeVersionId],
     )
     const editable = !!activeVersion && !activeVersion.publishedAt
+    const inDraftMode = editable || !!pending || !!forkDraft
+
+    const enterFork = () => {
+        if (!activeVersion) return
+        setForkDraft(activeVersion)
+        setRules(activeRulesSnapshot())
+        setRuleErrors([])
+    }
+    /** 当前展示规则的可编辑副本（fork 进入时取已发布版本规则快照） */
+    const activeRulesSnapshot = () => rules.map((r, i) => ({ ...r, id: `fork-${i}-${Date.now()}` }))
+
+    const submitFork = async () => {
+        if (!editing || !forkDraft) return
+        const errors = validateRules(rules)
+        setRuleErrors(errors)
+        if (errors.length) {
+            message.error('规则校验未通过，请修正或退出编辑')
+            return
+        }
+        try {
+            const v = await forkTemplateVersion(editing.id, {
+                baseVersionId: forkDraft.id,
+                rules: rules.map(({ id, ...rest }) => rest),
+            })
+            message.success(`已另存为新版本 v${v.versionNo}（未发布，不影响 v${forkDraft.versionNo}）`)
+            setForkDraft(null)
+            setVersions(await listVersions(editing.id))
+            setActiveVersionId(v.id)
+        } catch (e) {
+            message.error(getErrorMessage(e))
+        }
+    }
+
+    const exitFork = () => {
+        setForkDraft(null)
+        if (editing && activeVersionId) {
+            listRules(editing.id, activeVersionId).then(setRules).catch(() => setRules([]))
+        }
+    }
 
     const patchRule = (index: number, patch: Partial<RuleView>) => {
         setRules((prev) => prev.map((r, i) => {
@@ -262,6 +370,39 @@ export default function Templates() {
             setVersions(await listVersions(editing.id))
         } catch (e) {
             message.error(getErrorMessage(e))
+        }
+    }
+
+    /** 决议①：确认预览草稿→createVersion 落版本；手工改过草稿则再 replaceRules 覆盖解析结果 */
+    const confirmPending = async () => {
+        if (!editing || !pending) return
+        const errors = validateRules(rules)
+        setRuleErrors(errors)
+        if (errors.length) {
+            message.error('规则校验未通过，请修正或取消预览')
+            return
+        }
+        try {
+            const v = await createVersion(editing.id, pending.file)
+            const edited = JSON.stringify(rules) !== JSON.stringify(pending.drafts)
+            if (edited) {
+                await replaceRules(editing.id, v.id, rules.map(({ id, ...rest }) => rest))
+            }
+            message.success(`新版本 v${v.versionNo} 已生成${edited ? '（含手工调整）' : ''}`)
+            setPending(null)
+            setVersions(await listVersions(editing.id))
+            setActiveVersionId(v.id)
+        } catch (e) {
+            message.error(getErrorMessage(e))
+        }
+    }
+
+    const cancelPending = () => {
+        setPending(null)
+        if (editing && activeVersionId) {
+            listRules(editing.id, activeVersionId).then(setRules).catch(() => setRules([]))
+        } else {
+            setRules([])
         }
     }
 
@@ -303,26 +444,20 @@ export default function Templates() {
                     onChange={(nv) => patchRule(indexOfRule(r), { targetSelector: nv })} /> },
         // 验收 M-01-3：严重度/可修复由格式类型自动决定，不再作为教师编辑列
         { title: '期望要求', key: 'expect',
-            render: (_: unknown, r: RuleView) => readOnly ? describeExpect(r) : (
-                <Space>
-                    <Typography.Text>{describeExpect(r)}</Typography.Text>
+            render: (_: unknown, r: RuleView) => describeExpect(r) },
+        ...(readOnly ? [] : [{ title: '操作', key: 'acts', width: 76,
+            render: (_: unknown, r: RuleView) => (
+                <Space size={0}>
                     <Popover
                         trigger="click" placement="left"
-                        title={`${RULE_TYPE_LABEL[r.ruleType] ?? ''} 配置（JSON）`}
-                        content={
-                            <Input.TextArea data-testid="rule-json" rows={5} style={{ width: 380, fontFamily: 'monospace', fontSize: 12 }}
-                                defaultValue={r.ruleConfigJson}
-                                onBlur={(ev) => patchRule(indexOfRule(r), { ruleConfigJson: ev.target.value })} />
-                        }
+                        title={`${RULE_TYPE_LABEL[r.ruleType] ?? ''} · ${SELECTOR_LABEL[r.targetSelector] ?? r.targetSelector} 配置`}
+                        content={<RuleJsonEditor rule={r} onCommit={(json) => patchRule(indexOfRule(r), { ruleConfigJson: json })} />}
                     >
-                        <AppButton type="link" size="small">改配置</AppButton>
+                        <AppButton type="text" aria-label="编辑配置" icon={<EditOutlined />} />
                     </Popover>
+                    <AppButton type="text" danger aria-label="删除规则" icon={<DeleteOutlined />}
+                        onClick={() => setRules((prev) => prev.filter((x) => x.id !== r.id || x.ruleOrder !== r.ruleOrder))} />
                 </Space>
-            ) },
-        ...(readOnly ? [] : [{ title: '', key: 'del', width: 40,
-            render: (_: unknown, r: RuleView) => (
-                <AppButton type="text" danger aria-label="删除规则" icon={<DeleteOutlined />}
-                    onClick={() => setRules((prev) => prev.filter((x) => x.id !== r.id || x.ruleOrder !== r.ruleOrder))} />
             ) }]),
     ])
     const indexOfRule = (r: RuleView) => rules.indexOf(r)
@@ -409,12 +544,23 @@ export default function Templates() {
                 open={!!editing}
                 width={960}
                 onCancel={() => setEditing(null)}
-                footer={[
+                footer={pending ? [
+                    <AppButton key="confirm" type="primary" onClick={() => void confirmPending()}>确认保存为新版本</AppButton>,
+                    <AppButton key="close" onClick={() => setEditing(null)}>关闭</AppButton>,
+                ] : forkDraft ? [
+                    <AppButton key="forksave" type="primary" onClick={() => void submitFork()}>另存为新版本</AppButton>,
+                    <AppButton key="exfork" onClick={exitFork}>退出编辑（不保存）</AppButton>,
+                    <AppButton key="close" onClick={() => setEditing(null)}>关闭</AppButton>,
+                ] : [
                     <AppButton key="publish" disabled={!activeVersion || activeVersion.validationStatus !== 'VALID' || !!activeVersion?.publishedAt}
                         onClick={() => setPublishOpen(true)}>
                         发布确认
                     </AppButton>,
                     <AppButton key="save" type="primary" disabled={!editable} onClick={() => void saveRules()}>保存规则</AppButton>,
+                    // 验收反馈：已发布版本不改原件——基于它编辑另存新版本
+                    ...(activeVersion?.publishedAt
+                        ? [<AppButton key="fork" onClick={enterFork}>基于此版本编辑另存新版本</AppButton>]
+                        : []),
                     <AppButton key="close" onClick={() => setEditing(null)}>关闭</AppButton>,
                 ]}
             >
@@ -424,22 +570,29 @@ export default function Templates() {
                             <Upload
                                 accept=".docx"
                                 showUploadList={false}
+                                disabled={!!pending}
                                 beforeUpload={(file) => {
-                                    createVersion(editing.id, file)
-                                        .then(async (v) => {
-                                            message.success(`新版本 v${v.versionNo} ${v.validationStatus === 'VALID' ? '解析成功' : '解析未产出规则，可手工编辑'}`)
-                                            setVersions(await listVersions(editing.id))
-                                            setActiveVersionId(v.id)
+                                    // 决议①：上传只做解析预览，不落版本；确认后才 createVersion
+                                    previewTemplateRules(editing.id, file)
+                                        .then((drafts) => {
+                                            const withIds = drafts.map((d, i) => ({ ...d, id: `draft-${i}-${Date.now()}` }))
+                                            setPending({ file, drafts: withIds })
+                                            setRules(withIds)
+                                            setRuleErrors([])
+                                            message.success(withIds.length
+                                                ? `解析出 ${withIds.length} 条规则，确认后才会生成新版本`
+                                                : '未解析出规则，可手工添加后确认保存为新版本')
                                         })
                                         .catch((e) => message.error(getErrorMessage(e)))
                                     return false
                                 }}
                             >
-                                <AppButton>上传 .docx 新版本并解析</AppButton>
+                                <AppButton>上传 .docx 并预览解析结果</AppButton>
                             </Upload>
                             <Select
                                 style={{ width: 300 }}
                                 placeholder="选择版本"
+                                disabled={!!pending || !!forkDraft}
                                 value={activeVersionId ?? undefined}
                                 onChange={(v) => { setActiveVersionId(v); setRuleErrors([]) }}
                                 options={versions.map((v) => ({
@@ -449,6 +602,15 @@ export default function Templates() {
                             />
                         </Space>
 
+                        {pending && (
+                            <Alert type="info" showIcon
+                                message={`预览草稿（未保存）：${pending.drafts.length} 条规则——可直接编辑，点「确认保存为新版本」才落版本；此期间不会修改任何已存在版本`}
+                                action={<AppButton size="small" onClick={cancelPending}>取消预览</AppButton>} />
+                        )}
+                        {forkDraft && (
+                            <Alert type="warning" showIcon
+                                message={`正在基于已发布 v${forkDraft.versionNo} 编辑副本——原发布版本保持不变，点「另存为新版本」生成未发布的下一版；学生端不受影响`} />
+                        )}
                         {activeVersion?.validationStatus === 'INVALID' && (
                             <Alert type="error" showIcon message="模板解析失败"
                                 description={activeVersion.failureReason ?? '文件无法解析，可手工编辑规则后保存'} />
@@ -468,11 +630,11 @@ export default function Templates() {
                                             rowKey={(r) => `${r.ruleType}-${r.targetSelector}-${r.ruleOrder}`}
                                             dataSource={g.items}
                                             pagination={false}
-                                            columns={ruleColumns(!editable) as never}
+                                            columns={ruleColumns(!inDraftMode) as never}
                                         />
                                     </div>
                                 ))}
-                                {editable && (
+                                {inDraftMode && (
                                     <Badge count={rules.length}>
                                         <Dropdown
                                             menu={{

@@ -10,13 +10,14 @@ vi.mock('../api/documents', () => ({
   deleteDocument: vi.fn(),
   restoreDocument: vi.fn(),
   reparseDocument: vi.fn(),
+  listDocumentVersions: vi.fn(),
 }))
 vi.mock('./DocumentUploadModal', () => ({ default: () => <div data-testid="upload-modal" /> }))
 vi.mock('./ConversionModal', () => ({ default: () => <div data-testid="conv-modal" /> }))
 vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: null }) }))
 vi.mock('./DocumentDetailDrawer', () => ({ default: () => <div data-testid="detail-drawer" /> }))
 
-import { listCourses, listDocuments, reparseDocument, restoreDocument } from '../api/documents'
+import { listCourses, listDocumentVersions, listDocuments, reparseDocument, restoreDocument } from '../api/documents'
 import Documents from './Documents'
 import type { DocumentSummary } from '../api/documents'
 
@@ -108,5 +109,31 @@ describe('Documents', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // ==================== 验收决议④：版本历史 Drawer ====================
+
+  it('行「版本」打开 Drawer：降序列表+当前标注+签名下载（决议④）', async () => {
+    vi.mocked(listDocumentVersions).mockResolvedValue([
+      { versionId: 'V2', versionNo: 2, versionType: 'EDIT', createTime: '2026-11-09T10:00:00',
+        changeSummary: '一键修复', downloadUrl: 'https://oss/signed-v2', current: true },
+      { versionId: 'V1', versionNo: 1, versionType: 'UPLOAD', createTime: '2026-11-09T09:00:00',
+        changeSummary: null, downloadUrl: null, current: false },
+    ])
+    render(<Documents role="STUDENT" />)
+    fireEvent.click(await screen.findByText('版本', { selector: 'a' }))
+    expect(await screen.findByText(/版本历史：第一课件/)).toBeTruthy()
+    await waitFor(() => expect(listDocumentVersions).toHaveBeenCalledWith('D1'))
+    expect(await screen.findByText('当前')).toBeTruthy()
+    expect(screen.getByText('一键修复')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '下载' })).toBeTruthy()
+    expect(screen.getByText(/回滚到历史版本随/)).toBeTruthy()
+  })
+
+  it('非 READY 状态行同样有版本入口；接口失败给干净 Alert', async () => {
+    vi.mocked(listDocumentVersions).mockRejectedValue(new Error('boom'))
+    render(<Documents role="STUDENT" />)
+    fireEvent.click(await screen.findByText('版本', { selector: 'a' }))
+    expect(await screen.findByText('boom')).toBeTruthy()
   })
 })

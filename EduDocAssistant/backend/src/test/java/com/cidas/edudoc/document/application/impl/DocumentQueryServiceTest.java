@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -37,9 +38,17 @@ import static org.mockito.Mockito.when;
 class DocumentQueryServiceTest {
 
     private static final String DOC_ID = "D1EAD1EAD1EAD1EAD1EAD1EAD1EAD1EA";
+    private static final String VER_ID = "A1B2C3D4E5F60708090A0B0C0D0E0F11";
 
     private final DocumentRepository repository = mock(DocumentRepository.class);
-    private final DocumentQueryServiceImpl service = new DocumentQueryServiceImpl(repository);
+    private final com.cidas.edudoc.document.infrastructure.DocumentVersionRepository versionRepository =
+            mock(com.cidas.edudoc.document.infrastructure.DocumentVersionRepository.class);
+    private final com.cidas.edudoc.document.infrastructure.OssObjectRepository ossObjectRepository =
+            mock(com.cidas.edudoc.document.infrastructure.OssObjectRepository.class);
+    private final com.cidas.edudoc.infrastructure.oss.OssStorageAdapter ossStorageAdapter =
+            mock(com.cidas.edudoc.infrastructure.oss.OssStorageAdapter.class);
+    private final DocumentQueryServiceImpl service = new DocumentQueryServiceImpl(
+            repository, versionRepository, ossObjectRepository, ossStorageAdapter);
 
     @BeforeEach
     void setUp() {
@@ -161,5 +170,82 @@ class DocumentQueryServiceTest {
         assertEquals("2026-12-03T09:00:00", detail.purgeAt());
         assertNull(detail.deletedAt());
         assertTrue(detail.status().equals("DELETED"));
+    }
+
+    // ==================== 验收决议④：版本历史 ====================
+
+    private static com.cidas.edudoc.document.infrastructure.DocumentVersionRow verRow(
+            String id, int no, String sourceObjectId) {
+        var v = new com.cidas.edudoc.document.infrastructure.DocumentVersionRow();
+        v.setVersionId(id);
+        v.setVersionNo(no);
+        v.setVersionType(no == 1 ? "UPLOAD" : "EDIT");
+        v.setCreateTime("2026-11-09T10:00:0" + no);
+        v.setChangeSummary(no == 1 ? "上传" : "一键修复");
+        v.setSourceObjectId(sourceObjectId);
+        return v;
+    }
+
+    @Test
+    void listVersionsOwnerSeesDescendingRowsWithPresignedAndCurrentFlag() {
+        DocumentViewRow doc = row("READY");
+        doc.setCurrentVersionId("V2");
+        when(repository.detail(DOC_ID)).thenReturn(Optional.of(doc));
+        when(versionRepository.listByDocument(DOC_ID))
+                .thenReturn(List.of(verRow("V2", 2, "SRC2"), verRow("V1", 1, null)));
+        var obj = mock(com.cidas.edudoc.document.infrastructure.OssObject.class);
+        when(obj.getObjectKey()).thenReturn("edudoc/documents/x/v2.docx");
+        when(ossObjectRepository.findById("SRC2")).thenReturn(Optional.of(obj));
+        when(ossStorageAdapter.presignGet("edudoc/documents/x/v2.docx", 900)).thenReturn("https://oss/signed-v2");
+
+        var rows = service.listVersions(DOC_ID);
+
+        assertEquals(2, rows.size());
+        assertTrue(rows.get(0).current());
+        assertEquals("https://oss/signed-v2", rows.get(0).downloadUrl());
+        assertEquals("一键修复", rows.get(0).changeSummary());
+        assertFalse(rows.get(1).current());
+        assertNull(rows.get(1).downloadUrl()); // 无源对象则无下载链
+    }
+
+    @Test
+    void listVersionsNonOwnerGets40401AndNoQuery() {
+        DocumentViewRow other = row("READY");
+        other.setOwnerId("OTHER");
+        when(repository.detail(DOC_ID)).thenReturn(Optional.of(other));
+
+        var e = assertThrows(CidasBusinessException.class, () -> service.listVersions(DOC_ID));
+        assertEquals(40401, e.errorCode().code());
+        verify(versionRepository, never()).listByDocument(any());
+    }
+
+    /** 格式视图 v3：版本源文件字节流（owner 校验同 detail；mime 随行）。 */
+    @Test
+    void versionContentStreamsSourceObjectForOwner() {
+        DocumentViewRow doc = row("READY");
+        doc.setMimeType("application/pdf");
+        when(repository.detail(DOC_ID)).thenReturn(Optional.of(doc));
+        var ver = new com.cidas.edudoc.document.infrastructure.DocumentVersion(
+                VER_ID, DOC_ID, 1, "UPLOAD", "SRC1", "U1", "hash", "A");
+        when(versionRepository.findById(VER_ID)).thenReturn(Optional.of(ver));
+        var obj = mock(com.cidas.edudoc.document.infrastructure.OssObject.class);
+        when(obj.getObjectKey()).thenReturn("edudoc/uploads/a.pdf");
+        when(ossObjectRepository.findById("SRC1")).thenReturn(Optional.of(obj));
+        when(ossStorageAdapter.readBytes("edudoc/uploads/a.pdf", 20L * 1024 * 1024))
+                .thenReturn(new byte[]{'%', 'P', 'D', 'F'});
+
+        var content = service.versionContent(DOC_ID, VER_ID);
+        assertEquals("application/pdf", content.contentType());
+        assertEquals(4, content.content().length);
+    }
+
+    @Test
+    void versionContentForeignDocumentInvisibleAs40401() {
+        DocumentViewRow other = row("READY");
+        other.setOwnerId("OTHER");
+        when(repository.detail(DOC_ID)).thenReturn(Optional.of(other));
+
+        var e = assertThrows(CidasBusinessException.class, () -> service.versionContent(DOC_ID, VER_ID));
+        assertEquals(40401, e.errorCode().code());
     }
 }

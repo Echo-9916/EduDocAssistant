@@ -1,0 +1,155 @@
+{
+  "criterion" : "P-07 漏报口径：命中/应命中 ≥ 95%",
+  "expectedTotal" : 20,
+  "hitsTotal" : 20,
+  "recall" : 1.0,
+  "templates" : [ {
+    "source" : "Web开发实战课程设计报告撰写要求.docx",
+    "mutated" : "docs/test/fixtures/mutated/Web开发实战课程设计报告撰写要求.mutated.docx",
+    "expected" : 5,
+    "hits" : 5,
+    "injections" : [ {
+      "ruleId" : "R0",
+      "ruleType" : "FONT",
+      "paragraphIndex" : 0,
+      "hit" : true,
+      "note" : "eastAsia→隶书"
+    }, {
+      "ruleId" : "R0",
+      "ruleType" : "FONT",
+      "paragraphIndex" : 2,
+      "hit" : true,
+      "note" : "eastAsia→隶书"
+    }, {
+      "ruleId" : "R1",
+      "ruleType" : "SIZE",
+      "paragraphIndex" : 0,
+      "hit" : true,
+      "note" : "10.5pt→12.5pt"
+    }, {
+      "ruleId" : "R1",
+      "ruleType" : "SIZE",
+      "paragraphIndex" : 2,
+      "hit" : true,
+      "note" : "10.5pt→12.5pt"
+    }, {
+      "ruleId" : "R2",
+      "ruleType" : "MARGIN",
+      "paragraphIndex" : -1,
+      "hit" : true,
+      "note" : "左页边距 +1cm"
+    } ],
+    "skipped" : [ ]
+  }, {
+    "source" : "C语言课程设计报告格式.docx",
+    "mutated" : "docs/test/fixtures/mutated/C语言课程设计报告格式.mutated.docx",
+    "expected" : 5,
+    "hits" : 5,
+    "injections" : [ {
+      "ruleId" : "R6",
+      "ruleType" : "FONT",
+      "paragraphIndex" : 3,
+      "hit" : true,
+      "note" : "eastAsia→隶书"
+    }, {
+      "ruleId" : "R6",
+      "ruleType" : "FONT",
+      "paragraphIndex" : 5,
+      "hit" : true,
+      "note" : "eastAsia→隶书"
+    }, {
+      "ruleId" : "R7",
+      "ruleType" : "SIZE",
+      "paragraphIndex" : 3,
+      "hit" : true,
+      "note" : "12.0pt→14.0pt"
+    }, {
+      "ruleId" : "R7",
+      "ruleType" : "SIZE",
+      "paragraphIndex" : 5,
+      "hit" : true,
+      "note" : "12.0pt→14.0pt"
+    }, {
+      "ruleId" : "R8",
+      "ruleType" : "MARGIN",
+      "paragraphIndex" : -1,
+      "hit" : true,
+      "note" : "左页边距 +1cm"
+    } ],
+    "skipped" : [ ]
+  }, {
+    "source" : "Oracle应用项目报告模版2026.docx",
+    "mutated" : "docs/test/fixtures/mutated/Oracle应用项目报告模版2026.mutated.docx",
+    "expected" : 5,
+    "hits" : 5,
+    "injections" : [ {
+      "ruleId" : "R0",
+      "ruleType" : "FONT",
+      "paragraphIndex" : 1,
+      "hit" : true,
+      "note" : "eastAsia→隶书"
+    }, {
+      "ruleId" : "R0",
+      "ruleType" : "FONT",
+      "paragraphIndex" : 3,
+      "hit" : true,
+      "note" : "eastAsia→隶书"
+    }, {
+      "ruleId" : "R1",
+      "ruleType" : "SIZE",
+      "paragraphIndex" : 1,
+      "hit" : true,
+      "note" : "10.5pt→12.5pt"
+    }, {
+      "ruleId" : "R1",
+      "ruleType" : "SIZE",
+      "paragraphIndex" : 3,
+      "hit" : true,
+      "note" : "10.5pt→12.5pt"
+    }, {
+      "ruleId" : "R2",
+      "ruleType" : "MARGIN",
+      "paragraphIndex" : -1,
+      "hit" : true,
+      "note" : "左页边距 +1cm"
+    } ],
+    "skipped" : [ ]
+  }, {
+    "source" : "JavaEE课程作业模板.docx",
+    "mutated" : "docs/test/fixtures/mutated/JavaEE课程作业模板.mutated.docx",
+    "expected" : 5,
+    "hits" : 5,
+    "injections" : [ {
+      "ruleId" : "R6",
+      "ruleType" : "SIZE",
+      "paragraphIndex" : 1,
+      "hit" : true,
+      "note" : "11.0pt→13.0pt"
+    }, {
+      "ruleId" : "R6",
+      "ruleType" : "SIZE",
+      "paragraphIndex" : 2,
+      "hit" : true,
+      "note" : "11.0pt→13.0pt"
+    }, {
+      "ruleId" : "R7",
+      "ruleType" : "LINE_SPACING",
+      "paragraphIndex" : 1,
+      "hit" : true,
+      "note" : "→AUTO 240/240 倍（期望 1.15）"
+    }, {
+      "ruleId" : "R7",
+      "ruleType" : "LINE_SPACING",
+      "paragraphIndex" : 2,
+      "hit" : true,
+      "note" : "→AUTO 240/240 倍（期望 1.15）"
+    }, {
+      "ruleId" : "R8",
+      "ruleType" : "MARGIN",
+      "paragraphIndex" : -1,
+      "hit" : true,
+      "note" : "左页边距 +1cm"
+    } ],
+    "skipped" : [ ]
+  } ]
+}

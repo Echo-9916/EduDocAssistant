@@ -1,8 +1,8 @@
 # 04 · 格式与模板垂直切片（template 域）
 
 > 承接 03 之后的第四个垂直切片，落地「课程模板库 → 结构树与规则比对 → 格式校验 → 一键修复成版 → 格式转换」闭环，前端补齐教师模板管理三屏、学生模板只读屏、预览页格式校验面板、一键修复确认与格式转换页。
-> 状态取值：`未开始` / `进行中` / `已完成`。**后端 D-01~D-07 已实现并通过五轮审查（2026-11-06/07：内部终审 + 1106 符合性审查 + 四轮复审，全部 P1/P2 代码面闭环，`mvn test` 385/385、ai-service `pytest` 33/33）**。按 1106 审查放行口径，本状态为「功能主体已实现、回归已闭合」；**验收证据（真库 IT、真实 LibreOffice/pdf2docx、P-07 错题集 ≥95%、端到端链路）待 D-15 闭合后方可判定可交付**。前端 D-08~D-14 与联调 D-15 未开始。
-> 契约源：需求 §5.3（REQ-01/02/04/08/14；REQ-07 引用生成为 Could 级「本期未实现」不做）、P-07（格式问题定位准确率 ≥95%）、详细设计 §3.3（表 3-5 核心类、§3.3.2 比对与修复伪代码、表 3-6 九接口）、§5.1（42202 语义，本期仅提交域消费）、§6.2（UT-11/12/13）、§6.3（e2e「格式校验修复」场景）、概要 §3（格式与模板域）、§4.3（P4 模板规则：只用文档绑定的模板版本，模板变更不影响历史版本）、§5.4（模板规则缓存与版本号失效）、数据库设计 §3.4.20–3.4.26、`05_系统设计/数据库脚本/01_schema.sql`（template/template_version/format_rule/document_element/format_check/format_issue/conversion_task/reference_item 共 8 表已全量建齐，**本切片零 DDL**；`ck_oss_role` 含 CONVERTED、`ck_docver_type` 含 EDIT、`fk_document_3` document→template_version 已备）、原型 `student.md` 11–15 屏、`teacher.md` 09–14 屏、`05_学生端/06/08` 设计说明。
+> 状态取值：`未开始` / `进行中` / `已完成`。**后端 D-01~D-07 与前端 D-08~D-14 已实现并通过全部审查（2026-11-06~08：内部终审 + 1106 符合性审查×4 + 1107 阶段全量审查 + 1108 阶段复审 + 1108 新一轮检查，代码面 P1/P2/P3 全部闭环），回归基线 `mvn test` 400/400（含真库 IT×6 与 P-07 错题集）、`pytest` 33/33、`pnpm test` 169/169、`pnpm build` 通过**。**D-15 已于 2026-11-09 闭合（浏览器手工全链路除外）：真库 ALTER 迁移、三件套真库 IT、P-07 错题集 20/20 recall=100%、ai-service 引擎级双向转换反例组、HTTP 三服务全链 e2e 逐步 PASS（含修复前后 52→48 阻断清零与双向下载魔数验证），全部观测见 `docs/test/FormatTest.md`**。
+> 契约源：需求 §5.3（REQ-01/02/04/08/14；REQ-07 引用生成为 Could 级「本期未实现」不做）、P-07（格式问题定位准确率 ≥95%）、详细设计 §3.3（表 3-5 核心类、§3.3.2 比对与修复伪代码、表 3-6 九接口）、§5.1（42202 语义，本期仅提交域消费）、§6.2（UT-11/12/13）、§6.3（e2e「格式校验修复」场景）、概要 §3（格式与模板域）、§4.3（P4 模板规则：只用文档绑定的模板版本，模板变更不影响历史版本）、§5.4（模板规则缓存与版本号失效）、数据库设计 §3.4.20–3.4.26、`05_系统设计/数据库脚本/01_schema.sql`（template/template_version/format_rule/document_element/format_check/format_issue/conversion_task/reference_item 共 8 表已全量建齐，**本切片原设计零 DDL；1107 阶段审查 P2-2 经批准追加一列迁移 `ALTER TABLE edudoc_template_version ADD parse_error VARCHAR2(1000)`，为至今唯一 DDL 变更**；`ck_oss_role` 含 CONVERTED、`ck_docver_type` 含 EDIT、`fk_document_3` document→template_version 已备）、原型 `student.md` 11–15 屏、`teacher.md` 09–14 屏、`05_学生端/06/08` 设计说明。
 > 现状基线：`template` 域仅 package-info；权限点与角色映射已 seed（STUDENT：TEMPLATE_READ/FORMAT_CHECK/FORMAT_CONVERT；TEACHER：另有 TEMPLATE_MANAGE；OPS：TEMPLATE_MANAGE/FORMAT_CHECK，**无 FORMAT_CONVERT**，`04_seed.sql` L33–35）；`ErrorCode.FORMAT_BLOCKER(42202)` 已定义；前端 `format`/`templates` 导航为占位页；DocumentView 四面板 Tabs 与 `highlightRange` 高亮原语可复用；Outbox 路由表已有 parse/embed/ai-task 三条流。
 
 ## 用户拍板决策（2026-11-06，四项均按推荐口径拍板）
@@ -89,40 +89,40 @@
 ## D-08 前端 · API 模块
 
 - **验收标准**：`web/src/api/template.ts`（列表/新建/状态/版本/规则/发布/按模板新建）+ `web/src/api/format.ts`（校验创建/查询/issues/fix/elements/转换创建/进度/记录），类型对齐 D-02 规则 JSON 契约与表 3-26/3-27/3-28 字段；复用 http.ts 幂等键/trace/401；vitest 参数断言。
-- **依赖**：D-01–D-07 契约定型即可并行 | **状态**：未开始
+- **依赖**：D-01~D-07 契约定型即可并行 | **状态**：已完成
 
 ## D-09 前端 · 教师课程模板库（屏 09/10/11）
 
 - **验收标准**：`pages/teacher/Templates.tsx` 替换占位：列表（课程筛选、状态徽标 D/P/A、版本号）→ 新建草稿 Modal → 编辑页（屏 10：左规则表格按 rule_type 分组可编辑 expect/tolerance/severity/auto_fixable，右「学生端效果预览」静态示意；上传模板 docx 解析出规则后进入同一表格）→ 发布确认 Modal（屏 11：版本、适用范围、变更说明、历史版本只读折叠）。停用/删除按 D-01 语义；无 TEMPLATE_MANAGE 权限整页 40301 态。
 - **测试**：规则表格序列化=JSON 契约、发布门（INVALID 不可点）、历史版本只读。
-- **依赖**：D-08 | **状态**：未开始
+- **依赖**：D-08 | **状态**：已完成
 
 ## D-10 前端 · 学生课程模板页（屏 11 只读）
 
 - **验收标准**：`pages/student/Templates.tsx`：只读要求视图（按当前发布版规则渲染「字体/字号/行距/页边距/图表编号/参考文献」要求表，**不出现编辑/发布/版本维护操作**——设计 05 明文）+「按模板新建文档」（D-07 → 成功后跳预览页轮询解析态）。工作台快捷入口「按模板新建」接线。
-- **依赖**：D-08 | **状态**：未开始
+- **依赖**：D-08 | **状态**：已完成
 
 ## D-11 前端 · 预览页格式校验面板（屏 13/12）
 
 - **验收标准**：DocumentView Tabs 增「格式校验」：发起（默认模板口径与 40901 提示）→ 2s 轮询（QUEUED/RUNNING 进度、恢复口径同 03 C-11，checkId 存 localStorage）→ 结论横幅（通过/未通过+计数统计）→ 问题清单（类型/位置/期望值 vs 当前值/severity 徽标），**点击定位=按 location_ref 的段落索引映射到文本视图块并 highlightRange 近似高亮**（J2 口径，映射失败退化为「跳至该页标记」）；不可修复项展示 guidance；非 docx 文档发起 → ERROR 干净提示（J1）。学生/教师共用。
 - **测试**：轮询恢复、定位回调、ERROR 态、统计渲染。
-- **依赖**：D-08、D-11 后端 D-04 | **状态**：未开始
+- **依赖**：D-08、后端 D-04 | **状态**：已完成
 
 ## D-12 前端 · 一键修复确认 Modal（屏 14/13）
 
 - **验收标准**：问题清单勾选（auto_fixable 才可勾）→ 确认弹窗（影响范围说明「生成新修订版本」、不可修复项清单提示）→ fix → 成功提示「已生成新版本 v_n」+ 自动复审进行中态 + 清单刷新；40901 冲突提示重查。
-- **依赖**：D-11 | **状态**：未开始
+- **依赖**：D-11 | **状态**：已完成
 
 ## D-13 前端 · 格式转换（屏 15/14）
 
-- **验收标准**：我的文档列表行/多选批量「格式转换」→ Modal 选目标格式（docx↔pdf 方向合法性前端预检）→ 任务进度（轮询 GET /conversions/{taskId}）→ 下载（fetch blob，token 头，同 03 导出通道）；转换记录抽屉（源/目标/时间/结果/失败原因，可检索）。OPS 端不接（无 FORMAT_CONVERT 权限点，R8）。
+- **验收标准**：我的文档列表行/多选批量「格式转换」→ Modal 选目标格式（默认自动匹配，可显式指定 PDF/Word，方向合法性前端预检、不符者跳过提示）→ 任务进度（轮询 GET /conversions/{taskId}）→ **下载=presigned GET 直链（唯一口径，1108 复审确认；fetch blob+token 头口径废弃——签名 URL 属红线允许的短期凭据，且避免大文件经主应用内存中转）**；转换记录抽屉（文档选择+关键字检索含失败原因+源/目标/起止时间全列，SUCCEEDED 行即时签名）。OPS 端不接（无 FORMAT_CONVERT 权限点，R8）。
 - **测试**：方向预检、进度轮询、失败原因渲染。
-- **依赖**：D-08 | **状态**：未开始
+- **依赖**：D-08 | **状态**：已完成
 
 ## D-14 前端 · 代码与图表规范化页（屏 12）
 
-- **验收标准**：`pages/student/Normalize.tsx`（只读，J3）：文档选择 → `GET /documents/{id}/elements` 结构树视图——标题层级、图/表/公式编号清单（图 2-1 式）、代码块列表（语言/位置），点击定位同 D-11 机制；页脚注「编辑态自动编号随协作版本上线」。
-- **依赖**：D-08、D-10 路由骨架 | **状态**：未开始
+- **验收标准**：`pages/student/Normalize.tsx`（只读，J3）：文档选择 → `GET /documents/{id}/elements` 结构树视图——标题层级、图/表/公式编号清单（图 2-1 式）、代码块列表（样式/位置），点击定位同 D-11 机制（行点击携 `{focus:{paragraphIndex,charStart,charEnd}}` 入预览页，映射成功高亮段内区间、失败退化跳页标记）；页脚注「编辑态自动编号随协作版本上线」。**语言标注范围缩减声明（1108 复审 P2-8）：编程语言识别需词法分析、依赖编辑器切片，本切片结构树仅承载代码样式与位置，验收不含语言列。**
+- **依赖**：D-08、D-10 路由骨架 | **状态**：已完成
 
 ## D-15 联调 · 端到端 + 测试文档
 
@@ -271,3 +271,53 @@ Ruling 记录：expect 键集校验留给 D-09 表单层（后端保两条崩溃
 | P3-2 | UNSUPPORTED 未实现+文档漂移 | converter 容器先判：docx 侧非 zip 非 OLE→UNSUPPORTED、pdf 侧非 %PDF→UNSUPPORTED（415，先输入后依赖）；D-06 测试计数与 pdf2docx 部署口径（`uv sync --extra convert`）、「修复面四类→五类」注释同步 |
 
 Standards 轴回应：本轮以 `RuleConfig` 单点收口「Primitive Obsession / Divergent Change」——同一规则类型的语义变更现在只需要改 RuleConfig + 各消费方的类型化取值，保存/比对/生成/修复不再分叉。
+
+## 1107 阶段全量审查整改记录（2026-11-07 处置）
+
+2 P1 + 9 P2 全部按「功能完全实现 + 常规不报错」口径处置；回归 `mvn test` 391/391、`pytest` 33/33、`pnpm test` 162/162、`pnpm build` 通过：
+
+| # | 发现 | 处置 |
+| --- | --- | --- |
+| P1-1 | 模板状态接口前端 POST/后端 PATCH 漂移（真链路 405，测试 false green） | http.ts 补 `patch`；changeTemplateStatus 改 PATCH；测试断言 patch 且显式断言 post 未被误调；FormatTest.md 契约清单收录方法列 |
+| P1-2 | 根级 `tolerance/aliases` 消费断裂（自定义容差失效、字体别名误报） | RuleConfig 持根级 tolerance 节点，`tolerancePt()`/`aliases()` 从正确位置读取；matchFont 命中「主名或别名」即通过；前端 validateRules 同步镜像。回归例：`fontAliasSatisfiesExpectation`、`rootTolerancePtIsConsumed`、parser 别名写出断言 |
+| P2-1 | 保存闸只查键存在（空串 pattern/错类型边距/CODE 空 expect 可入库静默失效） | RuleConfig 全键值域强校验（含 CODE.style、REFERENCE.standard 必备；present/perChapter 必须 JSON 布尔；空串 pattern 归一为缺失）→ 非法配置保存 40001 + 匹配器对存量脏配置 fail-closed |
+| P2-2 | INVALID 原因一次性回显、重开编辑页丢失 | **最小 DDL 迁移**：`edudoc_template_version.parse_error VARCHAR2(1000)`（01_schema.sql + 数据库设计说明书表 3-23 已同步）；创建时随版本落库，listVersions 回填；真库需执行 `ALTER TABLE edudoc_template_version ADD parse_error VARCHAR2(1000)`（已列 D-15 前置） |
+| P2-3 | D-09 缺分组/发布确认/只读回显/学生端示意 | 规则按 rule_type 分组编辑（groupRules）；屏 11 发布确认弹窗（版本/适用范围/变更说明/影响提示，确认才调接口）；已发布版本只读回显（口语化要求列）；右侧「学生端效果预览（静态示意）」卡 |
+| P2-4 | 工作台快捷入口未接线 | 学生 Workbench 四快捷卡（上传文档/按模板新建/查看作业/教学消息，设计 05 口径，无教师运维能力项）；pageOf 接线 |
+| P2-5 | D-11 定位无高亮无退化 | 题注/引用类以违规文本块内检索绝对偏移走 `highlightRange` 精确高亮（findAbsRange）；字体/字号类段落密度近似滚动 + 「近似定位」明示；空块/页面级各有提示 |
+| P2-6 | D-12 影响面不全、40901 无重查 | FixModal 三段清单（本次将修复/未勾选可修复/不可修复+指引）；40901 走冲突分支：关弹窗+提示+重查当前校验状态 |
+| P2-7 | D-13 入口/历史/下载/列不完整 + 契约两口径 | **下载通道裁定：presigned GET 直链唯一口径**（fetch blob 废弃，文档已同步）；行级「转换」入口；独立转换记录 Drawer（文档选择+关键字检索含失败原因+源/目标/起止时间全列）；后端 listByDocument SUCCEEDED 行携带签名 URL（消除「链接已过期」）；Modal 聚焦本次任务 |
+| P2-8 | D-14 无定位/语言/位置 | 位置列（第 N 段，来自 location_json）+ 行点击直达预览；语言标注边界注明随编辑器切片（结构树当前识别代码样式与位置，不做词法猜语言） |
+| P2-9 | D-15 证据包 | 维持「未开始」：待 EDUDOC_DB_* 注入后执行真库三条 SQL+ALTER、三服务 e2e、错题集与 P-07 统计、curl/观测清单入 FormatTest.md |
+
+Standards 轴回应：false-green 教训采纳（API 测试断言绑定方法族并防漂移）；规则契约「前后端各写一份」的 Divergent Change 风险本轮以「前端 validateRules 镜像 + 注释指向 RuleConfig 单源」缓解，彻底共享 schema 夹具待 D-09 浏览器联调时以后端 OpenAPI/校验响应为准（错误信息已透传，后端仍是裁判）。
+
+## 1108 阶段复审处置记录（2026-11-08）
+
+复审确认 2 P1 与 6 P2 关闭；4 个 P2 残余 + 文档一致性本轮处置完毕，回归 `mvn test` 392/392、`pytest` 33/33、`pnpm test` 168/168、`pnpm build` 通过：
+
+| 残余 | 处置 |
+| --- | --- |
+| P2-1 CODE 弱存在性 | `keepIndent` 入不变量（必须 JSON 布尔）并被 `matchCode` 消费：keepIndent=true 时逐代码段检查首个有内容 run 的行首缩进，丢失者逐段报告（无 run 原文证据的段落不报，宁缺勿误）；`style` 语义=提取端 CODE_BLOCK 样式归类来源，文档注释说明跨文档样式 id 不可二次比对。回归例 `codeKeepIndentViolationsReported` |
+| P2-5 D-11 定位口径 | 新建共享机制 `view/locate.ts`：`paragraphRange` 按「段均 120 字」估计段起点 + **消费 location_ref 的 charStart/charEnd 得段内高亮区间**；`locateByParagraph` 成功→滚动+highlightRange；失败→`scrollToPageMarker` 跳估计页码的页分隔锚点（DocumentView 页标记已加 `page-anchor-{n}` id）；再失败→明示无法定位。面板与 D-14 共用 |
+| P2-7 D-13 目标选择/契约文本 | Modal 增目标格式控件（自动匹配默认，可显式 PDF/Word；手选时方向不符者跳过并提示，按钮可用性联动）；**任务正文 D-13 的 fetch blob 口径删除，统一 presigned 直链**；顶部「零 DDL」陈述同步为「原设计零 DDL + parse_error 一列经批准迁移」 |
+| P2-8 D-14 语言与定位 | 行点击改携 `{state:{focus:{paragraphIndex,charStart,charEnd}}}`，DocumentView 加载后按 locate 同机制高亮/退化跳页（与 D-11 真正同机制，不再是裸跳转）；**语言列按复审建议在需求侧声明范围缩减**（D-14 正文已注明：词法级语言识别随编辑器切片） |
+| Standards 判断项 | 「单一 schema 来源」风险接受并记录：前端 validateRules 为后端 RuleConfig 的镜像（注释双向锚定），D-15 联调时以接口错误信息验证镜像一致性；文档"已完成"声明与 D-15 未启动的矛盾本轮以头部基线口径消除（代码面完成 ≠ 阶段交付） |
+
+至此阶段复审清单中「放行前必须完成」仅剩第 5 项 D-15（真实库迁移/真实转换/错题集/P-07/e2e，需 DB 凭据与新终端环境）。
+
+## 1108 新一轮检查处置记录（2026-11-08）
+
+D-15 实跑推进 + 检查报告 P2/P3 处置。**当前回归基线：`mvn test` 400/400（真库 IT 注入凭据时全执行）、`pytest` 33/33、`pnpm test` 169/169、`pnpm build` 通过**；上文 297 行的 392/392 为 1108 阶段复审时点的历史记录，不改写。
+
+| 项 | 处置 |
+| --- | --- |
+| D-15 真库迁移 | `ALTER TABLE edudoc_template_version ADD parse_error VARCHAR2(1000)` 已在 oracle-dev 真库执行（jshell+ojdbc，幂等先查 ALL_TAB_COLUMNS），与 `01_schema.sql`/设计文档一致 |
+| D-15 真库 IT | 三条真库执行全部通过：Rbac 1/1、Embedding 1/1、新增 `TemplateFormatSqlIntegrationTest` 4/4（parse_error 往返 / selectActive 30min 窗口+markRunning CAS / selectForUpdate+updateCurrentVersionCas / JSON_VALUE 段落序）。首跑暴露并修复两处**既有 IT 从未真跑过的潜伏缺陷**：①`setupConn` 默认 autoCommit 下显式 commit 抛 ORA-17273；②seed 违反真库约束（oss_object.content_hash NOT NULL、`ck_doc_type` 枚举 REPORT 而非 PDF/DOCX、version_type 'ORIGINAL'/'CURRENT' 非法→UPLOAD/'A'）。另修 MyBatis 一级缓存导致的窗口断言假象（外部提交后需 `clearCache`） |
+| D-15 P-07 错题集 | `P07ErrorSetTest`：四模板底本 POI 注入 20 已知问题（FONT6/SIZE8/LINE2/MARGIN4）→ `docs/test/fixtures/mutated/*.mutated.docx` + `groundtruth.json`；与生产同链比对 **20/20，recall=100% ≥ 95%**。CAPTION 无真语料出题面（转换件/要求文档题注为纯文本，破 pattern 即脱 selector，不硬造，已记 skipped），题注识别由单元例覆盖。首跑暴露**第三处契约打架**：JavaEE 转换件 pgMar top=0 使解析产出 MARGIN.top=0 被 RuleConfig 保存闸拒绝——解析端 `putIfPresent` 改为与保存闸同值域（边距 (0,100]、纸型 (50,1000]），回归例 `marginKeysOutsideSaveGateDomainAreNotEmitted` |
+| D-15 真实转换（引擎级） | ai-service `/v1/convert` 本机 HTTP 实测：DOCX→PDF 200/7.9s（%PDF 魔数）、PDF→DOCX 200/0.6s（PK 魔数）、OLE 魔数件→ENCRYPTED 422、随机字节→UNSUPPORTED 415。**注意 EDUDOC_SOFFICE_BIN 含空格路径**，`setx` 值须整体引用 |
+| P2-1 文档数字 | 本段与文件头基线已更新为实际数；历史记录保留 |
+| P2-2 D-15 剩余 | **已闭合（2026-11-09）**：HTTP 三服务全链 e2e 逐步 PASS 至 ALL-E2E-PASS（教师建模板→发布→J4 新建初验 PASSED 15/阻断0→学生 STS 上传错题集→初验 FAILED 52 含 1 阻断→一键修复 4 条→自动重查 PASSED 48 阻断清零→DOCX↔PDF 双向转换 presigned 魔数验证→J1 反例 40901 创建闸），观测表回填 `docs/test/FormatTest.md`「e2e 执行记录」节；仅剩浏览器手工全链路随用户验收 |
+| P3-1 页 1 退化 | `scrollToPageMarker`：pageNo=1 且 `page-anchor-1` 不存在时回退滚动 `block-1`；回归例「第 1 页无页分隔锚 → 退化滚至首个块」 |
+| P3-2 focus 依赖 | `DocumentView` focus effect 依赖扩为 `[blocks.length, focus, docId]`，同实例切文档/块数相同场景重新定位 |
+| P3-3 证据回写 | 错题集 20/20 明细、生成入口（`mvn test -Dtest=P07ErrorSetTest`）、统计口径与 locate 经验常数校准依据（错题集语料段均字符实测 ~120 字/段）写入 `docs/test/FormatTest.md` |

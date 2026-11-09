@@ -278,6 +278,7 @@ CREATE TABLE edudoc_template_version (
     published_by RAW(16),
     published_at TIMESTAMP(6) WITH TIME ZONE,
     change_summary VARCHAR2(1000),
+    parse_error VARCHAR2(1000),
     CONSTRAINT pk_template_version PRIMARY KEY (id),
     CONSTRAINT uk_template_version_1 UNIQUE (template_id, version_no),
     CONSTRAINT fk_template_version_1 FOREIGN KEY (template_id) REFERENCES edudoc_template (id),
@@ -297,6 +298,7 @@ COMMENT ON COLUMN edudoc_template_version.validation_status IS '校验状态：P
 COMMENT ON COLUMN edudoc_template_version.published_by IS '发布人 ID';
 COMMENT ON COLUMN edudoc_template_version.published_at IS '发布时间';
 COMMENT ON COLUMN edudoc_template_version.change_summary IS '版本变更说明';
+COMMENT ON COLUMN edudoc_template_version.parse_error IS '解析失败原因（1107 阶段审查 P2-2 最小迁移；validation_status=INVALID 时解释原因，重开编辑页仍可见）';
 
 -- 格式规则表: 保存模板版本中的可执行格式检查规则。
 CREATE TABLE edudoc_format_rule (

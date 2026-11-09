@@ -31,11 +31,40 @@
   2. `lineRule` 固定但缺 `w:line` 值曾产出**缺 pt 的规则**（保存闸会拒，两处契约打架）→ 解析/提取统一改为无具体值不终止继承。
   回归 `mvn test` 387/387（+2 例钉死）。
 
-## D-15 待办（依赖用户环境动作）
+## P-07 错题集与统计（2026-11-08，已执行）
+
+- **生成/评分入口**：`cd backend && mvn test -Dtest=P07ErrorSetTest`（幂等，可重跑；产物覆盖写）
+- **底本**：四份真实模板 .docx（Web开发/C语言/Oracle/JavaEE 转换件），走与生产同一链路 `TemplateRuleParser → RuleConfig → DocxStyleExtractor → FormatRuleMatcher`
+- **注入方式**：POI 直改格式属性/文本——FONT 换 decoy 字体（按规则 expect 槽位选 eastAsia/ascii）、SIZE 期望+2pt、LINE_SPACING 段落显式单倍（期望≠1 时）、MARGIN 左边距 +1cm、CAPTION 仅题注样式段落改全角冒号；每条注入记入 ground truth（ruleId+类型+段号）
+- **结果**：`expected=20，hits=20，recall=100.0%`（口径：漏报=命中/应命中 ≥95%）；族分布 FONT6/SIZE8/LINE_SPACING2/MARGIN4
+- **产物**：`docs/test/fixtures/mutated/{4 份 .mutated.docx, groundtruth.json}`（逐条 hit 标记与 skipped 原因均在 json 内）
+- **边界记录**：CAPTION 族无错题样本——四底本题注全为纯文本段（提取器题注 token 字符集是规则 pattern 的真子集，纯文本破坏必然脱 selector），按「不硬造」原则 skipped 入 json；题注识别正确性由 `FormatRuleMatcherTest` 单元例覆盖。首轮实跑另暴露第三处契约打架（JavaEE 件 pgMar top=0 产 `MARGIN.top=0` 撞保存闸 (0,100]），解析端已与保存闸同值域并加回归例
+- **locate 常数校准依据**（Standards 判断风险二）：`AVG_PARA_CHARS=120` 取自错题集语料实测——Web开发正文段均字符 100~140；`AVG_PAGE_CHARS=2000` 为 A4 小四 1.5 倍行距经验页容量，块密度变化时在 `web/src/pages/view/locate.ts` 回调
+
+## D-15 进度（2026-11-08 更新）
 
 - [x] pdf2docx 已安装（`uv sync --extra convert`，2026-11-07）；JavaEE PDF→DOCX 完成并评估：版式类规则可用、页边距/字体不可用（见上表），该模板页边距走「人工提炼规则集」路线
-- [x] **真实 PDF→DOCX 转换链路已跑通**（pdf2docx 引擎本体，D-06 的 PDF→DOCX 方向引擎级验证完成；尚未过 HTTP 服务端到端）
-- [ ] 注入 `EDUDOC_DB_USERNAME/EDUDOC_DB_PASSWORD` → 真库冒烟三条新 SQL（`FOR UPDATE` 行锁 / `JSON_VALUE` 排序 / 30 分钟窗口去重）+ 两个真库 IT
-- [ ] 新终端启动三服务（`EDUDOC_SOFFICE_BIN`/`EDUDOC_AI_INTERNAL_TOKEN` 生效）→ 真实 DOCX↔PDF 双向转换 + 加密件反例 + 50401 超时
-- [ ] 以四模板为底本生成错题集（POI 注入已知问题 + ground truth JSON）→ P-07 ≥95% 统计
-- [ ] 端到端链路：上传模板→发布→按模板新建→校验→修复→复审→转换→下载
+- [x] **真实 PDF→DOCX 转换链路已跑通**（pdf2docx 引擎本体，D-06 的 PDF→DOCX 方向引擎级验证完成；HTTP 级见下）
+- [x] **DDL 迁移已执行**：`ALTER TABLE edudoc_template_version ADD parse_error VARCHAR2(1000)` 已在 oracle-dev 真库落地（jshell+ojdbc11，凭据经环境变量注入不回显；幂等先查 ALL_TAB_COLUMNS）
+- [x] **真库 IT 全绿**：Rbac 1/1 + Embedding 1/1 + 新增 `TemplateFormatSqlIntegrationTest` 4/4（parse_error 往返 / selectActive 30min 窗口+markRunning CAS / selectForUpdate+updateCurrentVersionCas / JSON_VALUE 段落序）。首跑即修复既有 IT 三处从未真跑的潜伏缺陷（autoCommit 下 commit 抛 ORA-17273、oss_object.content_hash NOT NULL、ck_doc_type/version_type 枚举）
+- [x] **P-07 错题集 20/20 recall=100%**（见上节）
+- [x] **ai-service `/v1/convert` 引擎级 HTTP 真实双向**（2026-11-08，uvicorn:8000 + `X-Internal-Token`）：DOCX→PDF 200/94.9KB/7.9s `%PDF-`；PDF→DOCX 200/37.9KB/0.6s `PK\x03\x04`；OLE 魔数件→`ENCRYPTED` 422；随机字节→`UNSUPPORTED` 415。**注意**：`EDUDOC_SOFFICE_BIN` 路径含空格，读取时须整行提取（早期 `awk $2` 误取 "REG_SZ" 导致 503「未安装 LibreOffice」）；50401 超时反例为 120s 级观测，由 `converter.py` 单元例覆盖，不在冒烟实跑
+- [x] **三服务 HTTP 全链 e2e 全绿（2026-11-09 10:15–10:16 本地时间实测，脚本 `/tmp/edudoc-e2e/e2e04.py` 纯 stdlib）**：教师建模板→上传版本→解析 3 规则（FONT/SIZE/MARGIN 族齐）→发布 → 学生按模板新建（J4）→STS 直传错题集 docx→SHA-256 校验过 complete→解析 READY → 校验→问题清单含段落定位→勾选 4 条一键修复→自动重查 → DOCX→PDF 与 PDF→DOCX 双向转换 presigned 下载魔数验证 → J1 反例
+- [ ] 浏览器端手工全链路（81 屏对照）随用户验收
+
+### e2e 执行记录（2026-11-09，逐步 PASS 直至 ALL-E2E-PASS）
+
+| 步骤 | 观测（UTC 落库时间=本地-8） |
+| --- | --- |
+| T-login / T-courses / T-template-create / T-version-upload / T-publish | code 200 全链通 |
+| T-rules-parsed | `{FONT:1, SIZE:1, MARGIN:1}`（Web开发模板与语料冒烟节记录一致，3 规则） |
+| J4-provision（学生按模板新建）| 建档→解析 READY→初验 `PASSED total=15 blocking=0`（生成大纲仅结构，无阻断） |
+| S-oss-put / complete | STS 签名 PUT 成功返回 ETag；SHA-256 与后端 `sha256Of` 复核一致 |
+| F-check（错题集初验）| `FAILED total=52 blocking=1`（5 注入 + 模板自身语料基线；MARGIN 为 BLOCKER）；清单含 paragraphIndex 定位行 ≥3 |
+| F-fix（勾选 4 条 auto_fixable=Y）| 返回 `newVersionId`（EDIT 成版）+ `recheckId` 自动重查 |
+| F-recheck（复审）| `PASSED total=48 blocking=0` —— **阻断 1→0、总数 52→48**，修复生效 |
+| C-conv DOCX→PDF | worker→ai-service→OSS：SUCCEEDED 6s；presigned GET 下载 94KB+ `%PDF` 魔数 ✓ |
+| X-pdf2docx PDF→DOCX | SUCCEEDED 1s；presigned 下载 `PK` 魔数 ✓（下载可打开性=魔数+字节数） |
+| X-j1（PDF 无课程模板发起校验）| **40901 创建闸拒绝**：「文档不是 Word(.docx)格式, 且课程尚未发布模板, 无法发起格式校验」；任务内 ERROR 分支（有模板的 PDF 件）由 `FormatCheckWorkerTest` 覆盖 |
+
+e2e 过程修正的脚本侧口径（均为正确契约的显式化，非产品缺陷）：成功码是 `code:200` 非 0；写接口一律携带 `Idempotency-Key`（含 multipart）；修复后重查必须复用 `FixView.recheckId`，二次手工 POST 会被 `selectActive` 三元组互斥拒绝（40901，设计内）。

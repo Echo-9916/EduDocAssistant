@@ -25,6 +25,9 @@ vi.mock('./api/documents', () => ({
 }))
 
 import { pageOf } from './App'
+import SectionPlaceholder from './pages/SectionPlaceholder'
+import { roleNav } from './routes'
+import type { RoleCodeValue } from './api/types'
 
 describe('pageOf（B-12 接线）', () => {
   it('documents key 渲染真实页面而非占位', async () => {
@@ -34,8 +37,18 @@ describe('pageOf（B-12 接线）', () => {
   })
 
   it('未接线 key 仍走 SectionPlaceholder', () => {
-    render(pageOf('TEACHER', { key: 'ai', label: '智能处理' }))
-    expect(screen.getByText('智能处理')).toBeTruthy()
+    render(pageOf('TEACHER', { key: 'settings', label: '系统设置' }))
+    expect(screen.getByText('系统设置')).toBeTruthy()
+    expect(screen.getByText(/建设中/)).toBeTruthy()
+  })
+
+  it('05 全量呈现：三端所有一级导航都接到真实页面，不再落到占位', () => {
+    const unmapped = (Object.keys(roleNav) as RoleCodeValue[]).flatMap((role) =>
+      roleNav[role]
+        .filter((item) => pageOf(role, item).type === SectionPlaceholder)
+        .map((item) => `${role}/${item.key}`),
+    )
+    expect(unmapped).toEqual([])
   })
 
   it('04 切片接线：format=格式与模板容器，templates=教师模板库', async () => {

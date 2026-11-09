@@ -12,6 +12,8 @@ vi.mock('../api/documents', () => ({
   reparseDocument: vi.fn(),
 }))
 vi.mock('./DocumentUploadModal', () => ({ default: () => <div data-testid="upload-modal" /> }))
+vi.mock('./ConversionModal', () => ({ default: () => <div data-testid="conv-modal" /> }))
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: null }) }))
 vi.mock('./DocumentDetailDrawer', () => ({ default: () => <div data-testid="detail-drawer" /> }))
 
 import { listCourses, listDocuments, reparseDocument, restoreDocument } from '../api/documents'

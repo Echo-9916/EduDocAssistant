@@ -306,6 +306,35 @@ Standards 轴回应：false-green 教训采纳（API 测试断言绑定方法族
 
 至此阶段复审清单中「放行前必须完成」仅剩第 5 项 D-15（真实库迁移/真实转换/错题集/P-07/e2e，需 DB 凭据与新终端环境）。
 
+## 浏览器验收处置记录（2026-11-09）
+
+首轮浏览器验收（FormatManualTest.md M-01~M-10）回报 14 项，处置如下（用户逐项拍板）：
+
+| 项 | 处置 |
+| --- | --- |
+| M-01-3/M-01-4/M-03 | 规则表删「严重度/可修复」列、期望口语化+「改配置」弹层、垃圾桶图标；添加规则改 8 族下拉带合法默认配置；validateRules 报错全面教师本地化。见 commit `7ca299d`（vitest 170/170） |
+| M-06 工作台→/roles | 快捷入口改绝对路径（rolePath.STUDENT 前缀） |
+| M-07-1/M-07-2 | 分页「共 N 个问题」；**断点恢复实现缺陷坐实**——原「终态即清」与契约相悖，改「终态保留、重开覆盖」，回归 +2 例；同时修测试 mockReturnValue 跨用例泄漏 |
+| M-01-2（决议①） | **产品流重造：上传→预览→确认才落版本**。后端 `POST /versions/preview`（解析即返、不落对象/版本/审计，非 docx 40001）；前端 pending 草稿态（版本下拉禁用、确认按钮替换保存按钮、可取消无痕恢复）；确认后 createVersion，手工调整过则 replaceRules 覆盖。后端 +3 例 / 前端 +2 例；HTTP 实测 preview 3 规则且 versions=0 |
+| M-02-1 编辑报「版本不存在」 | HTTP 全链复现不出（上传→取规则→重开均 200），用户同意跳过，留观察 |
+| M-05-2（决议③→用户升级需求） | 截图定性：`— 第 ? 页 —`=pageNo null 仍渲染占位分隔线 → DocumentView 改为无页号不渲染；「复选框」=AI 面板文本块选择功能（既有设计）。**「预览看不到版式」经用户拍板升级为产品能力：预览页新增「格式视图（版式）」**——docx 用 `docx-preview@0.4.1`（GitHub 主流 OOXML 浏览器渲染）还原标题层级/字体/字号/页边距/分页，PDF 用 current 版本 presigned 链接 iframe 内嵌；源定位复用决议④版本接口 current 行，**后端零改动**；文本视图保留承载 AI/问题定位；FormatPane 5 例。已知依赖：OSS CORS 允许页面 GET（失败有干净回落） |
+| M-08-1（决议④） | 补文档版本历史：后端 `GET /documents/{id}/versions`（DocumentVersionRow 投影 + selectListByDocument 真库降序 + 每版本源对象 presigned 900s + current 标记，owner 外 40401）；前端文档行「版本」→ VersionDrawer（来源中文标签/说明/时间/下载）。HTTP 实测 4 版本行下载 `PK` 魔数真。小瑕疵：修复产生的 EDIT 版本 change_summary 为空显示「-」，留待协作切片统一 |
+| M-10-1/M-10-4 | 用户拍板跳过（PDF 反例观感/OPS 空态非本期） |
+| 手册 | 导航名、上传入口位置、M-01/M-08 步骤同步新流程 |
+
+基线更新：`mvn test` **405/405**、`pnpm test` **179/179**、`pnpm build` ✓、`pytest` 33/33（本轮未触 ai-service）。
+
+## 浏览器二轮验收处置（2026-11-09 下午）
+
+| 反馈 | 处置 |
+| --- | --- |
+| 1. 弹窗内要能「在 v1 上编辑产出 v2」（非仅上传路径） | 后端 `POST /versions/fork`（baseVersionId+全量规则，走同一保存闸；**源对象引用沿用基版本不复制**，新版本未发布，已发布基版本不动——UT-13 语义天然满足）；弹窗在已发布版本页脚出「基于此版本编辑另存新版本」→副本可编辑→「另存为新版本」，可「退出编辑（不保存）」还原。后端 +3 例、前端 +1 例 |
+| 2. 学生工作台「查看作业」跳 403 | 入口声明所需权限点（SUBMISSION_READ，作业切片）：缺失时按钮禁用+Tooltip「随作业切片开放」，不再导航到被 RequireAuth 拒绝的页面；其余入口绝对路径不受影响。+1 例 |
+| 3. ops 登录后无文档转换入口 | **维持现状待拍板**：04_seed 权限矩阵 OPS 无 FORMAT_CONVERT（R8：改 seed 需变更评审），且 OPS 转换他人文档还缺文档可见性 ACL（协作/治理切片能力）——非补一个按钮的规模。两案供选：a) 仅放开权限+给 OPS 加只读「全库文档+转换」视图（≈半个新界面）；b) 等协作切片治理视图一并做。当前按 b 走，R8 决策已记录 |
+| 4. 预览格式视图效果仍不好→换方案 | **格式视图 v3=「转换引擎 PDF + 后端字节流 + blob 内嵌」**：docx→复用既有 LibreOffice 转换链路出 PDF（与下载产物同引擎，版式 100%）。iframe **不加载 OSS 签名链**——实测默认域强制 `Content-Disposition: attachment` 且 `response-content-disposition=inline` 覆盖参数被云端策略忽略（这正是"弹下载不显示"根因）；改走**带 Bearer 的后端字节流端点** `GET /conversions/{id}/preview` 与 `GET /documents/{id}/versions/{vid}/file`（20MB 护栏，超限提示走下载），前端 `getBlob→createObjectURL→iframe`：inline 显示与域策略/CORS 彻底解耦、零第三方渲染库。**docx-preview 移除**。新鲜度按 `finishedAt≥doc.updateTime` 复用、过期自动重转（2s 轮询/90s 预算/FAILED 显示码因）。HTTP 实测：200+inline+`%PDF` 魔数、匿名 401。FormatPane 重写 5 例、后端 +4 例（previewPdf/versionContent） |
+
+二轮基线：`mvn test` **408/408**、`pnpm test` **181/181**、build ✓。fork/预览链路 HTTP 实测见 `docs/test/FormatTest.md`。
+
 ## 1108 新一轮检查处置记录（2026-11-08）
 
 D-15 实跑推进 + 检查报告 P2/P3 处置。**当前回归基线：`mvn test` 400/400（真库 IT 注入凭据时全执行）、`pytest` 33/33、`pnpm test` 169/169、`pnpm build` 通过**；上文 297 行的 392/392 为 1108 阶段复审时点的历史记录，不改写。

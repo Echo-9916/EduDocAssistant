@@ -26,4 +26,6 @@ public final class PermissionCode {
     public static final String AUDIT_READ = "AUDIT_READ";
     public static final String ASSIGNMENT_MANAGE = "ASSIGNMENT_MANAGE";
     public static final String SUBMISSION_READ = "SUBMISSION_READ";
+    /** 学生查看本人作业、提交与反馈（06 切片 1）：与 SUBMISSION_READ 的「提交统计」口径区分。 */
+    public static final String SUBMISSION_SELF_READ = "SUBMISSION_SELF_READ";
 }

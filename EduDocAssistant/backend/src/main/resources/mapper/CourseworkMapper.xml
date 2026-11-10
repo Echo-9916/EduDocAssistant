@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.coursework.infrastructure.CourseworkMapper">
+
+    <!-- 教师可见课程：course_member 里 member_role='TEACHER' 为口径（与 courseScope 一致）。 -->
+    <sql id="teacherCourseScope">
+        EXISTS (SELECT 1 FROM edudoc_course_member tm
+                WHERE tm.course_id = c.id AND tm.member_role = 'TEACHER' AND tm.status = 'A'
+                  AND tm.user_id = HEXTORAW(#{userIdHex}))
+    </sql>
+
+    <select id="selectTeacherCourses" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$TeacherCourse">
+        SELECT RAWTOHEX(c.id) AS id, c.course_code AS courseCode, c.course_name AS courseName,
+               c.term_code AS termCode, o.display_name AS ownerName,
+               (SELECT COUNT(DISTINCT m.group_name) FROM edudoc_course_member m
+                 WHERE m.course_id = c.id AND m.status = 'A' AND m.group_name IS NOT NULL) AS groups,
+               (SELECT COUNT(DISTINCT m.user_id) FROM edudoc_course_member m
+                 WHERE m.course_id = c.id AND m.member_role = 'STUDENT' AND m.status = 'A') AS students,
+               (SELECT t.template_name FROM edudoc_template t
+                 WHERE t.course_id = c.id AND t.status = 'P'
+                 ORDER BY t.update_time DESC FETCH FIRST 1 ROWS ONLY) AS templateName,
+               c.status AS status,
+               (SELECT COUNT(*) FROM edudoc_assignment a
+                 WHERE a.course_id = c.id AND a.status = 'PUBLISHED'
+                   AND a.due_time BETWEEN SYSTIMESTAMP AND SYSTIMESTAMP + INTERVAL '7' DAY) AS dueWeek
+        FROM edudoc_course c
+        LEFT JOIN edudoc_user o ON o.id = c.teacher_id
+        WHERE <include refid="teacherCourseScope"/>
+        <if test="term != null and term != ''">AND c.term_code = #{term}</if>
+        <if test="status != null and status != ''">AND c.status = #{status}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (c.course_name LIKE '%' || #{keyword} || '%' OR c.course_code LIKE '%' || #{keyword} || '%')
+        </if>
+        ORDER BY c.term_code DESC, c.course_code
+        OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="countTeacherCourses" resultType="long">
+        SELECT COUNT(*) FROM edudoc_course c
+        WHERE <include refid="teacherCourseScope"/>
+        <if test="term != null and term != ''">AND c.term_code = #{term}</if>
+        <if test="status != null and status != ''">AND c.status = #{status}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (c.course_name LIKE '%' || #{keyword} || '%' OR c.course_code LIKE '%' || #{keyword} || '%')
+        </if>
+    </select>
+
+    <insert id="insertCourse">
+        INSERT INTO edudoc_course (course_code, course_name, term_code, teacher_id, status)
+        VALUES (#{courseCode}, #{courseName}, #{termCode}, HEXTORAW(#{teacherIdHex}), 'A')
+    </insert>
+
+    <select id="selectCourseIdHex" resultType="string">
+        SELECT RAWTOHEX(id) FROM edudoc_course WHERE course_code = #{courseCode} AND term_code = #{termCode}
+    </select>
+
+    <select id="selectUserByAccount" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$MemberAccount">
+        SELECT RAWTOHEX(u.id) AS userId, u.username AS accountNo, u.display_name AS name
+        FROM edudoc_user u WHERE u.username = #{accountNo}
+    </select>
+
+    <select id="countCourseMember" resultType="long">
+        SELECT COUNT(*) FROM edudoc_course_member
+        WHERE course_id = HEXTORAW(#{courseIdHex}) AND user_id = HEXTORAW(#{userIdHex})
+    </select>
+
+    <insert id="insertCourseMember">
+        INSERT INTO edudoc_course_member (course_id, user_id, member_role, group_name, status)
+        VALUES (HEXTORAW(#{courseIdHex}), HEXTORAW(#{userIdHex}), #{memberRole}, #{groupName}, 'A')
+    </insert>
+
+    <!-- 名单里无账号的学生：建未激活账号（account_status='I'，密码为空，走统一身份认证首登） -->
+    <insert id="insertInactiveUser">
+        INSERT INTO edudoc_user (username, display_name, auth_source, account_status, last_login_time)
+        VALUES (#{accountNo}, #{name}, 'ACADEMIC', 'I', NULL)
+    </insert>
+
+    <update id="updateCourseStatus">
+        UPDATE edudoc_course SET status = #{status} WHERE id = HEXTORAW(#{courseIdHex})
+    </update>
+
+    <!-- ---------- 作业 ---------- -->
+
+    <sql id="assignmentStatsColumns">
+        RAWTOHEX(a.id) AS id, RAWTOHEX(a.course_id) AS courseId, c.course_name AS courseName,
+        a.title AS title, a.description AS description, a.due_time AS dueTime,
+        a.allow_late AS allowLate, a.submission_format AS submissionFormat,
+        a.require_format_check AS requireFormatCheck, a.rubric_json AS rubricJson, a.status AS status,
+        (SELECT COUNT(*) FROM edudoc_course_member m
+          WHERE m.course_id = a.course_id AND m.member_role = 'STUDENT' AND m.status = 'A') AS expected,
+        (SELECT COUNT(DISTINCT s.student_id) FROM edudoc_submission s
+          WHERE s.assignment_id = a.id) AS submitted,
+        (SELECT COUNT(DISTINCT CASE WHEN s.submitted_at &gt; a.due_time THEN s.student_id END)
+          FROM edudoc_submission s WHERE s.assignment_id = a.id) AS overdue,
+        (SELECT COUNT(DISTINCT CASE WHEN s.status = 'GRADED' THEN s.student_id END)
+          FROM edudoc_submission s WHERE s.assignment_id = a.id) AS graded,
+        (SELECT COUNT(*) FROM edudoc_submission s JOIN edudoc_format_check f ON f.id = s.format_check_id
+          WHERE s.assignment_id = a.id AND f.blocking_issue_count &gt; 0) AS formatIssues
+    </sql>
+
+    <select id="selectAssignments" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$AssignmentStats">
+        SELECT <include refid="assignmentStatsColumns"/>
+        FROM edudoc_assignment a
+        JOIN edudoc_course c ON c.id = a.course_id
+        WHERE <include refid="teacherCourseScope"/>
+        <if test="courseIdHex != null and courseIdHex != ''">AND a.course_id = HEXTORAW(#{courseIdHex})</if>
+        <if test="status != null and status != ''">AND a.status = #{status}</if>
+        ORDER BY a.due_time
+    </select>
+
+    <select id="selectAssignmentById" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$AssignmentStats">
+        SELECT <include refid="assignmentStatsColumns"/>
+        FROM edudoc_assignment a
+        JOIN edudoc_course c ON c.id = a.course_id
+        WHERE a.id = HEXTORAW(#{assignmentIdHex})
+    </select>
+
+    <insert id="insertAssignment">
+        INSERT INTO edudoc_assignment (course_id, title, description, published_by, publish_time, due_time,
+                                       allow_late, submission_format, require_format_check, rubric_json, status)
+        VALUES (HEXTORAW(#{courseIdHex}), #{title}, #{description}, HEXTORAW(#{publishedByHex}),
+                SYSTIMESTAMP, #{dueTime}, #{allowLate}, #{submissionFormat}, #{requireFormatCheck},
+                #{rubricJson}, #{status})
+    </insert>
+
+    <select id="selectAssignmentId" resultType="string">
+        SELECT RAWTOHEX(id) FROM edudoc_assignment WHERE course_id = HEXTORAW(#{courseIdHex}) AND title = #{title}
+    </select>
+
+    <select id="selectUnsubmittedMembers" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$MemberAccount">
+        SELECT RAWTOHEX(u.id) AS userId, u.username AS accountNo, u.display_name AS name
+        FROM edudoc_course_member m
+        JOIN edudoc_user u ON u.id = m.user_id
+        JOIN edudoc_assignment a ON a.id = HEXTORAW(#{assignmentIdHex}) AND a.course_id = m.course_id
+        WHERE m.member_role = 'STUDENT' AND m.status = 'A'
+          AND NOT EXISTS (SELECT 1 FROM edudoc_submission s
+                          WHERE s.assignment_id = a.id AND s.student_id = m.user_id)
+        ORDER BY u.username
+    </select>
+
+    <select id="selectPriorityAssignments" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$Priority">
+        SELECT RAWTOHEX(a.id) AS assignmentId, c.course_name AS courseName, a.title AS title,
+               a.due_time AS dueTime,
+               (SELECT COUNT(*) FROM edudoc_course_member m
+                 WHERE m.course_id = a.course_id AND m.member_role = 'STUDENT' AND m.status = 'A') AS expected,
+               (SELECT COUNT(DISTINCT s.student_id) FROM edudoc_submission s
+                 WHERE s.assignment_id = a.id) AS submitted,
+               (SELECT COUNT(DISTINCT CASE WHEN s.status = 'GRADED' THEN s.student_id END)
+                 FROM edudoc_submission s WHERE s.assignment_id = a.id) AS graded
+        FROM edudoc_assignment a
+        JOIN edudoc_course c ON c.id = a.course_id
+        WHERE <include refid="teacherCourseScope"/> AND a.status = 'PUBLISHED'
+        ORDER BY a.due_time
+        FETCH FIRST #{limit} ROWS ONLY
+    </select>
+
+    <select id="countDueThisWeek" resultType="long">
+        SELECT COUNT(*) FROM edudoc_assignment a
+        JOIN edudoc_course c ON c.id = a.course_id
+        WHERE <include refid="teacherCourseScope"/> AND a.status = 'PUBLISHED'
+          AND a.due_time BETWEEN #{from} AND #{to}
+    </select>
+
+    <select id="countPendingGrade" resultType="long">
+        SELECT COUNT(*) FROM edudoc_submission s
+        JOIN edudoc_assignment a ON a.id = s.assignment_id
+        JOIN edudoc_course c ON c.id = a.course_id
+        WHERE <include refid="teacherCourseScope"/>
+          AND s.status IN ('SUBMITTED', 'LATE')
+          AND s.attempt_no = (SELECT MAX(s2.attempt_no) FROM edudoc_submission s2
+                              WHERE s2.assignment_id = s.assignment_id AND s2.student_id = s.student_id)
+    </select>
+
+    <select id="countFormatIssues" resultType="long">
+        SELECT COUNT(*) FROM edudoc_submission s
+        JOIN edudoc_assignment a ON a.id = s.assignment_id
+        JOIN edudoc_course c ON c.id = a.course_id
+        JOIN edudoc_format_check f ON f.id = s.format_check_id AND f.blocking_issue_count &gt; 0
+        WHERE <include refid="teacherCourseScope"/>
+    </select>
+
+    <!-- ---------- 学生作业与提交 ---------- -->
+
+    <select id="selectStudentAssignments" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$StudentAssignment">
+        SELECT RAWTOHEX(a.id) AS assignmentId, c.course_name AS courseName, a.title AS title,
+               a.description AS description, a.due_time AS dueTime, a.allow_late AS allowLate,
+               a.submission_format AS submissionFormat, a.require_format_check AS requireFormatCheck,
+               a.status AS assignmentStatus,
+               RAWTOHEX(s.id) AS submissionId, s.status AS submissionStatus, s.attempt_no AS attemptNo,
+               s.submitted_at AS submittedAt, s.score AS score, s.feedback AS feedback,
+               s.score_json AS scoreJson,
+               RAWTOHEX(d.id) AS documentId, d.title AS documentTitle,
+               RAWTOHEX(v.id) AS documentVersionId, v.version_no AS versionNo,
+               NVL(f.blocking_issue_count, -1) AS blockingCount,
+               CASE WHEN f.id IS NULL THEN -1 ELSE
+                    (SELECT COUNT(*) FROM edudoc_format_issue i
+                      WHERE i.format_check_id = f.id AND i.severity = 'WARNING') END AS warningCount
+        FROM edudoc_assignment a
+        JOIN edudoc_course c ON c.id = a.course_id
+        JOIN edudoc_course_member m ON m.course_id = a.course_id AND m.member_role = 'STUDENT' AND m.status = 'A'
+        JOIN edudoc_user stu ON stu.id = m.user_id AND stu.id = HEXTORAW(#{studentIdHex})
+        LEFT JOIN edudoc_submission s ON s.id = (
+            SELECT sb.id FROM edudoc_submission sb
+            WHERE sb.assignment_id = a.id AND sb.student_id = HEXTORAW(#{studentIdHex})
+            ORDER BY sb.attempt_no DESC FETCH FIRST 1 ROWS ONLY)
+        LEFT JOIN edudoc_document d ON d.id = s.document_id
+        LEFT JOIN edudoc_document_version v ON v.id = s.document_version_id
+        LEFT JOIN edudoc_format_check f ON f.id = s.format_check_id
+        WHERE a.status IN ('PUBLISHED', 'CLOSED')
+        <if test="courseIdHex != null and courseIdHex != ''">AND a.course_id = HEXTORAW(#{courseIdHex})</if>
+        ORDER BY a.due_time
+    </select>
+
+    <!-- 跨读 document 域表：只取提交所需三列，提交链路不下载文件，故不校验 OSS 对象存在 -->
+    <select id="selectOwnedReadyDocument" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$OwnedDocument">
+        SELECT RAWTOHEX(d.id) AS documentId, d.title AS title,
+               RAWTOHEX(v.id) AS versionId, v.version_no AS versionNo, d.status AS status
+        FROM edudoc_document d
+        JOIN edudoc_document_version v ON v.id = d.current_version_id
+        WHERE d.id = HEXTORAW(#{documentIdHex}) AND d.owner_id = HEXTORAW(#{studentIdHex}) AND d.status = 'READY'
+    </select>
+
+    <select id="countSubmissions" resultType="long">
+        SELECT COUNT(*) FROM edudoc_submission
+        WHERE assignment_id = HEXTORAW(#{assignmentIdHex}) AND student_id = HEXTORAW(#{studentIdHex})
+    </select>
+
+    <insert id="insertSubmission">
+        INSERT INTO edudoc_submission (assignment_id, student_id, document_id, document_version_id,
+                                       format_check_id, attempt_no, submitted_at, status)
+        VALUES (HEXTORAW(#{assignmentIdHex}), HEXTORAW(#{studentIdHex}), HEXTORAW(#{documentIdHex}),
+                HEXTORAW(#{documentVersionIdHex}),
+                <choose><when test="formatCheckIdHex != null">HEXTORAW(#{formatCheckIdHex})</when>
+                        <otherwise>NULL</otherwise></choose>,
+                #{attemptNo}, SYSTIMESTAMP, #{status})
+    </insert>
+
+    <select id="selectSubmissionId" resultType="string">
+        SELECT RAWTOHEX(id) FROM edudoc_submission
+        WHERE assignment_id = HEXTORAW(#{assignmentIdHex}) AND student_id = HEXTORAW(#{studentIdHex})
+          AND attempt_no = #{attemptNo}
+    </select>
+
+    <select id="selectSubmissions" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$Submission">
+        SELECT RAWTOHEX(s.id) AS id, RAWTOHEX(s.assignment_id) AS assignmentId, a.title AS assignmentTitle,
+               c.course_name AS courseName, RAWTOHEX(s.student_id) AS studentId,
+               stu.display_name AS studentName, stu.username AS accountNo,
+               RAWTOHEX(s.document_id) AS documentId, d.title AS documentTitle, v.version_no AS versionNo,
+               NVL(f.blocking_issue_count, -1) AS blockingCount,
+               CASE WHEN f.id IS NULL THEN -1 ELSE
+                    (SELECT COUNT(*) FROM edudoc_format_issue i
+                      WHERE i.format_check_id = f.id AND i.severity = 'WARNING') END AS warningCount,
+               s.status AS status, s.score AS score, s.feedback AS feedback, s.score_json AS scoreJson,
+               s.attempt_no AS attemptNo, s.submitted_at AS submittedAt
+        FROM edudoc_submission s
+        JOIN edudoc_assignment a ON a.id = s.assignment_id
+        JOIN edudoc_course c ON c.id = a.course_id
+        JOIN edudoc_user stu ON stu.id = s.student_id
+        LEFT JOIN edudoc_document d ON d.id = s.document_id
+        LEFT JOIN edudoc_document_version v ON v.id = s.document_version_id
+        LEFT JOIN edudoc_format_check f ON f.id = s.format_check_id
+        WHERE <include refid="teacherCourseScope"/>
+          AND s.attempt_no = (SELECT MAX(s2.attempt_no) FROM edudoc_submission s2
+                              WHERE s2.assignment_id = s.assignment_id AND s2.student_id = s.student_id)
+        <if test="assignmentIdHex != null and assignmentIdHex != ''">
+            AND s.assignment_id = HEXTORAW(#{assignmentIdHex})
+        </if>
+        <if test="status != null and status != ''">AND s.status = #{status}</if>
+        ORDER BY s.submitted_at DESC
+    </select>
+
+    <update id="updateSubmissionGrade">
+        UPDATE edudoc_submission
+        SET score = #{score}, feedback = #{feedback}, score_json = #{scoreJson}, status = #{status}
+        WHERE id = HEXTORAW(#{submissionIdHex})
+    </update>
+
+</mapper>

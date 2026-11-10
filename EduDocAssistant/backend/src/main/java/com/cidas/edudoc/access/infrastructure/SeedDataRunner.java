@@ -12,8 +12,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /** 启动期种子账号：读取 db_seed/seed_accounts.csv，幂等写入 edudoc_user 与角色关联。 */
 @Component
@@ -25,13 +27,25 @@ public class SeedDataRunner implements ApplicationRunner {
     private final PasswordEncoder passwordEncoder;
     private final AiModelProperties aiModelProperties;
 
+    /** 演示账号显示名：对齐原型人物（张同学 / 李老师 / 赵工）。 */
+    private static final Map<String, String> DEMO_DISPLAY_NAMES =
+            Map.of("student", "张同学", "teacher", "李老师", "ops", "赵工");
+
+    /** 演示评分标准：五项各 20 分，与教师端发布作业表单默认口径一致。 */
+    private static final String DEMO_RUBRIC_JSON =
+            "[{\"name\":\"需求分析\",\"maxScore\":20},{\"name\":\"系统设计\",\"maxScore\":20},"
+                    + "{\"name\":\"实现与测试\",\"maxScore\":20},{\"name\":\"格式规范\",\"maxScore\":20},"
+                    + "{\"name\":\"结论与思考\",\"maxScore\":20}]";
+
     @Override
     public void run(ApplicationArguments args) throws Exception {
         String csv = StreamUtils.copyToString(
                 new ClassPathResource("db_seed/seed_accounts.csv").getInputStream(),
                 StandardCharsets.UTF_8);
         seed(parse(csv));
+        alignDemoIdentity();
         seedCourses();
+        seedCoursework();
         seedAiModelProfiles();
     }
 
@@ -64,12 +78,22 @@ public class SeedDataRunner implements ApplicationRunner {
         log.info("模型档案已创建：{}（{}，模型 {}）", code, providerType, modelName);
     }
 
-    /** 种子课程：teacher 授两门课，student 仅选 CS101（用于课程范围与列表筛选联调）。 */
+    /** 演示世界观对齐原型（docs/prototype/screens）：账号显示名统一，旧库改名幂等生效。 */
+    void alignDemoIdentity() {
+        DEMO_DISPLAY_NAMES.forEach((username, displayName) -> jdbcTemplate.update(
+                "UPDATE edudoc_user SET display_name = ?, update_time = SYSTIMESTAMP WHERE username = ?",
+                displayName, username));
+    }
+
+    /**
+     * 种子课程：teacher 授两门课，student 选两门（作业列表与提交统计需要多课程可见）。
+     * 课程名对齐原型《Web开发技术》《数据库原理》，旧库遗留名（计算机导论/高等数学）幂等改名。
+     */
     void seedCourses() {
-        seedCourse("CS101", "计算机导论", "2026-FALL",
+        seedCourse("CS101", "Web开发技术", "2026-FALL",
                 new String[][]{{"teacher", "TEACHER"}, {"student", "STUDENT"}});
-        seedCourse("MATH201", "高等数学", "2026-FALL",
-                new String[][]{{"teacher", "TEACHER"}});
+        seedCourse("MATH201", "数据库原理", "2026-FALL",
+                new String[][]{{"teacher", "TEACHER"}, {"student", "STUDENT"}});
     }
 
     private void seedCourse(String courseCode, String courseName, String termCode, String[][] members) {
@@ -77,7 +101,15 @@ public class SeedDataRunner implements ApplicationRunner {
                 "SELECT COUNT(*) FROM edudoc_course WHERE course_code = ? AND term_code = ?",
                 Integer.class, courseCode, termCode);
         if (exists != null && exists > 0) {
-            log.info("种子课程已存在，跳过：{}（{}）", courseCode, termCode);
+            jdbcTemplate.update(
+                    "UPDATE edudoc_course SET course_name = ?, update_time = SYSTIMESTAMP "
+                            + "WHERE course_code = ? AND term_code = ? AND course_name <> ?",
+                    courseName, courseCode, termCode, courseName);
+            String courseIdHex = queryCourseIdHex(courseCode, termCode);
+            for (String[] member : members) {
+                seedMember(courseIdHex, member[0], member[1]);
+            }
+            log.info("种子课程已存在，补齐名称与成员：{}（{}）", courseCode, termCode);
             return;
         }
         String teacherIdHex = queryUserId("teacher");
@@ -85,21 +117,63 @@ public class SeedDataRunner implements ApplicationRunner {
                 "INSERT INTO edudoc_course (course_code, course_name, term_code, teacher_id) "
                         + "VALUES (?, ?, ?, HEXTORAW(?))",
                 courseCode, courseName, termCode, teacherIdHex);
-        String courseIdHex = jdbcTemplate.queryForObject(
-                "SELECT RAWTOHEX(id) FROM edudoc_course WHERE course_code = ? AND term_code = ?",
-                String.class, courseCode, termCode);
+        String courseIdHex = queryCourseIdHex(courseCode, termCode);
         for (String[] member : members) {
-            jdbcTemplate.update(
-                    "INSERT INTO edudoc_course_member (course_id, user_id, member_role) "
-                            + "SELECT HEXTORAW(?), id, ? FROM edudoc_user WHERE username = ?",
-                    courseIdHex, member[1], member[0]);
+            seedMember(courseIdHex, member[0], member[1]);
         }
         log.info("种子课程已创建：{}（{}，成员 {} 人）", courseCode, termCode, members.length);
+    }
+
+    /** 成员幂等补插：已存在（uk_course_member_1）则跳过。 */
+    private void seedMember(String courseIdHex, String username, String memberRole) {
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_course_member (course_id, user_id, member_role) "
+                        + "SELECT HEXTORAW(?), u.id, ? FROM edudoc_user u WHERE u.username = ? "
+                        + "AND NOT EXISTS (SELECT 1 FROM edudoc_course_member m "
+                        + "WHERE m.course_id = HEXTORAW(?) AND m.user_id = u.id)",
+                courseIdHex, memberRole, username, courseIdHex);
+    }
+
+    /**
+     * 种子作业：一门课一份已发布作业（含评分标准，提交不强制格式校验，保证演示不依赖真上传）、
+     * 一门课一份草稿作业（验证 DRAFT 不出现在学生列表）。重复执行按标题去重。
+     */
+    void seedCoursework() {
+        seedAssignment("CS101", "Web开发课程设计报告",
+                "按课程模板完成设计报告，含需求分析、系统设计、实现与测试、格式规范、结论与思考。",
+                "2026-11-15T23:59:59+08:00", "PUBLISHED", "N");
+        seedAssignment("MATH201", "索引设计实验",
+                "完成 B+ 树索引实验并给出建表与查询计划对比。",
+                "2026-11-20T23:59:59+08:00", "DRAFT", "N");
+    }
+
+    private void seedAssignment(String courseCode, String title, String description,
+                                String dueTime, String status, String requireFormatCheck) {
+        String courseIdHex = queryCourseIdHex(courseCode, "2026-FALL");
+        Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM edudoc_assignment WHERE course_id = HEXTORAW(?) AND title = ?",
+                Integer.class, courseIdHex, title);
+        if (exists != null && exists > 0) {
+            return;
+        }
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_assignment (course_id, title, description, published_by, due_time, "
+                        + "allow_late, submission_format, require_format_check, rubric_json, status) "
+                        + "VALUES (HEXTORAW(?), ?, ?, HEXTORAW(?), ?, 'Y', 'BOTH', ?, ?, ?)",
+                courseIdHex, title, description, queryUserId("teacher"), OffsetDateTime.parse(dueTime),
+                requireFormatCheck, DEMO_RUBRIC_JSON, status);
+        log.info("种子作业已创建：{}（{}，状态 {}）", title, courseCode, status);
     }
 
     private String queryUserId(String username) {
         return jdbcTemplate.queryForObject(
                 "SELECT RAWTOHEX(id) FROM edudoc_user WHERE username = ?", String.class, username);
+    }
+
+    private String queryCourseIdHex(String courseCode, String termCode) {
+        return jdbcTemplate.queryForObject(
+                "SELECT RAWTOHEX(id) FROM edudoc_course WHERE course_code = ? AND term_code = ?",
+                String.class, courseCode, termCode);
     }
 
     void seed(List<SeedAccount> accounts) {

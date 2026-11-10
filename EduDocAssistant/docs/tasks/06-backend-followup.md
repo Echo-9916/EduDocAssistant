@@ -67,6 +67,15 @@
 
 另外为使演示**不依赖真实上传**：种子作业 `require_format_check='N'`，种子文档/版本行直接入库（提交链路只读库，不碰 OSS）。要演示格式预检时再按 `docs/test/DocumentTest.md` 真传一份。
 
+#### 落地差异（Task 1-1 完成后回写，任务正文按此读）
+
+- **路径全部按角色前缀收口**（原任务正文里 `/assignments/{id}/submissions`、`/submissions/{id}/grade` 一类无前缀写法作废）：
+  `GET /teacher/courses`·`POST /teacher/courses`·`POST /teacher/courses/{courseId}/member-imports`·`GET /teacher/assignments`·`POST /teacher/assignments`·`GET /teacher/assignments/{assignmentId}/unsubmitted`·`GET /teacher/submissions`·`PUT /teacher/submissions/{submissionId}/grade`·`GET /teacher/workbench-summary`·`GET /student/assignments`·`POST /student/assignments/{assignmentId}/submissions`·`GET /ops/audit-events`·`GET /ops/audit-events/{eventId}`。
+- **课程组不落新表**：改在 `edudoc_course_member.group_name` 存组名，课程列表的「班级/课程组数」用 `COUNT(DISTINCT group_name)` 现算；`edudoc_course_group` 实体表仍归切片 3/4（共享 `principal_type='GROUP'` 的悬空引用那时一并收口）。
+- **成员导入需要账号落点**：名单里无账号的学生建 `account_status='I'`、`auth_source='ACADEMIC'` 的未激活账号（密码为空，首登走统一身份认证），返回 `activated` 计数，与门面的「待激活」口径对上。
+- **提交本期不触发同步格式阻断**：`require_format_check='Y'` 时只留 `format_check_id` 为空，不阻断提交；同步阻断依赖校验结果回调，随消息/校验链路一起做。种子作业为 `N`，演示链路不受影响。
+- **审计风险分级用固定阈值**（同账号窗口内 FAIL≥2 → HIGH），`ponytail:` 注释已标出升级路径是切片 4 的 `edudoc_anomaly_review`，不加配置项。
+
 **新增权限点：** `SUBMISSION_SELF_READ`（学生查看本人作业与提交）。05 门面当时把学生「课程与作业」入口的 `SUBMISSION_READ` 收权解除是权宜，Task 1-8 要按新点重新收口——`SUBMISSION_READ` 语义是查看提交统计，属教师/运维。
 
 ### Task 1-1: DDL 与设计文档同步 + 演示种子

@@ -26,6 +26,7 @@
 1. **未选修学生可提交任意已发布作业**（鉴权第 4 步缺失）→ `StudentCourseworkServiceImpl` 补 `isCourseMember` → 40301 + 用例。发现者：实现该端点的 agent 自报「留待拍板」，判定为必须堵，当场修。
 2. **草稿（DRAFT）作业可以提交** → 真机 curl 打出 `SUBMIT->draft 201` 才发现（单测与列表 SQL 都拦不住：列表过滤了 DRAFT，提交端点没查状态）→ 补 409「作业尚未发布，不能提交」+ 用例，8080 复验通过。
 3. **`CourseworkMapper.xml` 分节注释写成 `<!-- ---------- X ---------- -->`**：注释体内含 `--` 是非法 XML，**`mvn test` 全绿但应用启动即崩**（MyBatis 只在启动时解析 XML）→ 改 `===== X =====` 并扫描全部 mapper 确认无同类写法。
+4. **我自己加的两个冗余索引**：`ix_assignment_course_due(course_id,due_time)` 与 `ix_submission_assignment_student(assignment_id,student_id)`——库里早有 `ix_assignment_course(course_id,status,due_time)` 和 `uk_submission_1(assignment_id,student_id,attempt_no)`，前缀完全覆盖我的查询。已从 `02_indexes.sql` 删除并在实库 drop（索引只增写放大，不白留）。教训：**加索引前必须先查 `user_indexes`，别照着「感觉会用」写脚本**。
 
 ## 三、与设计/计划文档的偏离（均已回写 06 文档「落地差异」）
 
@@ -33,7 +34,7 @@
 - 课程组不落新表，改存 `edudoc_course_member.group_name`；`edudoc_course_group` 仍归切片 3/4（届时一并收口 `share_grant.principal_type='GROUP'` 的悬空引用）。
 - 路径统一角色前缀：`/teacher/*`、`/student/*`、`/ops/*`（原任务正文里 `/assignments/{id}/submissions` 一类写法作废）。
 - 审计成功码兼容 `'200'` 与 `'SUCCESS'`：既有写入路径两种都写过，严格照 `'200'` 判会把所有成功登录标成 FAIL。
-- 设计说明书（`.docx` 源 + `docs/design` 复刻）与 `01/02/03` 脚本的文档同步**尚未做**，按「速度优先」第 3 条挪到切片 1 收尾一次性补，本条是当前唯一的文档欠账，审查须核。
+- 文档同步进度：`docs/design/数据库设计说明书.md` 复刻**已补**（`course_member.group_name`、`assignment` 三列、`submission.score_json`，并注明「按速度优先口径不建明细表」的代价）；**唯一剩余欠账是 `05_系统设计/02_数据库设计说明书.docx` 源文件**，需要走 `TempStore/docx-*.py` 工具链改 Word 交付物——属于对外交付文档，改坏成本高，待你点头再动。表数与触发器数无变化（本切片没建新表）。
 
 ## 四、验证汇总
 

@@ -179,6 +179,7 @@ CREATE TABLE edudoc_course_member (
     course_id RAW(16) NOT NULL,
     user_id RAW(16) NOT NULL,
     member_role VARCHAR2(20) NOT NULL,
+    group_name VARCHAR2(50),
     status CHAR(1) DEFAULT 'A' NOT NULL,
     CONSTRAINT pk_course_member PRIMARY KEY (id),
     CONSTRAINT uk_course_member_1 UNIQUE (course_id, user_id),
@@ -195,6 +196,7 @@ COMMENT ON COLUMN edudoc_course_member.update_time IS '最后更新时间，由�
 COMMENT ON COLUMN edudoc_course_member.course_id IS '课程 ID';
 COMMENT ON COLUMN edudoc_course_member.user_id IS '用户 ID';
 COMMENT ON COLUMN edudoc_course_member.member_role IS '课程内角色：STUDENT、TEACHER、ASSISTANT';
+COMMENT ON COLUMN edudoc_course_member.group_name IS '课程组名（成员导入与课程组统计用；课程组实体表属切片 3/4）';
 COMMENT ON COLUMN edudoc_course_member.status IS '状态：A 有效、R 移除';
 
 -- OSS 对象登记表: 登记 OSS 中的原始文件、解析产物、导出件与协作快照。
@@ -1053,12 +1055,17 @@ CREATE TABLE edudoc_assignment (
     publish_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     due_time TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     allow_late CHAR(1) DEFAULT 'N' NOT NULL,
+    submission_format VARCHAR2(10) DEFAULT 'BOTH' NOT NULL,
+    require_format_check CHAR(1) DEFAULT 'N' NOT NULL,
+    rubric_json VARCHAR2(2000),
     status VARCHAR2(20) NOT NULL,
     CONSTRAINT pk_assignment PRIMARY KEY (id),
     CONSTRAINT fk_assignment_1 FOREIGN KEY (course_id) REFERENCES edudoc_course (id),
     CONSTRAINT fk_assignment_2 FOREIGN KEY (template_version_id) REFERENCES edudoc_template_version (id),
     CONSTRAINT fk_assignment_3 FOREIGN KEY (published_by) REFERENCES edudoc_user (id),
     CONSTRAINT ck_assignment_late CHECK (allow_late IN ('Y','N')),
+    CONSTRAINT ck_assignment_format CHECK (submission_format IN ('DOCX','PDF','BOTH')),
+    CONSTRAINT ck_assignment_reqcheck CHECK (require_format_check IN ('Y','N')),
     CONSTRAINT ck_assignment_status CHECK (status IN ('DRAFT','PUBLISHED','CLOSED'))
 );
 
@@ -1074,6 +1081,9 @@ COMMENT ON COLUMN edudoc_assignment.published_by IS '发布教师 ID';
 COMMENT ON COLUMN edudoc_assignment.publish_time IS '发布时间';
 COMMENT ON COLUMN edudoc_assignment.due_time IS '截止时间';
 COMMENT ON COLUMN edudoc_assignment.allow_late IS '是否允许迟交：Y/N';
+COMMENT ON COLUMN edudoc_assignment.submission_format IS '要求提交格式：DOCX、PDF、BOTH';
+COMMENT ON COLUMN edudoc_assignment.require_format_check IS '提交前是否强制格式校验：Y/N';
+COMMENT ON COLUMN edudoc_assignment.rubric_json IS '评分标准 JSON：[{"name":"…","maxScore":20}]，分项明细不做 SQL 聚合';
 COMMENT ON COLUMN edudoc_assignment.status IS '状态：DRAFT、PUBLISHED、CLOSED';
 
 -- 作业提交表: 记录学生某次提交的文档版本、格式校验与评分信息。
@@ -1091,6 +1101,7 @@ CREATE TABLE edudoc_submission (
     status VARCHAR2(20) NOT NULL,
     score NUMBER(6,2),
     feedback VARCHAR2(2000),
+    score_json VARCHAR2(2000),
     CONSTRAINT pk_submission PRIMARY KEY (id),
     CONSTRAINT uk_submission_1 UNIQUE (assignment_id, student_id, attempt_no),
     CONSTRAINT fk_submission_1 FOREIGN KEY (assignment_id) REFERENCES edudoc_assignment (id),
@@ -1113,8 +1124,9 @@ COMMENT ON COLUMN edudoc_submission.format_check_id IS '提交前格式校验 ID
 COMMENT ON COLUMN edudoc_submission.attempt_no IS '提交次数';
 COMMENT ON COLUMN edudoc_submission.submitted_at IS '提交时间';
 COMMENT ON COLUMN edudoc_submission.status IS '状态：SUBMITTED、LATE、WITHDRAWN、GRADED';
-COMMENT ON COLUMN edudoc_submission.score IS '评分';
+COMMENT ON COLUMN edudoc_submission.score IS '评分（服务端按 score_json 分项求和，不信任前端总分）';
 COMMENT ON COLUMN edudoc_submission.feedback IS '教师反馈';
+COMMENT ON COLUMN edudoc_submission.score_json IS '分项得分 JSON：[{"name":"…","maxScore":20,"score":18}]';
 
 -- 导出任务表: 记录全文、摘要、要点、问答和指定版本的导出任务。
 CREATE TABLE edudoc_export_task (

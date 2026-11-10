@@ -1,10 +1,11 @@
 // D-10（1107 P2-4）：学生工作台快捷入口——设计 05 明文四项：上传文档 / 按模板新建 / 查看作业 / 教学消息。
 // 本切片接线「按模板新建」到格式与模板页；其余入口跳对应一级导航；统计卡随 05/06 切片填充。
+import { useEffect, useState } from 'react'
 import { Card, Col, Row, Statistic } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { AppButton } from '../../components'
 import { rolePath } from '../../routes'
-import { messagesOf } from '../../mock/domain/messages'
+import { unreadCount } from '../../api/messages'
 
 const SHORTCUTS = [
   { key: 'upload', label: '上传文档', desc: 'Word/PDF 课件、作业、报告', to: 'documents' },
@@ -16,13 +17,17 @@ const SHORTCUTS = [
 
 export default function StudentWorkbench() {
   const navigate = useNavigate()
-  const unread = messagesOf('STUDENT').filter((m) => !m.read).length
+  // 06 切片 2：未读角标走 GET /messages/unread-count，不再拿 mock 全量自己算
+  const [unread, setUnread] = useState<number | null>(null)
+  useEffect(() => {
+    unreadCount().then(setUnread).catch(() => setUnread(null))
+  }, [])
   return (
     <div>
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}><Card><Statistic title="我的文档" value="-" suffix="（随统计切片）" /></Card></Col>
         <Col span={6}><Card><Statistic title="待提交作业" value="-" /></Card></Col>
-        <Col span={6}><Card><Statistic title="未读消息" value={unread} /></Card></Col>
+        <Col span={6}><Card><Statistic title="未读消息" value={unread ?? '-'} /></Card></Col>
         <Col span={6}><Card><Statistic title="进行中协作" value="-" /></Card></Col>
       </Row>
       <Card title="快捷入口">

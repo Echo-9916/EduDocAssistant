@@ -14,3 +14,4 @@
 ## 阶段3 门面先行（策略调整，2026-11-09）
 
 - [05-web-full-presentation.md](05-web-full-presentation.md) —— 前端全量呈现：三端 81 屏逐屏可达（已联调分区保持真实接口，其余分区用 mock 骨架页 + 页头屏号与「演示数据」标记）、三端主题接线、演示口径与已知限制、后端与 ai-service 跟进清单。
+- [06-backend-followup.md](06-backend-followup.md) —— 后端与 ai-service 跟进计划：四切片总览（课程与作业 → 消息与个人中心 → 协作与版本 REST → 运维端治理）、切片 1 已展开到任务级 TDD 步骤、全局约束 14 条、Review Focus 5 类、待拍板 4 项与三处低估风险。

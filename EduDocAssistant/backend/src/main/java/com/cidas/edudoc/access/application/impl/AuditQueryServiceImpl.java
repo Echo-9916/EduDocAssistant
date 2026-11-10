@@ -1,7 +1,7 @@
 package com.cidas.edudoc.access.application.impl;
 
 import com.cidas.edudoc.access.application.AuditQueryService;
-import com.cidas.edudoc.access.infrastructure.AuditLogMapper;
+import com.cidas.edudoc.access.infrastructure.AuditLogRepository;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
@@ -32,7 +32,7 @@ public class AuditQueryServiceImpl implements AuditQueryService {
     private static final int RISK_HIGH_FAILS = 2;
     private static final int RISK_MEDIUM_FAILS = 1;
 
-    private final AuditLogMapper auditLogMapper;
+    private final AuditLogRepository auditLogRepository;
 
     @Override
     public PageResult<AuditEventView> search(ListQuery query) {
@@ -54,9 +54,9 @@ public class AuditQueryServiceImpl implements AuditQueryService {
         long offset = (long) (page - 1) * pageSize;
         String actor = escapeLike(query.actor());
         String keyword = escapeLike(query.keyword());
-        long total = auditLogMapper.countEvents(since, resourceType, actor, keyword);
+        long total = auditLogRepository.countEvents(since, resourceType, actor, keyword);
         List<AuditEventView> items = total == 0 ? List.of()
-                : auditLogMapper.searchEvents(since, resourceType, actor, keyword, offset, pageSize)
+                : auditLogRepository.searchEvents(since, resourceType, actor, keyword, offset, pageSize)
                         .stream().map(AuditQueryServiceImpl::toView).toList();
         return new PageResult<>(items, total, page, pageSize);
     }
@@ -66,20 +66,20 @@ public class AuditQueryServiceImpl implements AuditQueryService {
         if (!Ids.isHex16(eventId)) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "事件 ID 格式不合法");
         }
-        Map<String, Object> row = auditLogMapper.selectEventDetail(eventId);
+        Map<String, Object> row = auditLogRepository.selectEventDetail(eventId);
         if (row == null) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "审计事件不存在");
         }
         AuditEventView base = toView(row);
         return new AuditEventDetailView(base.id(), base.occurredAt(), base.actor(), base.actorAccount(),
-                base.actionType(), base.resourceType(), base.resourceRef(), base.result(), base.resultCode(),
+                base.actorRole(), base.actionType(), base.resourceType(), base.resourceRef(), base.result(), base.resultCode(),
                 base.traceId(), base.sourceIp(), base.userAgent(), base.riskLevel(), base.summary(),
                 chainOf(base.traceId()), impactsOf(row, base.result()), adviceFor(base.resultCode()));
     }
 
     /** 同 trace_id 的全部审计行聚合成链路；Java 侧再按 occurred_at+id 排序，step 编号不依赖 DB 返回顺序。 */
     private List<ChainStep> chainOf(String traceId) {
-        List<Map<String, Object>> rows = auditLogMapper.selectChainByTraceId(traceId).stream()
+        List<Map<String, Object>> rows = auditLogRepository.selectChainByTraceId(traceId).stream()
                 .sorted(Comparator.comparing((Map<String, Object> r) -> str(r, "occurredAt"))
                         .thenComparing(r -> str(r, "id")))
                 .toList();
@@ -127,7 +127,7 @@ public class AuditQueryServiceImpl implements AuditQueryService {
         String resultCode = str(row, "resultCode");
         String result = isSuccess(resultCode) ? "SUCCESS" : "FAIL";
         return new AuditEventView(str(row, "id"), str(row, "occurredAt"), str(row, "actor"),
-                str(row, "actorAccount"), str(row, "actionType"), str(row, "resourceType"),
+                str(row, "actorAccount"), str(row, "actorRole"), str(row, "actionType"), str(row, "resourceType"),
                 str(row, "resourceRef"), result, resultCode, str(row, "traceId"),
                 str(row, "sourceIp"), str(row, "userAgent"), riskLevelOf(row), summaryOf(row, result));
     }

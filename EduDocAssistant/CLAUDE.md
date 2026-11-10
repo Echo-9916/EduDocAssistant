@@ -24,7 +24,10 @@ EduDocAssistant（CIDAS，校园智能文档辅助系统）的实现工作区。
 | `gateway/`    | Node.js 22、Yjs                  | 协作 WebSocket 网关；做实时协作时再建          |
 | `deploy/`     | Nginx、systemd                   | 单机部署配置；做可部署版本时再建               |
 
-`backend/` 按六个业务域分包：`document`、`ai`、`template`、`collaboration`、`access`、`export`；每个域内含 `api` / `application` / `domain` / `infrastructure` 四层。横切能力（统一响应、错误码、trace、事务模板）放 `common`，不携带业务状态。
+`backend/` 按七个业务域分包：`document`、`ai`、`template`、`collaboration`、`access`、`export`、`coursework`（06 切片 1 新增：作业发布/提交/批改/统计）；每个域内含 `api` / `application` / `domain` / `infrastructure` 四层。横切能力（统一响应、错误码、trace、事务模板）放 `common`，不携带业务状态。
+
+- 分层红线补充：ApplicationService 只依赖 Repository，**不得直连 Mapper**（06 切片 1 审查发现的口子，已收口）；业务写路径与审计必须同一 `@Transactional` 边界。
+- 启动期种子 `SeedDataRunner` 允许内联 `JdbcTemplate` SQL（演示数据，非业务代码），不要把它当成可在业务层复制的先例。
 
 ## 架构红线
 

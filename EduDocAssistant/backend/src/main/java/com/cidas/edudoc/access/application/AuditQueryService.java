@@ -18,14 +18,14 @@ public interface AuditQueryService {
     }
 
     /** 列表行：result 由 resultCode 派生（'200'/'SUCCESS'→SUCCESS，否则 FAIL），riskLevel 现算。 */
-    record AuditEventView(String id, String occurredAt, String actor, String actorAccount,
+    record AuditEventView(String id, String occurredAt, String actor, String actorAccount, String actorRole,
                           String actionType, String resourceType, String resourceRef,
                           String result, String resultCode, String traceId, String sourceIp,
                           String userAgent, String riskLevel, String summary) {
     }
 
     /** 详情：主行字段 + chain（同 trace_id 全部审计行，occurred_at 升序）+ impacts + advice。 */
-    record AuditEventDetailView(String id, String occurredAt, String actor, String actorAccount,
+    record AuditEventDetailView(String id, String occurredAt, String actor, String actorAccount, String actorRole,
                                 String actionType, String resourceType, String resourceRef,
                                 String result, String resultCode, String traceId, String sourceIp,
                                 String userAgent, String riskLevel, String summary,

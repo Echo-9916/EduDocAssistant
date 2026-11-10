@@ -28,4 +28,24 @@ public class AuditLogRepository {
     private String traceId() {
         return Optional.ofNullable(TraceContext.get()).orElseGet(() -> UUID.randomUUID().toString());
     }
+
+    // ---------- 只读查询（06 切片 1 审计检索）：委托 Mapper，应用层不直连 Mapper ----------
+
+    public long countEvents(java.time.OffsetDateTime since, String resourceType, String actor, String keyword) {
+        return mapper.countEvents(since, resourceType, actor, keyword);
+    }
+
+    public java.util.List<java.util.Map<String, Object>> searchEvents(java.time.OffsetDateTime since,
+                                                                      String resourceType, String actor,
+                                                                      String keyword, long offset, int pageSize) {
+        return mapper.searchEvents(since, resourceType, actor, keyword, offset, pageSize);
+    }
+
+    public java.util.Map<String, Object> selectEventDetail(String eventId) {
+        return mapper.selectEventDetail(eventId);
+    }
+
+    public java.util.List<java.util.Map<String, Object>> selectChainByTraceId(String traceId) {
+        return mapper.selectChainByTraceId(traceId);
+    }
 }

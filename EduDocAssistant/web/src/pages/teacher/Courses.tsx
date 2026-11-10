@@ -178,6 +178,7 @@ export default function TeacherCourses() {
         requirement: v.requirement,
         dueTime,
         submissionFormat: v.format,
+        allowLate: v.allowLate ? 'Y' : 'N',
         requireFormatCheck: v.requireFormatCheck ? 'Y' : 'N',
         rubric: DEFAULT_RUBRIC.map((r) => ({ name: r.name, maxScore: v[`rubric_${r.name}`] ?? r.maxScore })),
       })
@@ -512,7 +513,7 @@ export default function TeacherCourses() {
             showIcon
             style={{ margin: '12px 0' }}
             message={`${importFile} · 共 ${IMPORT_ROWS.length} 行`}
-            description="确认导入后，下方预览名单将真实写入课程成员：无账号者建未激活账号并发送课程邀请，已有账号者直接入组"
+            description="确认导入后，下方预览名单将真实写入课程成员：无账号者建未激活账号（登录与邀请投递随消息切片开放），已有账号者直接入组"
           />
         )}
         {importResult && (
@@ -571,7 +572,7 @@ export default function TeacherCourses() {
               type="info"
               showIcon
               style={{ marginBottom: 12 }}
-              message={`截止 ${fmtTime(remindRow.dueTime)}，${remindRow.unsubmitted} 名学生尚未提交；名单与本次查看已记入审计`}
+              message={`截止 ${fmtTime(remindRow.dueTime)}，${remindRow.unsubmitted} 名学生尚未提交`}
               description="提醒投递随消息切片开放，当前后端只生成名单，不发送消息"
             />
             <List
@@ -604,7 +605,9 @@ export default function TeacherCourses() {
               initialValues={{
                 courseId: courses.find((c) => c.status === 'A')?.id,
                 format: 'BOTH',
-                requireFormatCheck: true,
+                allowLate: true,
+                // 默认不勾：勾上会在学生端承诺一个后端还没做的同步阻断（A4）
+                requireFormatCheck: false,
                 ...Object.fromEntries(DEFAULT_RUBRIC.map((r) => [`rubric_${r.name}`, r.maxScore])),
               }}
             >
@@ -624,7 +627,11 @@ export default function TeacherCourses() {
               <Form.Item name="format" label="提交格式" rules={[requiredRule('请选择提交格式')]}>
                 <Select options={[{ value: 'DOCX', label: 'DOCX' }, { value: 'PDF', label: 'PDF' }, { value: 'BOTH', label: 'DOCX / PDF' }]} />
               </Form.Item>
-              <Form.Item name="requireFormatCheck" label="要求格式校验通过" valuePropName="checked" extra="阻断问题未修复时禁止提交">
+              <Form.Item name="allowLate" label="允许迟交" valuePropName="checked" extra="关闭后过截止提交将被拒（409）">
+                <Switch />
+              </Form.Item>
+              {/* 后端本期不做提交前同步阻断（A4），文案不能再承诺「禁止提交」 */}
+              <Form.Item name="requireFormatCheck" label="要求格式校验" valuePropName="checked" extra="提交后异步回填校验结论，暂不阻断提交">
                 <Switch />
               </Form.Item>
               <Typography.Text strong>评分标准项（总分 100）</Typography.Text>
@@ -649,7 +656,7 @@ export default function TeacherCourses() {
                 {pvFormat ? ` · ${pvFormat === 'BOTH' ? 'DOCX / PDF' : pvFormat}` : ''}
               </Typography.Paragraph>
               {pvRequireCheck !== false && (
-                <Alert type="info" showIcon message="提交前需通过课程模板格式校验" style={{ marginBottom: 12 }} />
+                <Alert type="info" showIcon message="提交后回填课程模板格式校验结论（本期不阻断提交）" style={{ marginBottom: 12 }} />
               )}
               <List
                 size="small"

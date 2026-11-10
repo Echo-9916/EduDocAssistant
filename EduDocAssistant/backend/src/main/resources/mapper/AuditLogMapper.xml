@@ -37,8 +37,8 @@
 
     <select id="searchEvents" resultType="map">
         SELECT RAWTOHEX(a.id) AS "id",
-               TO_CHAR(a.occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "occurredAt",
-               u.display_name AS "actor", u.username AS "actorAccount",
+               TO_CHAR(SYS_EXTRACT_UTC(a.occurred_at), 'YYYY-MM-DD"T"HH24:MI:SS') || 'Z' AS "occurredAt",
+               u.display_name AS "actor", u.username AS "actorAccount", a.actor_role AS "actorRole",
                a.action_type AS "actionType", a.resource_type AS "resourceType",
                a.resource_ref AS "resourceRef", a.result_code AS "resultCode",
                a.trace_id AS "traceId", a.source_ip AS "sourceIp", a.user_agent AS "userAgent",
@@ -64,8 +64,8 @@
          子查询走 ix_audit_actor。documentTitle 供影响条目显示文档名。 -->
     <select id="selectEventDetail" resultType="map">
         SELECT RAWTOHEX(a.id) AS "id",
-               TO_CHAR(a.occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "occurredAt",
-               u.display_name AS "actor", u.username AS "actorAccount",
+               TO_CHAR(SYS_EXTRACT_UTC(a.occurred_at), 'YYYY-MM-DD"T"HH24:MI:SS') || 'Z' AS "occurredAt",
+               u.display_name AS "actor", u.username AS "actorAccount", a.actor_role AS "actorRole",
                a.action_type AS "actionType", a.resource_type AS "resourceType",
                a.resource_ref AS "resourceRef", a.result_code AS "resultCode",
                a.trace_id AS "traceId", a.source_ip AS "sourceIp", a.user_agent AS "userAgent",
@@ -85,7 +85,7 @@
          演示数据量下按全表过滤可接受；ORDER BY 保证 step 编号稳定（Java 侧仍复排一次）。 -->
     <select id="selectChainByTraceId" resultType="map">
         SELECT RAWTOHEX(a.id) AS "id",
-               TO_CHAR(a.occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "occurredAt",
+               TO_CHAR(SYS_EXTRACT_UTC(a.occurred_at), 'YYYY-MM-DD"T"HH24:MI:SS') || 'Z' AS "occurredAt",
                a.action_type AS "actionType", a.resource_type AS "resourceType",
                a.resource_ref AS "resourceRef", a.result_code AS "resultCode"
         FROM edudoc_audit_log a

@@ -62,6 +62,7 @@
     <select id="countCourseMember" resultType="long">
         SELECT COUNT(*) FROM edudoc_course_member
         WHERE course_id = HEXTORAW(#{courseIdHex}) AND user_id = HEXTORAW(#{userIdHex})
+          AND status = 'A'
     </select>
 
     <insert id="insertCourseMember">
@@ -74,10 +75,6 @@
         INSERT INTO edudoc_user (username, display_name, auth_source, account_status, last_login_time)
         VALUES (#{accountNo}, #{name}, 'ACADEMIC', 'I', NULL)
     </insert>
-
-    <update id="updateCourseStatus">
-        UPDATE edudoc_course SET status = #{status} WHERE id = HEXTORAW(#{courseIdHex})
-    </update>
 
     <!-- ===== 作业 ===== -->
 
@@ -115,17 +112,15 @@
         WHERE a.id = HEXTORAW(#{assignmentIdHex})
     </select>
 
+    <!-- 主键由应用侧 Ids.hex16() 生成后随 INSERT 落入：同课程重名发布时不再有「按 course+title 回读」
+         的 TooManyResultsException 风险（该表无 (course_id,title) 唯一约束，重名是合法的）。 -->
     <insert id="insertAssignment">
-        INSERT INTO edudoc_assignment (course_id, title, description, published_by, publish_time, due_time,
+        INSERT INTO edudoc_assignment (id, course_id, title, description, published_by, publish_time, due_time,
                                        allow_late, submission_format, require_format_check, rubric_json, status)
-        VALUES (HEXTORAW(#{courseIdHex}), #{title}, #{description}, HEXTORAW(#{publishedByHex}),
+        VALUES (HEXTORAW(#{idHex}), HEXTORAW(#{courseIdHex}), #{title}, #{description}, HEXTORAW(#{publishedByHex}),
                 SYSTIMESTAMP, #{dueTime}, #{allowLate}, #{submissionFormat}, #{requireFormatCheck},
                 #{rubricJson}, #{status})
     </insert>
-
-    <select id="selectAssignmentId" resultType="string">
-        SELECT RAWTOHEX(id) FROM edudoc_assignment WHERE course_id = HEXTORAW(#{courseIdHex}) AND title = #{title}
-    </select>
 
     <select id="selectUnsubmittedMembers" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$MemberAccount">
         SELECT RAWTOHEX(u.id) AS userId, u.username AS accountNo, u.display_name AS name

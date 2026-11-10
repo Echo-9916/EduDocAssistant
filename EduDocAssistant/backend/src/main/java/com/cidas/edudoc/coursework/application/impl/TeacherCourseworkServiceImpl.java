@@ -13,7 +13,6 @@ import com.cidas.edudoc.coursework.domain.CourseworkRules;
 import com.cidas.edudoc.coursework.domain.CourseworkRules.Grade;
 import com.cidas.edudoc.coursework.domain.CourseworkRules.RubricItem;
 import com.cidas.edudoc.coursework.domain.CourseworkRules.ScoreItem;
-import com.cidas.edudoc.coursework.infrastructure.CourseworkMapper;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRepository;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRepository.AssignmentCreate;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.AssignmentStats;
@@ -55,8 +54,6 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final CourseworkRepository repository;
-    /** 仓储冻结（06 切片 1 分工）缺少「按主键取提交」，该查询直连 Mapper；SQL 仍只在 XML。 */
-    private final CourseworkMapper mapper;
     private final AuditService auditService;
 
     // ---------- 课程 ----------
@@ -151,6 +148,7 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
     }
 
     @Override
+    @Transactional
     public CreatedAssignment createAssignment(AssignmentCreateCommand command) {
         UserPrincipal principal = AuthContext.require();
         requireScope(principal, command.courseId());
@@ -165,13 +163,16 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
         if (!SUBMISSION_FORMATS.contains(command.submissionFormat())) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "提交格式仅支持 DOCX/PDF/BOTH");
         }
-        requireYesNo(command.allowLate(), "允许迟交仅支持 Y/N");
-        requireYesNo(command.requireFormatCheck(), "格式强校验仅支持 Y/N");
+        // 缺省按 DDL 默认值 'N'：发布表单未暴露这两个开关时省略字段是合法的，不能因此 400
+        String allowLate = command.allowLate() == null ? "N" : command.allowLate();
+        String requireFormatCheck = command.requireFormatCheck() == null ? "N" : command.requireFormatCheck();
+        requireYesNo(allowLate, "允许迟交仅支持 Y/N");
+        requireYesNo(requireFormatCheck, "格式强校验仅支持 Y/N");
         String title = command.title().trim();
         String status = Boolean.TRUE.equals(command.draft()) ? "DRAFT" : "PUBLISHED";
         String assignmentId = repository.createAssignment(new AssignmentCreate(command.courseId(), title,
-                command.requirement(), principal.userId(), dueTime, command.allowLate(),
-                command.submissionFormat(), command.requireFormatCheck(), writeRubric(rubric), status));
+                command.requirement(), principal.userId(), dueTime, allowLate,
+                command.submissionFormat(), requireFormatCheck, writeRubric(rubric), status));
         auditService.record("ASSIGNMENT_CREATED", "ASSIGNMENT", assignmentId, null, "200",
                 Map.of("courseId", command.courseId(), "title", title, "status", status));
         return new CreatedAssignment(assignmentId, status);
@@ -180,13 +181,13 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
     @Override
     public UnsubmittedResult listUnsubmitted(String assignmentId) {
         UserPrincipal principal = AuthContext.require();
-        AssignmentStats assignment = loadScopedAssignment(principal, assignmentId);
+        // 越权检查保留（非本人课程 → 40301），但 GET 不再写审计：
+        // 审查指出每次读名单都落一条 REMIND_UNSUBMITTED，预取或重放会刷审计。
+        // 提醒动作与投递随切片 2 的消息生产者落地（届时改为显式 POST 动作端点）。
+        loadScopedAssignment(principal, assignmentId);
         List<UnsubmittedStudent> items = repository.listUnsubmitted(assignmentId).stream()
                 .map(row -> new UnsubmittedStudent(row.getAccountNo(), row.getName()))
                 .toList();
-        // 本端点只产出名单并留痕；提醒消息的投递随消息切片（切片 2）开放
-        auditService.record("REMIND_UNSUBMITTED", "ASSIGNMENT", assignmentId, null, "200",
-                Map.of("count", items.size(), "note", "投递随消息切片开放"));
         return new UnsubmittedResult(items);
     }
 
@@ -209,12 +210,13 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
     }
 
     @Override
+    @Transactional
     public GradeResult gradeSubmission(String submissionId, GradeCommand command) {
         UserPrincipal principal = AuthContext.require();
         if (!Ids.isHex16(submissionId)) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "submissionId 格式不合法");
         }
-        Submission submission = mapper.selectSubmissionById(submissionId);
+        Submission submission = repository.findSubmissionById(submissionId);
         if (submission == null) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "提交不存在");
         }

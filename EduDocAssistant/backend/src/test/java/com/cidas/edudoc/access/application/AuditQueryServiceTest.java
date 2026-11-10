@@ -7,7 +7,7 @@ import com.cidas.edudoc.access.application.AuditQueryService.ChainStep;
 import com.cidas.edudoc.access.application.AuditQueryService.ListQuery;
 import com.cidas.edudoc.access.application.impl.AuditQueryServiceImpl;
 import com.cidas.edudoc.access.domain.PermissionCode;
-import com.cidas.edudoc.access.infrastructure.AuditLogMapper;
+import com.cidas.edudoc.access.infrastructure.AuditLogRepository;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
@@ -46,7 +46,7 @@ class AuditQueryServiceTest {
 
     private static final String EVENT_ID = "0123456789ABCDEF0123456789ABCDEF";
 
-    private final AuditLogMapper mapper = mock(AuditLogMapper.class);
+    private final AuditLogRepository mapper = mock(AuditLogRepository.class);
     private final AuditQueryServiceImpl service = new AuditQueryServiceImpl(mapper);
 
     @AfterEach

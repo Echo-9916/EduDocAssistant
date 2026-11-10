@@ -90,10 +90,11 @@ public class SeedDataRunner implements ApplicationRunner {
      * 课程名对齐原型《Web开发技术》《数据库原理》，旧库遗留名（计算机导论/高等数学）幂等改名。
      */
     void seedCourses() {
+        // 第三列是课程组名：edudoc_course_member.group_name，课程列表的「班级/课程组数」据此现算
         seedCourse("CS101", "Web开发技术", "2026-FALL",
-                new String[][]{{"teacher", "TEACHER"}, {"student", "STUDENT"}});
+                new String[][]{{"teacher", "TEACHER", null}, {"student", "STUDENT", "Web开发-1组"}});
         seedCourse("MATH201", "数据库原理", "2026-FALL",
-                new String[][]{{"teacher", "TEACHER"}, {"student", "STUDENT"}});
+                new String[][]{{"teacher", "TEACHER", null}, {"student", "STUDENT", "数据库-1组"}});
     }
 
     private void seedCourse(String courseCode, String courseName, String termCode, String[][] members) {
@@ -107,7 +108,7 @@ public class SeedDataRunner implements ApplicationRunner {
                     courseName, courseCode, termCode, courseName);
             String courseIdHex = queryCourseIdHex(courseCode, termCode);
             for (String[] member : members) {
-                seedMember(courseIdHex, member[0], member[1]);
+                seedMember(courseIdHex, member[0], member[1], member[2]);
             }
             log.info("种子课程已存在，补齐名称与成员：{}（{}）", courseCode, termCode);
             return;
@@ -119,19 +120,27 @@ public class SeedDataRunner implements ApplicationRunner {
                 courseCode, courseName, termCode, teacherIdHex);
         String courseIdHex = queryCourseIdHex(courseCode, termCode);
         for (String[] member : members) {
-            seedMember(courseIdHex, member[0], member[1]);
+            seedMember(courseIdHex, member[0], member[1], member[2]);
         }
         log.info("种子课程已创建：{}（{}，成员 {} 人）", courseCode, termCode, members.length);
     }
 
-    /** 成员幂等补插：已存在（uk_course_member_1）则跳过。 */
-    private void seedMember(String courseIdHex, String username, String memberRole) {
+    /** 成员幂等补插：已存在（uk_course_member_1）则跳过；groupName 供「班级/课程组数」现算。 */
+    private void seedMember(String courseIdHex, String username, String memberRole, String groupName) {
         jdbcTemplate.update(
-                "INSERT INTO edudoc_course_member (course_id, user_id, member_role) "
-                        + "SELECT HEXTORAW(?), u.id, ? FROM edudoc_user u WHERE u.username = ? "
+                "INSERT INTO edudoc_course_member (course_id, user_id, member_role, group_name) "
+                        + "SELECT HEXTORAW(?), u.id, ?, ? FROM edudoc_user u WHERE u.username = ? "
                         + "AND NOT EXISTS (SELECT 1 FROM edudoc_course_member m "
                         + "WHERE m.course_id = HEXTORAW(?) AND m.user_id = u.id)",
-                courseIdHex, memberRole, username, courseIdHex);
+                courseIdHex, memberRole, groupName, username, courseIdHex);
+        // 早期种子已入课但无组别：补一次组名，否则课程列表的「班级/课程组数」恒为 0
+        if (groupName != null) {
+            jdbcTemplate.update(
+                    "UPDATE edudoc_course_member SET group_name = ?, update_time = SYSTIMESTAMP "
+                            + "WHERE course_id = HEXTORAW(?) AND group_name IS NULL AND member_role = 'STUDENT' "
+                            + "AND user_id = (SELECT id FROM edudoc_user WHERE username = ?)",
+                    groupName, courseIdHex, username);
+        }
     }
 
     /**

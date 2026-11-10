@@ -79,7 +79,7 @@
         UPDATE edudoc_course SET status = #{status} WHERE id = HEXTORAW(#{courseIdHex})
     </update>
 
-    <!-- ---------- 作业 ---------- -->
+    <!-- ===== 作业 ===== -->
 
     <sql id="assignmentStatsColumns">
         RAWTOHEX(a.id) AS id, RAWTOHEX(a.course_id) AS courseId, c.course_name AS courseName,
@@ -179,7 +179,7 @@
         WHERE <include refid="teacherCourseScope"/>
     </select>
 
-    <!-- ---------- 学生作业与提交 ---------- -->
+    <!-- ===== 学生作业与提交 ===== -->
 
     <select id="selectStudentAssignments" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$StudentAssignment">
         SELECT RAWTOHEX(a.id) AS assignmentId, c.course_name AS courseName, a.title AS title,

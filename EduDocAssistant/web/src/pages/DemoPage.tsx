@@ -7,6 +7,10 @@ type Props = {
   screens?: string
   desc?: string
   extra?: ReactNode
+  /** 已接真实接口的页面：不挂「演示数据」标记。 */
+  live?: boolean
+  /** 页面内仍有未接后端的分区时，用这条替代笼统标记，写清哪几块是假的。 */
+  mixedNote?: string
   children: ReactNode
 }
 
@@ -14,14 +18,15 @@ type Props = {
  * 演示页外框：标题 + 覆盖屏号 + 「演示数据」标记。
  * 标记是刻意保留的——门面页在未接后端前要如实说明数据来源，评审时可逐屏对照 docs/prototype/screens。
  */
-export default function DemoPage({ title, screens, desc, extra, children }: Props) {
+export default function DemoPage({ title, screens, desc, extra, live, mixedNote, children }: Props) {
   return (
     <div>
       <Space align="baseline" wrap style={{ marginBottom: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
           {title}
         </Typography.Title>
-        <Tag color="orange">演示数据 · 后端未接入</Tag>
+        {!live && <Tag color="orange">演示数据 · 后端未接入</Tag>}
+        {live && mixedNote && <Tag color="orange">{mixedNote}</Tag>}
         {screens && <Typography.Text type="secondary">{screens}</Typography.Text>}
       </Space>
       {desc && (

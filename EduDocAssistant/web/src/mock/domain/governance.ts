@@ -322,6 +322,7 @@ export const permissionLabel: Record<PermissionCodeValue, string> = {
   TEMPLATE_READ: '查看模板', TEMPLATE_MANAGE: '管理模板', FORMAT_CHECK: '格式校验', FORMAT_CONVERT: '格式转换',
   COLLAB_EDIT: '协作编辑', VERSION_RESTORE: '版本恢复',
   ROLE_MANAGE: '角色管理', AUDIT_READ: '查看审计日志', ASSIGNMENT_MANAGE: '作业管理', SUBMISSION_READ: '查看提交',
+  SUBMISSION_SELF_READ: '查看本人作业',
 }
 
 export const ALL_PERMISSIONS = Object.values(PermissionCode) as PermissionCodeValue[]

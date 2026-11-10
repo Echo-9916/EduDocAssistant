@@ -1,101 +1,149 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Alert, Descriptions, Form, Input, Segmented, Select, Space, Switch, Tag, Typography, message } from 'antd'
+// 06 切片 1：课程与作业（学生）——全部接真实后端。
+// 我的作业 = GET /student/assignments（status/courseId 服务端筛选，状态与倒计时后端派生）；
+// 提交 = POST /student/assignments/{id}/submissions；
+// 导出/下载中心 = 复用转换接口 POST /conversions、GET /conversions?documentId（06 计划：无独立下载端点）。
+import { useEffect, useState } from 'react'
+import { Descriptions, Form, Segmented, Select, Space, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { AppButton, AppModal, AppTable, requiredRule } from '../../components'
 import DemoPage, { DemoCard } from '../DemoPage'
-import {
-  createExport,
-  downloadStatusColor,
-  downloadStatusLabel,
-  listDownloads,
-  listStudentAssignments,
-  listStudentDocs,
-  submissionStatusColor,
-  submissionStatusLabel,
-  submitAssignment,
-} from '../../mock/domain/course'
-import type { DownloadTask, StudentAssignment, StudentDoc } from '../../mock/domain/course'
+import { getErrorMessage } from '../../api/http'
+import { listStudentAssignments, submitAssignment } from '../../api/coursework'
+import type { FormatState, StudentAssignmentView } from '../../api/coursework'
+import { listCourses, listDocuments } from '../../api/documents'
+import type { CourseView, DocumentSummary } from '../../api/documents'
+import { createConversion, listConversions } from '../../api/format'
+import type { ConversionView } from '../../api/format'
 
 type Tab = 'assignments' | 'export' | 'downloads'
 
-const COURSE_TEMPLATE_OPTIONS = ['Web开发课程模板 v3', '数据库实验报告模板 v2', '操作系统课程报告模板 v1', '编译原理课程模板 v2']
+const STATUS_META: Record<StudentAssignmentView['status'], { label: string; color: string }> = {
+  PENDING: { label: '待提交', color: 'warning' },
+  SUBMITTED: { label: '已提交', color: 'processing' },
+  GRADED: { label: '已批改', color: 'success' },
+  OVERDUE: { label: '逾期', color: 'error' },
+}
+
+const FORMAT_META: Record<FormatState, { label: string; color: string }> = {
+  NONE: { label: '未校验', color: 'default' },
+  PASS: { label: '通过', color: 'green' },
+  WARN: { label: '警告', color: 'orange' },
+  BLOCK: { label: '阻塞', color: 'red' },
+}
+
+const CONV_META: Record<ConversionView['status'], { label: string; color: string }> = {
+  QUEUED: { label: '排队', color: 'default' },
+  RUNNING: { label: '生成中', color: 'processing' },
+  SUCCEEDED: { label: '可下载', color: 'success' },
+  FAILED: { label: '失败', color: 'error' },
+  CANCELED: { label: '已取消', color: 'warning' },
+}
+
+/** 后端 ISO 串（+08:00）→「YYYY-MM-DD HH:mm」 */
+const dt = (v: string | null) => (v ? v.slice(0, 16).replace('T', ' ') : '-')
 
 /** 课程与作业（作业与交付分区）：我的作业 24 / 提交 25 / 导出文档 22 / 下载中心 23 屏。 */
 export default function StudentCourses() {
   const [tab, setTab] = useState<Tab>('assignments')
+  // 我的作业（屏 24）：筛选值直接传后端，点击即重新请求
   const [loading, setLoading] = useState(true)
-  const [assignments, setAssignments] = useState<StudentAssignment[]>([])
-  const [docs, setDocs] = useState<StudentDoc[]>([])
-  const [downloads, setDownloads] = useState<DownloadTask[]>([])
-
-  // 我的作业筛选
+  const [items, setItems] = useState<StudentAssignmentView[]>([])
+  const [total, setTotal] = useState(0)
   const [statusFilter, setStatusFilter] = useState('ALL')
-  const [courseFilter, setCourseFilter] = useState('ALL')
-  // 下载中心筛选
+  const [courseFilter, setCourseFilter] = useState('')
+  const [courses, setCourses] = useState<CourseView[]>([])
+  const [reloadKey, setReloadKey] = useState(0)
+  // 就绪文档：提交弹窗 / 导出表单 / 下载中心共用一份
+  const [docs, setDocs] = useState<DocumentSummary[]>([])
+  // 提交（屏 25）/ 详情弹窗
+  const [submitRow, setSubmitRow] = useState<StudentAssignmentView | null>(null)
+  const [detailRow, setDetailRow] = useState<StudentAssignmentView | null>(null)
+  const [submitForm] = Form.useForm<{ docId: string }>()
+  const [exportForm] = Form.useForm<{ documentId: string; targetFormat: 'PDF' | 'DOCX' }>()
+  // 下载中心（屏 23）：listConversions 按文档查询，先选文档再看记录
+  const [dlDocId, setDlDocId] = useState<string>()
+  const [convs, setConvs] = useState<ConversionView[]>([])
+  const [dlLoading, setDlLoading] = useState(false)
   const [dlFilter, setDlFilter] = useState('ALL')
 
-  // 提交弹窗（屏 25）
-  const [submitRow, setSubmitRow] = useState<StudentAssignment | null>(null)
-  const [detailRow, setDetailRow] = useState<StudentAssignment | null>(null)
-  const [submitForm] = Form.useForm<{ docId: string; note?: string }>()
-  const [exportForm] = Form.useForm()
-  const selectedDocId = Form.useWatch('docId', submitForm)
-  const selectedDoc = docs.find((d) => d.id === selectedDocId)
-
   useEffect(() => {
-    setLoading(true)
-    Promise.all([listStudentAssignments(), listStudentDocs(), listDownloads()]).then(([a, d, dl]) => {
-      setAssignments(a)
-      setDocs(d)
-      setDownloads(dl)
-      setLoading(false)
-    })
+    listCourses().then(setCourses).catch(() => setCourses([]))
+    listDocuments({ status: 'READY', pageSize: 100 })
+      .then((r) => setDocs(r.items))
+      .catch((e) => message.error(getErrorMessage(e)))
   }, [])
 
-  const courses = useMemo(() => ['ALL', ...Array.from(new Set(assignments.map((a) => a.course)))], [assignments])
-  const assignmentData = useMemo(
-    () =>
-      assignments
-        .filter((a) => statusFilter === 'ALL' || a.status === statusFilter)
-        .filter((a) => courseFilter === 'ALL' || a.course === courseFilter),
-    [assignments, statusFilter, courseFilter],
-  )
-  const downloadData = useMemo(
-    () => downloads.filter((d) => dlFilter === 'ALL' || d.status === dlFilter),
-    [downloads, dlFilter],
-  )
+  // ponytail: pageSize=100 一页拉全，作业量超百再接服务端分页参数
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    listStudentAssignments({
+      status: statusFilter === 'ALL' ? undefined : statusFilter,
+      courseId: courseFilter || undefined,
+      pageSize: 100,
+    })
+      .then((r) => { if (!cancelled) { setItems(r.items); setTotal(r.total) } })
+      .catch((e) => !cancelled && message.error(getErrorMessage(e)))
+      .finally(() => !cancelled && setLoading(false))
+    return () => { cancelled = true }
+  }, [statusFilter, courseFilter, reloadKey])
+
+  useEffect(() => {
+    if (tab !== 'downloads' || !dlDocId) { setConvs([]); return }
+    let cancelled = false
+    setDlLoading(true)
+    listConversions(dlDocId)
+      .then((rs) => !cancelled && setConvs(rs))
+      .catch((e) => { if (!cancelled) { setConvs([]); message.error(getErrorMessage(e)) } })
+      .finally(() => !cancelled && setDlLoading(false))
+    return () => { cancelled = true }
+  }, [dlDocId, tab])
 
   const doSubmit = async () => {
     if (!submitRow) return
     const values = await submitForm.validateFields()
-    const doc = docs.find((d) => d.id === values.docId)
-    setAssignments(await submitAssignment(submitRow.id, doc?.name ?? ''))
-    message.success('提交成功，系统已记录当前版本、提交时间与格式校验结果')
-    setSubmitRow(null)
-    submitForm.resetFields()
+    try {
+      const res = await submitAssignment(submitRow.id, values.docId)
+      message.success(res.status === 'LATE'
+        ? `第 ${res.attemptNo} 次提交成功，已记为迟交`
+        : `第 ${res.attemptNo} 次提交成功`)
+      setSubmitRow(null)
+      submitForm.resetFields()
+      setReloadKey((k) => k + 1)
+    } catch (e) {
+      // 草稿未发布 409 / 未选修 40301 / 文档非本人或未就绪 40401 / 截止禁迟交 40901，如实弹出
+      message.error(getErrorMessage(e))
+    }
   }
 
   const doExport = async () => {
     const values = await exportForm.validateFields()
-    setDownloads(await createExport(values))
-    message.success('导出任务已创建，可在下载中心查看进度')
-    exportForm.resetFields()
-    setTab('downloads')
+    try {
+      await createConversion(values.documentId, values.targetFormat)
+      message.success('导出任务已创建，可在下载中心查看进度')
+      exportForm.resetFields()
+      setDlDocId(values.documentId)
+      setTab('downloads')
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    }
   }
 
-  const assignmentColumns: ColumnsType<StudentAssignment> = [
+  const docLabel = (d: DocumentSummary) => `${d.title}（v${d.versionNo ?? '-'}）`
+
+  const assignmentColumns: ColumnsType<StudentAssignmentView> = [
     { title: '课程', dataIndex: 'course', width: 110 },
     { title: '作业名', dataIndex: 'title', width: 200 },
-    { title: '要求', dataIndex: 'requirement', ellipsis: true },
+    { title: '要求', dataIndex: 'requirement', ellipsis: true, render: (v: string | null) => v ?? '-' },
     {
       title: '截止时间',
       dataIndex: 'deadline',
       width: 190,
       render: (v: string, row) => (
         <Space direction="vertical" size={0}>
-          <span>{v}</span>
+          <span>{dt(v)}</span>
           <Typography.Text type={row.status === 'OVERDUE' ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
-            {row.remain}
+            {row.remainText}
           </Typography.Text>
         </Space>
       ),
@@ -104,10 +152,10 @@ export default function StudentCourses() {
       title: '提交状态',
       dataIndex: 'status',
       width: 110,
-      render: (v: StudentAssignment['status'], row) => (
+      render: (v: StudentAssignmentView['status'], row) => (
         <Space direction="vertical" size={2}>
-          <Tag color={submissionStatusColor[v]}>{submissionStatusLabel[v]}</Tag>
-          {row.status === 'GRADED' && <Tag color="success">{row.score} 分</Tag>}
+          <Tag color={STATUS_META[v].color}>{STATUS_META[v].label}</Tag>
+          {row.status === 'GRADED' && row.score != null && <Tag color="success">{row.score} 分</Tag>}
         </Space>
       ),
     },
@@ -115,7 +163,11 @@ export default function StudentCourses() {
       title: '格式校验',
       dataIndex: 'format',
       width: 100,
-      render: (v: string, row) => <Tag color={row.formatTone}>{v}</Tag>,
+      render: (_, row) => (
+        <Tag color={FORMAT_META[row.format.state].color} title={row.format.note}>
+          {FORMAT_META[row.format.state].label}
+        </Tag>
+      ),
     },
     {
       title: '操作',
@@ -133,20 +185,19 @@ export default function StudentCourses() {
     },
   ]
 
-  const downloadColumns: ColumnsType<DownloadTask> = [
-    { title: '产物', dataIndex: 'name' },
-    { title: '格式', dataIndex: 'format', width: 80, render: (v: string) => <Tag>{v}</Tag> },
-    { title: '大小', dataIndex: 'size', width: 90 },
-    { title: '创建时间', dataIndex: 'createTime', width: 150 },
-    { title: '状态', dataIndex: 'status', width: 100, render: (v: DownloadTask['status']) => <Tag color={downloadStatusColor[v]}>{downloadStatusLabel[v]}</Tag> },
-    { title: '有效期', dataIndex: 'expire', width: 130 },
+  const convColumns: ColumnsType<ConversionView> = [
+    { title: '产物', key: 'src', ellipsis: true, render: (_, t) => docs.find((d) => d.id === t.documentId)?.title ?? t.documentId },
+    { title: '格式', dataIndex: 'targetFormat', width: 80, render: (v: string) => <Tag>{v}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 100, render: (v: ConversionView['status']) => <Tag color={CONV_META[v].color}>{CONV_META[v].label}</Tag> },
+    { title: '开始时间', dataIndex: 'startedAt', width: 150, render: dt },
+    { title: '完成时间', dataIndex: 'finishedAt', width: 150, render: dt },
     {
       title: '操作',
       width: 110,
-      render: (_, row) =>
-        row.status === 'READY' ? (
-          <AppButton type="link" size="small" onClick={() => message.success(`已开始下载（演示）：${row.name}`)}>下载</AppButton>
-        ) : row.status === 'EXPIRED' ? (
+      render: (_, t) =>
+        t.status === 'SUCCEEDED' && t.downloadUrl ? (
+          <AppButton type="link" size="small" onClick={() => window.open(t.downloadUrl!, '_blank')}>下载</AppButton>
+        ) : t.status === 'FAILED' || t.status === 'CANCELED' ? (
           <AppButton type="link" size="small" onClick={() => setTab('export')}>重新导出</AppButton>
         ) : (
           <Typography.Text type="secondary">生成中…</Typography.Text>
@@ -158,13 +209,14 @@ export default function StudentCourses() {
     <DemoPage
       title="课程与作业"
       screens="对应原型：学生 22/23/24/25"
-      desc="查看课程作业与提交状态，提交前执行格式预检；导出结果统一进入下载中心，记录保留 7 天。"
+      desc="查看课程作业与提交状态，状态与格式结论由服务端派生；导出走格式转换服务，产物在下载中心按文档查看。"
+      live
       extra={
         <Segmented<Tab>
           value={tab}
           onChange={setTab}
           options={[
-            { label: `我的作业 ${assignments.length}`, value: 'assignments' },
+            { label: `我的作业 ${total}`, value: 'assignments' },
             { label: '导出文档', value: 'export' },
             { label: '下载中心', value: 'downloads' },
           ]}
@@ -177,53 +229,39 @@ export default function StudentCourses() {
           extra={
             <Space wrap>
               <Select
-                style={{ width: 130 }}
+                style={{ width: 150 }}
                 value={courseFilter}
-                onChange={setCourseFilter}
-                options={courses.map((c) => ({ value: c, label: c === 'ALL' ? '全部课程' : c }))}
+                onChange={(v) => setCourseFilter(v)}
+                options={[{ value: '', label: '全部课程' }, ...courses.map((c) => ({ value: c.id, label: c.courseName }))]}
               />
               <Segmented
                 value={statusFilter}
                 onChange={(v) => setStatusFilter(v as string)}
                 options={[
                   { label: '全部', value: 'ALL' },
-                  ...Object.entries(submissionStatusLabel).map(([value, label]) => ({ value, label })),
+                  ...Object.entries(STATUS_META).map(([value, m]) => ({ value, label: m.label })),
                 ]}
               />
             </Space>
           }
         >
-          <AppTable<StudentAssignment> rowKey="id" size="middle" loading={loading} columns={assignmentColumns} dataSource={assignmentData} />
+          <AppTable<StudentAssignmentView> rowKey="id" size="middle" loading={loading} columns={assignmentColumns} dataSource={items} />
         </DemoCard>
       )}
 
       {tab === 'export' && (
-        <DemoCard title="导出设置" extra={<Typography.Text type="secondary">导出不影响当前文档，记录仅本人可见</Typography.Text>}>
-          <Form form={exportForm} layout="vertical" style={{ maxWidth: 520 }} initialValues={{ format: 'DOCX', useTemplate: true, keepComments: false }}>
-            <Form.Item name="docName" label="选择文档" rules={[requiredRule('请选择要导出的文档')]}>
+        <DemoCard title="导出设置" extra={<Typography.Text type="secondary">导出走格式转换服务，记录仅本人可见</Typography.Text>}>
+          <Form form={exportForm} layout="vertical" style={{ maxWidth: 520 }} initialValues={{ targetFormat: 'PDF' }}>
+            <Form.Item name="documentId" label="选择文档" rules={[requiredRule('请选择要导出的文档')]}>
               <Select
                 placeholder="选择要导出的文档"
                 showSearch
-                options={docs.map((d) => ({ value: d.name, label: `${d.name}（${d.version} · ${d.formatNote}）` }))}
+                optionFilterProp="label"
+                options={docs.map((d) => ({ value: d.id, label: docLabel(d) }))}
               />
             </Form.Item>
-            <Form.Item name="format" label="目标格式" rules={[requiredRule('请选择目标格式')]}>
-              <Select options={[{ value: 'DOCX' }, { value: 'PDF' }]} />
-            </Form.Item>
-            <Form.Item name="useTemplate" label="套用课程模板" valuePropName="checked" extra="按课程模板重排章节样式后导出">
-              <Switch />
-            </Form.Item>
-            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.useTemplate !== cur.useTemplate}>
-              {({ getFieldValue }) =>
-                getFieldValue('useTemplate') && (
-                  <Form.Item name="template" label="课程模板" initialValue={COURSE_TEMPLATE_OPTIONS[0]}>
-                    <Select options={COURSE_TEMPLATE_OPTIONS.map((t) => ({ value: t, label: t }))} />
-                  </Form.Item>
-                )
-              }
-            </Form.Item>
-            <Form.Item name="keepComments" label="保留批注" valuePropName="checked" extra="输出文件中保留教师批注与修订记录">
-              <Switch />
+            <Form.Item name="targetFormat" label="目标格式" rules={[requiredRule('请选择目标格式')]}>
+              <Select options={[{ value: 'PDF' }, { value: 'DOCX' }]} />
             </Form.Item>
             <Space>
               <AppButton onClick={doExport}>开始导出</AppButton>
@@ -237,21 +275,38 @@ export default function StudentCourses() {
         <DemoCard
           title="导出记录"
           extra={
-            <Segmented
-              value={dlFilter}
-              onChange={(v) => setDlFilter(v as string)}
-              options={[
-                { label: '全部', value: 'ALL' },
-                ...Object.entries(downloadStatusLabel).map(([value, label]) => ({ value, label })),
-              ]}
-            />
+            <Space wrap>
+              <Select
+                style={{ width: 220 }}
+                placeholder="选择文档查看导出记录"
+                value={dlDocId}
+                onChange={(v) => setDlDocId(v)}
+                showSearch
+                optionFilterProp="label"
+                options={docs.map((d) => ({ value: d.id, label: d.title }))}
+              />
+              <Segmented
+                value={dlFilter}
+                onChange={(v) => setDlFilter(v as string)}
+                options={[
+                  { label: '全部', value: 'ALL' },
+                  ...Object.entries(CONV_META).map(([value, m]) => ({ value, label: m.label })),
+                ]}
+              />
+            </Space>
           }
         >
-          <AppTable<DownloadTask> rowKey="id" size="middle" loading={loading} columns={downloadColumns} dataSource={downloadData} />
+          <AppTable<ConversionView>
+            rowKey="id"
+            size="middle"
+            loading={dlLoading}
+            columns={convColumns}
+            dataSource={convs.filter((c) => dlFilter === 'ALL' || c.status === dlFilter)}
+          />
         </DemoCard>
       )}
 
-      {/* 屏 25：提交作业——选已有文档 + 格式预检清单 + 确认提交 */}
+      {/* 屏 25：提交作业——选已有就绪文档，格式/资格校验由后端在提交时执行，拒绝原因如实弹出 */}
       <AppModal
         title={`提交作业 · ${submitRow?.title ?? ''}`}
         open={!!submitRow}
@@ -259,50 +314,29 @@ export default function StudentCourses() {
         cancelText="取消"
         onOk={doSubmit}
         onCancel={() => setSubmitRow(null)}
-        okButtonProps={{ disabled: selectedDoc?.formatState === 'BLOCK' }}
         width={560}
       >
         {submitRow && (
           <>
             <Descriptions size="small" column={2} style={{ marginBottom: 12 }}>
               <Descriptions.Item label="课程">{submitRow.course}</Descriptions.Item>
-              <Descriptions.Item label="截止时间">{submitRow.deadline}</Descriptions.Item>
-              <Descriptions.Item label="要求" span={2}>{submitRow.requirement}</Descriptions.Item>
+              <Descriptions.Item label="截止时间">{dt(submitRow.deadline)}（{submitRow.remainText}）</Descriptions.Item>
+              <Descriptions.Item label="要求" span={2}>{submitRow.requirement ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="提交格式" span={2}>
+                {submitRow.submissionFormat === 'BOTH' ? 'DOCX / PDF' : submitRow.submissionFormat}
+                {submitRow.requireFormatCheck === 'Y' ? '，提交时执行格式校验' : ''}
+              </Descriptions.Item>
             </Descriptions>
             <Form form={submitForm} layout="vertical">
               <Form.Item name="docId" label="选择提交文档" rules={[requiredRule('请选择要提交的文档')]}>
                 <Select
-                  placeholder="从我的文档中选择当前版本"
-                  options={docs.map((d) => ({ value: d.id, label: `${d.name}（${d.version} · 最近修改 ${d.updateTime}）` }))}
+                  placeholder="从我的就绪文档中选择当前版本"
+                  showSearch
+                  optionFilterProp="label"
+                  options={docs.map((d) => ({ value: d.id, label: docLabel(d) }))}
                 />
               </Form.Item>
-              <Form.Item name="note" label="提交说明（可选）">
-                <Input.TextArea rows={2} placeholder="向教师补充说明本次提交的重点" />
-              </Form.Item>
             </Form>
-            <Typography.Text strong>格式预检清单</Typography.Text>
-            <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
-              <Space>
-                <Tag color={selectedDoc ? 'success' : 'default'}>{selectedDoc ? '通过' : '未选择'}</Tag>
-                <span>文档已选择：{selectedDoc ? `${selectedDoc.name} · ${selectedDoc.version}` : '请先选择文档'}</span>
-              </Space>
-              <Space>
-                <Tag color={selectedDoc ? (selectedDoc.formatState === 'PASS' ? 'success' : selectedDoc.formatState === 'WARN' ? 'warning' : 'error') : 'default'}>
-                  {selectedDoc ? (selectedDoc.formatState === 'PASS' ? '通过' : selectedDoc.formatState === 'WARN' ? '1 项警告' : '阻塞') : '待检'}
-                </Tag>
-                <span>格式规范：{selectedDoc?.formatNote ?? '选择文档后自动预检'}</span>
-              </Space>
-              <Space>
-                <Tag>可选</Tag>
-                <span>提交说明：向教师补充说明本次提交的重点</span>
-              </Space>
-            </Space>
-            {selectedDoc?.formatState === 'BLOCK' && (
-              <Alert type="error" showIcon style={{ marginTop: 12 }} message="存在阻塞格式问题，请先在「格式与模板」完成一键修复后再提交。" />
-            )}
-            {selectedDoc?.formatState === 'WARN' && (
-              <Alert type="warning" showIcon style={{ marginTop: 12 }} message="存在非阻塞警告，可继续提交，教师端会看到格式校验结论。" />
-            )}
           </>
         )}
       </AppModal>
@@ -312,13 +346,16 @@ export default function StudentCourses() {
         {detailRow && (
           <Descriptions size="small" column={1}>
             <Descriptions.Item label="作业">{detailRow.course} · {detailRow.title}</Descriptions.Item>
-            <Descriptions.Item label="提交文档">{detailRow.submittedDoc}</Descriptions.Item>
-            <Descriptions.Item label="提交时间">{detailRow.submitTime}</Descriptions.Item>
-            <Descriptions.Item label="格式校验"><Tag color={detailRow.formatTone}>{detailRow.format}</Tag></Descriptions.Item>
+            <Descriptions.Item label="提交文档">{detailRow.submittedDoc ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="提交时间">{dt(detailRow.submitTime)}</Descriptions.Item>
+            <Descriptions.Item label="格式校验">
+              <Tag color={FORMAT_META[detailRow.format.state].color}>{FORMAT_META[detailRow.format.state].label}</Tag>
+              {detailRow.format.note && <Typography.Text type="secondary">{detailRow.format.note}</Typography.Text>}
+            </Descriptions.Item>
             {detailRow.status === 'GRADED' && (
               <>
                 <Descriptions.Item label="得分"><Tag color="success">{detailRow.score} 分</Tag></Descriptions.Item>
-                <Descriptions.Item label="教师评语">{detailRow.feedback}</Descriptions.Item>
+                <Descriptions.Item label="教师评语">{detailRow.feedback ?? '-'}</Descriptions.Item>
               </>
             )}
           </Descriptions>

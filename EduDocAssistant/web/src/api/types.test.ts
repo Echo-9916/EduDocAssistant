@@ -27,8 +27,9 @@ describe('契约常量与后端对齐（防漂移）', () => {
     })
   })
 
-  it('权限点 20 项、角色 3 项、账号状态 4 项', () => {
-    expect(Object.keys(PermissionCode)).toHaveLength(20)
+  it('权限点 21 项、角色 3 项、账号状态 4 项', () => {
+    // 第 21 项 SUBMISSION_SELF_READ 随 06 切片1 落地（与后端 PermissionCode.java、04_seed.sql 同步）
+    expect(Object.keys(PermissionCode)).toHaveLength(21)
     expect(Object.keys(RoleCode)).toHaveLength(3)
     expect(Object.keys(AccountStatus)).toHaveLength(4)
   })

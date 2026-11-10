@@ -113,5 +113,7 @@ export const PermissionCode = {
   AUDIT_READ: 'AUDIT_READ',
   ASSIGNMENT_MANAGE: 'ASSIGNMENT_MANAGE',
   SUBMISSION_READ: 'SUBMISSION_READ',
+  /** 学生查看本人作业与提交（06 切片 1）；SUBMISSION_READ 是教师/运维的提交统计，两者不可混用 */
+  SUBMISSION_SELF_READ: 'SUBMISSION_SELF_READ',
 } as const
 export type PermissionCodeValue = (typeof PermissionCode)[keyof typeof PermissionCode]

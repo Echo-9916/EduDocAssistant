@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 06 切片 2 · 个人中心（任务 2-6）：edudoc_user 单表读写 + edudoc_audit_log 只读。
+     主键一律 RAWTOHEX 读回 / HEXTORAW 写入（调用前 Java 侧 Ids.isHex16 校验）；
+     AUTH 行走 ix_audit_actor(actor_id, occurred_at)，时间窗作驱动条件。 -->
+<mapper namespace="com.cidas.edudoc.access.infrastructure.MeMapper">
+
+    <select id="selectProfileById" resultType="map">
+        SELECT username AS "username", display_name AS "displayName", email AS "email",
+               department AS "department", auth_source AS "authSource", remark AS "remark",
+               mfa_enabled AS "mfaEnabled", password_hash AS "passwordHash"
+        FROM edudoc_user
+        WHERE id = HEXTORAW(#{userIdHex})
+    </select>
+
+    <update id="updateProfile">
+        UPDATE edudoc_user
+        SET display_name = #{displayName},
+            department = #{department, jdbcType=VARCHAR},
+            email = #{email, jdbcType=VARCHAR},
+            remark = #{remark, jdbcType=VARCHAR}
+        WHERE id = HEXTORAW(#{userIdHex})
+    </update>
+
+    <update id="updateSecurity">
+        UPDATE edudoc_user
+        SET mfa_enabled = #{mfaEnabled},
+            remark = #{remark, jdbcType=VARCHAR}
+        WHERE id = HEXTORAW(#{userIdHex})
+    </update>
+
+    <update id="updatePasswordHash">
+        UPDATE edudoc_user SET password_hash = #{passwordHash} WHERE id = HEXTORAW(#{userIdHex})
+    </update>
+
+    <!-- passwordUpdated 无对应列：以 PASSWORD_CHANGE 审计时间近似（本端点上线前的改密不可追溯 → null） -->
+    <select id="selectLastPasswordChangeAt" resultType="string">
+        SELECT TO_CHAR(MAX(occurred_at), 'YYYY-MM-DD"T"HH24:MI:SS')
+        FROM edudoc_audit_log
+        WHERE actor_id = HEXTORAW(#{userIdHex})
+          AND action_type = 'PASSWORD_CHANGE'
+          AND result_code = 'SUCCESS'
+    </select>
+
+    <select id="selectAuthLogins" resultType="map">
+        SELECT RAWTOHEX(id) AS "id",
+               TO_CHAR(occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "time",
+               result_code AS "resultCode",
+               source_ip AS "sourceIp",
+               user_agent AS "userAgent"
+        FROM edudoc_audit_log
+        WHERE actor_id = HEXTORAW(#{userIdHex})
+          AND action_type = 'AUTH'
+          AND occurred_at &gt;= #{since}
+        ORDER BY occurred_at DESC, RAWTOHEX(id) DESC
+        FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="selectAuthLoginById" resultType="map">
+        SELECT RAWTOHEX(id) AS "id",
+               TO_CHAR(occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "time",
+               result_code AS "resultCode"
+        FROM edudoc_audit_log
+        WHERE id = HEXTORAW(#{sessionId})
+          AND actor_id = HEXTORAW(#{userIdHex})
+          AND action_type = 'AUTH'
+    </select>
+
+</mapper>

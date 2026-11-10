@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.message.infrastructure.NotificationMapper">
+
+    <!-- ===== 信箱（edudoc_notification） ===== -->
+
+    <!-- actorName 左连 edudoc_user：系统消息 actor_id 为空 → null（前端显示「系统」） -->
+    <sql id="inboxColumns">
+        RAWTOHEX(n.id) AS id, n.notif_type AS type, n.title AS title, n.body AS body,
+        n.resource_type AS resourceType, n.resource_ref AS resourceRef,
+        u.display_name AS actorName, n.create_time AS createdAt, n.read_at AS readAt
+    </sql>
+
+    <!-- 信箱查询一律按本人 recipient_id 圈定：越权 id 天然不命中，这是「静默忽略」的实现点 -->
+    <sql id="inboxFilter">
+        n.recipient_id = HEXTORAW(#{userIdHex})
+        <if test="type != null and type != ''">AND n.notif_type = #{type}</if>
+        <if test="unread != null and unread">AND n.read_at IS NULL</if>
+        <if test="unread != null and !unread">AND n.read_at IS NOT NULL</if>
+    </sql>
+
+    <select id="selectInbox" resultType="com.cidas.edudoc.message.infrastructure.Notification$Inbox">
+        SELECT <include refid="inboxColumns"/>
+        FROM edudoc_notification n
+        LEFT JOIN edudoc_user u ON u.id = n.actor_id
+        WHERE <include refid="inboxFilter"/>
+        ORDER BY n.create_time DESC, n.id DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="countInbox" resultType="long">
+        SELECT COUNT(*) FROM edudoc_notification n
+        WHERE <include refid="inboxFilter"/>
+    </select>
+
+    <!-- 未读数：与列表 unread=true 同口径（走 ix_notification_recipient） -->
+    <select id="countUnread" resultType="long">
+        SELECT COUNT(*) FROM edudoc_notification
+        WHERE recipient_id = HEXTORAW(#{userIdHex}) AND read_at IS NULL
+    </select>
+
+    <!-- 投递写入：id/create_time/update_time 走库默认（SYS_GUID/SYSTIMESTAMP），read_at 空即未读；
+         撞 uk_notification_1(recipient_id, dedup_key) 由仓储翻译成 false（重投不产生第二封信） -->
+    <insert id="insertNotification">
+        INSERT INTO edudoc_notification (recipient_id, notif_type, title, body,
+                                         resource_type, resource_ref, actor_id, dedup_key)
+        VALUES (HEXTORAW(#{recipientIdHex}), #{notifType}, #{title}, #{body, jdbcType=VARCHAR},
+                #{resourceType, jdbcType=VARCHAR}, #{resourceRef, jdbcType=VARCHAR},
+                <choose>
+                    <when test="actorIdHex != null">HEXTORAW(#{actorIdHex})</when>
+                    <otherwise>NULL</otherwise>
+                </choose>,
+                #{dedupKey})
+    </insert>
+
+    <update id="updateRead">
+        UPDATE edudoc_notification
+        <choose>
+            <when test="read">SET read_at = SYSTIMESTAMP</when>
+            <otherwise>SET read_at = NULL</otherwise>
+        </choose>
+        WHERE recipient_id = HEXTORAW(#{userIdHex})
+          AND id IN
+        <foreach collection="idsHex" item="idHex" open="(" separator="," close=")">HEXTORAW(#{idHex})</foreach>
+    </update>
+
+    <update id="markAllRead">
+        UPDATE edudoc_notification SET read_at = SYSTIMESTAMP
+        WHERE recipient_id = HEXTORAW(#{userIdHex}) AND read_at IS NULL
+    </update>
+
+    <!-- ===== 偏好（edudoc_notification_preference，channel 本期只有 INBOX） ===== -->
+
+    <select id="selectPreferences" resultType="com.cidas.edudoc.message.infrastructure.Notification$Preference">
+        SELECT p.notif_type AS notifType, p.enabled AS enabled
+        FROM edudoc_notification_preference p
+        WHERE p.user_id = HEXTORAW(#{userIdHex}) AND p.channel = 'INBOX'
+    </select>
+
+    <!-- 幂等 upsert：MERGE 按 uk_notif_pref_1 判插改，重复保存不冒唯一键异常 -->
+    <update id="upsertPreference">
+        MERGE INTO edudoc_notification_preference p
+        USING (SELECT #{notifType} AS notif_type FROM dual) s
+        ON (p.user_id = HEXTORAW(#{userIdHex}) AND p.notif_type = s.notif_type AND p.channel = 'INBOX')
+        WHEN MATCHED THEN UPDATE SET p.enabled = #{enabled}
+        WHEN NOT MATCHED THEN INSERT (user_id, notif_type, channel, enabled)
+             VALUES (HEXTORAW(#{userIdHex}), s.notif_type, 'INBOX', #{enabled})
+    </update>
+</mapper>

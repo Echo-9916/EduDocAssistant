@@ -275,4 +275,11 @@
         WHERE id = HEXTORAW(#{submissionIdHex})
     </update>
 
+    <!-- 批改入口按主键取单条提交（只取归属列）；课程范围校验在应用服务层，越权 40301 -->
+    <select id="selectSubmissionById" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$Submission">
+        SELECT RAWTOHEX(s.id) AS id, RAWTOHEX(s.assignment_id) AS assignmentId
+        FROM edudoc_submission s
+        WHERE s.id = HEXTORAW(#{submissionIdHex})
+    </select>
+
 </mapper>

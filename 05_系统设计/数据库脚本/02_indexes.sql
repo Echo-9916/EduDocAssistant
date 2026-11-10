@@ -67,6 +67,3 @@ ORGANIZATION INMEMORY NEIGHBOR GRAPH
 DISTANCE COSINE
 WITH TARGET ACCURACY 95;
 
--- 作业与提交统计：按课程与截止时间取临近截止作业（06 切片1）
-CREATE INDEX ix_assignment_course_due ON edudoc_assignment (course_id, due_time);
-CREATE INDEX ix_submission_assignment_student ON edudoc_submission (assignment_id, student_id);

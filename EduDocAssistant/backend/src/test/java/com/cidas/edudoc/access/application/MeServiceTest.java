@@ -184,7 +184,7 @@ class MeServiceTest {
     // ===== 改密 =====
 
     @Test
-    void wrongOldPasswordIs40101SameAsLoginChain() {
+    void wrongOldPasswordIsBadRequestNot401() {
         setPrincipal(RoleCode.STUDENT);
         when(meRepository.findAccountById(USER_ID)).thenReturn(accountRow());
         when(passwordEncoder.matches("bad", "hash")).thenReturn(false);
@@ -192,7 +192,7 @@ class MeServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> service.changePassword(new PasswordChange("bad", "NewPass456", "tok")));
 
-        assertEquals(ErrorCode.UNAUTHORIZED, e.errorCode());  // 凭据错误口径与登录链路一致（40101）
+        assertEquals(ErrorCode.BAD_REQUEST, e.errorCode());  // 401 系会被前端拦截器硬跳登录，改密参数错不属未认证
         verify(meRepository, never()).updatePasswordHash(any(), any());
         verifyNoInteractions(tokenRevocationStore);
     }

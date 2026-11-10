@@ -35,7 +35,8 @@
 
     <!-- passwordUpdated 无对应列：以 PASSWORD_CHANGE 审计时间近似（本端点上线前的改密不可追溯 → null） -->
     <select id="selectLastPasswordChangeAt" resultType="string">
-        SELECT TO_CHAR(MAX(occurred_at), 'YYYY-MM-DD"T"HH24:MI:SS')
+        <!-- 必须给别名：无别名的表达式列会让 MyBatis 按列名取值，抛 ORA-17133（实测 /me/security 500 的根因） -->
+        SELECT TO_CHAR(SYS_EXTRACT_UTC(MAX(occurred_at)), 'YYYY-MM-DD"T"HH24:MI:SS') || 'Z' AS "passwordUpdatedAt"
         FROM edudoc_audit_log
         WHERE actor_id = HEXTORAW(#{userIdHex})
           AND action_type = 'PASSWORD_CHANGE'
@@ -44,7 +45,7 @@
 
     <select id="selectAuthLogins" resultType="map">
         SELECT RAWTOHEX(id) AS "id",
-               TO_CHAR(occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "time",
+               TO_CHAR(SYS_EXTRACT_UTC(occurred_at), 'YYYY-MM-DD"T"HH24:MI:SS') || 'Z' AS "time",
                result_code AS "resultCode",
                source_ip AS "sourceIp",
                user_agent AS "userAgent"
@@ -58,7 +59,7 @@
 
     <select id="selectAuthLoginById" resultType="map">
         SELECT RAWTOHEX(id) AS "id",
-               TO_CHAR(occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "time",
+               TO_CHAR(SYS_EXTRACT_UTC(occurred_at), 'YYYY-MM-DD"T"HH24:MI:SS') || 'Z' AS "time",
                result_code AS "resultCode"
         FROM edudoc_audit_log
         WHERE id = HEXTORAW(#{sessionId})

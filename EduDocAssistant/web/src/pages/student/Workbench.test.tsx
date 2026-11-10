@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigateMock }))
+vi.mock('../../api/messages', () => ({ unreadCount: vi.fn(() => Promise.resolve(3)) }))
 let perms: string[] = ['DOCUMENT_READ', 'FORMAT_CHECK', 'TEMPLATE_READ']
 vi.mock('../../auth/AuthContext', () => ({
   useAuth: () => ({ user: { permissions: perms } as never, login: vi.fn(), logout: vi.fn(), reload: vi.fn() }),
@@ -41,9 +42,9 @@ describe('学生工作台快捷入口（1107 P2-4）', () => {
     expect(navigateMock).toHaveBeenCalledWith('/student/documents')
   })
 
-  it('未读消息卡取演示消息数', async () => {
+  it('未读消息卡取 /messages/unread-count 真实未读数', async () => {
     render(<StudentWorkbench />)
     expect(await screen.findByText('未读消息')).toBeTruthy()
-    expect(screen.getByText('3')).toBeTruthy()
+    expect(await screen.findByText('3')).toBeTruthy()
   })
 })

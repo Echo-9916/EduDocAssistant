@@ -168,9 +168,11 @@ public class MeServiceImpl implements MeService {
         if (!AuthSource.LOCAL.code().equals(str(row, "authSource")) || str(row, "passwordHash") == null) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "统一身份认证账号不支持本地改密，请通过学校门户修改");
         }
-        // 旧密码错误沿用登录链路口径：凭据错误 40101（同 LocalAuthProvider「用户名或密码错误」）
+        // 旧密码错误用 40001，不用 401 系：前端 http 拦截器对 40101/40102 一律硬跳 /login，
+        // 用户打错一次原密码就会被踢出登录且看不到「原密码不正确」。本请求本身已认证，
+        // 参数不对属 400 族；登录接口的 40101 才是「未认证」语义。
         if (!passwordEncoder.matches(command.oldPassword(), str(row, "passwordHash"))) {
-            throw new CidasBusinessException(ErrorCode.UNAUTHORIZED, "原密码不正确");
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "原密码不正确");
         }
         if (!isStrongEnough(command.newPassword())) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "新密码至少 8 位，且需同时包含字母和数字");

@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -55,15 +56,21 @@ class SeedDataRunnerTest {
         // 课程名对齐原型世界观（Web开发技术/数据库原理），非「计算机导论/高等数学」
         verify(jdbc).update(startsWith("INSERT INTO edudoc_course ("),
                 eq("CS101"), eq("Web开发技术"), eq("2026-FALL"), eq("HT"));
-        // seedMember 用 NOT EXISTS 幂等补插：courseIdHex 出现两次（首尾）
-        verify(jdbc).update(startsWith("INSERT INTO edudoc_course_member"), eq("HC"), eq("TEACHER"), eq("teacher"), eq("HC"));
-        verify(jdbc).update(startsWith("INSERT INTO edudoc_course_member"), eq("HC"), eq("STUDENT"), eq("student"), eq("HC"));
+        // seedMember 参数序：courseIdHex, memberRole, groupName, username, courseIdHex（NOT EXISTS 复用首尾）
+        verify(jdbc).update(startsWith("INSERT INTO edudoc_course_member"),
+                eq("HC"), eq("TEACHER"), isNull(), eq("teacher"), eq("HC"));
+        verify(jdbc).update(startsWith("INSERT INTO edudoc_course_member"),
+                eq("HC"), eq("STUDENT"), eq("Web开发-1组"), eq("student"), eq("HC"));
         verify(jdbc, never()).update(startsWith("INSERT INTO edudoc_course ("),
                 eq("MATH201"), any(), any(), any());
         // 已存在的课程不改主键、只幂等补名称与缺失成员
         verify(jdbc).update(contains("UPDATE edudoc_course SET course_name"),
                 eq("数据库原理"), eq("MATH201"), eq("2026-FALL"), eq("数据库原理"));
-        verify(jdbc).update(startsWith("INSERT INTO edudoc_course_member"), eq("HM"), eq("STUDENT"), eq("student"), eq("HM"));
+        verify(jdbc).update(startsWith("INSERT INTO edudoc_course_member"),
+                eq("HM"), eq("STUDENT"), eq("数据库-1组"), eq("student"), eq("HM"));
+        // 已在课但无组别的早期数据：补一次组名
+        verify(jdbc).update(contains("UPDATE edudoc_course_member SET group_name"),
+                eq("数据库-1组"), eq("HM"), eq("student"));
     }
 
     @Test

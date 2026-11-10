@@ -114,6 +114,19 @@ class StudentCourseworkServiceTest {
     }
 
     @Test
+    void submitRejectsDraftAssignment() {
+        // 列表 SQL 过滤 DRAFT，提交端点也必须自己拦：未发布作业不得产生提交
+        when(mapper.selectAssignmentById(ASSIGNMENT_ID))
+                .thenReturn(assignment("DRAFT", OffsetDateTime.now().plusDays(2), "Y"));
+
+        CidasBusinessException ex = assertThrows(CidasBusinessException.class,
+                () -> service.submit(ASSIGNMENT_ID, DOCUMENT_ID));
+
+        assertEquals(ErrorCode.CONFLICT, ex.errorCode());
+        verify(mapper, never()).insertSubmission(any(), any(), any(), any(), any(), anyLong(), any());
+    }
+
+    @Test
     void submitRejectsClosedAssignment() {
         when(mapper.selectAssignmentById(ASSIGNMENT_ID))
                 .thenReturn(assignment("CLOSED", OffsetDateTime.now().plusDays(2), "Y"));

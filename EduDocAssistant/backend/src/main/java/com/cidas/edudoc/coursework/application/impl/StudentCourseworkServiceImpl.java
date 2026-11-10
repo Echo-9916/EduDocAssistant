@@ -70,6 +70,10 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
         if (!courseworkRepository.isCourseMember(assignment.getCourseId(), studentId)) {
             throw new CidasBusinessException(ErrorCode.FORBIDDEN, "未选修该课程，不能提交此作业");
         }
+        // 草稿作业不可提交：列表 SQL 已过滤 DRAFT，但提交端点必须自己拦住（实测 8081 曾直接 201）
+        if ("DRAFT".equals(assignment.getStatus())) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT, "作业尚未发布，不能提交");
+        }
         // 本人 owner + READY 一条 SQL 同时校验，null 无法区分「无权」与「未解析完成」，统一一句话
         OwnedDocument document = courseworkRepository.findOwnedReadyDocument(studentId, documentId);
         if (document == null) {

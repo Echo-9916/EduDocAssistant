@@ -11,8 +11,8 @@ export const roleNav: Record<RoleCodeValue, NavItem[]> = {
     { key: 'ai', label: '智能处理' },
     { key: 'format', label: '格式与模板' },
     { key: 'collab', label: '协作与版本' },
-    // 学生看的是自己的作业，不是提交统计：SUBMISSION_READ 语义属教师/运维，作业切片落地时再按新权限点收口
-    { key: 'courses', label: '课程与作业' },
+    // 06 切片 1 收口：学生作业用 SUBMISSION_SELF_READ（本人作业），不是教师/运维口径的 SUBMISSION_READ
+    { key: 'courses', label: '课程与作业', permission: PermissionCode.SUBMISSION_SELF_READ },
     { key: 'profile', label: '个人中心' },
     { key: 'messages', label: '消息通知' },
   ],

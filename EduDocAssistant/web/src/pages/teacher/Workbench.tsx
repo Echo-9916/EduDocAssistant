@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Card, Col, List, Row, Space, Statistic, Tag, Timeline, Typography } from 'antd'
+import { Alert, Card, Col, List, Row, Statistic, Tag, Tooltip, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { AppButton } from '../../components'
 import DemoPage, { DemoCard } from '../DemoPage'
 import { rolePath } from '../../routes'
-import { ACTIVITIES, workbenchSummary } from '../../mock/domain/course'
-import type { WorkbenchSummary } from '../../mock/domain/course'
+import { workbenchSummary } from '../../api/coursework'
+import type { WorkbenchSummary } from '../../api/coursework'
+import { getErrorMessage } from '../../api/http'
 
 const SHORTCUTS = [
   { key: 'documents', label: '上传教学文档', desc: '绑定课程与用途，上传后自动解析', to: 'documents' },
@@ -14,15 +15,22 @@ const SHORTCUTS = [
   { key: 'grade', label: '批改反馈', desc: '分项评分与评语，同步消息中心', to: 'courses' },
 ]
 
-const TONE_COLOR = { danger: 'error', warning: 'warning', default: 'default' } as const
-
 /** 教学工作台：汇总课程、作业、批改与协作状态，优先处理临近截止任务（教师 01 屏）。 */
 export default function TeacherWorkbench() {
   const navigate = useNavigate()
   const [data, setData] = useState<WorkbenchSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    workbenchSummary().then(setData)
+    let cancelled = false
+    workbenchSummary()
+      .then((r) => !cancelled && setData(r))
+      .catch((e) => !cancelled && setError(getErrorMessage(e)))
+      .finally(() => !cancelled && setLoading(false))
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const toCourses = () => navigate(`${rolePath.TEACHER}/courses`)
@@ -32,33 +40,37 @@ export default function TeacherWorkbench() {
       title="教学工作台"
       screens="对应原型：教师 01"
       desc="汇总课程、模板、作业和文档协作状态，优先处理临近截止的批改与发布任务。"
+      live
     >
+      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={6}><Card><Statistic title="本周临近截止作业" value={data?.dueThisWeek ?? '-'} suffix="项" /></Card></Col>
         <Col span={6}><Card><Statistic title="待批改提交" value={data?.pendingGrade ?? '-'} suffix="份" valueStyle={{ color: '#b45309' }} /></Card></Col>
         <Col span={6}><Card><Statistic title="格式异常提交" value={data?.formatIssues ?? '-'} suffix="份" valueStyle={{ color: '#b91c1c' }} /></Card></Col>
-        <Col span={6}><Card><Statistic title="进行中协作文档" value={data?.collabActive ?? '-'} suffix="份" /></Card></Col>
+        {/* collabActive 后端恒为 0（协作统计随切片 3 接入），Tooltip 说明来源，避免被当成真实数或缺失 */}
+        <Col span={6}>
+          <Tooltip title="协作统计随切片 3 接入">
+            <Card><Statistic title="进行中协作文档" value={data?.collabActive ?? '-'} suffix="份" /></Card>
+          </Tooltip>
+        </Col>
       </Row>
 
       <DemoCard title="优先处理" extra={<AppButton type="link" onClick={toCourses}>前往课程与作业</AppButton>}>
         <List
-          loading={!data}
+          loading={loading}
           dataSource={data?.priority ?? []}
           renderItem={(item) => (
             <List.Item
               style={{ cursor: 'pointer' }}
               onClick={toCourses}
               actions={[
-                <Typography.Text key="pending" type="secondary">待批改 {item.pendingGrade} 份</Typography.Text>,
-                item.overdue > 0
-                  ? <Typography.Text key="overdue" type="danger">逾期 {item.overdue} 份</Typography.Text>
-                  : <Typography.Text key="overdue" type="secondary">无逾期</Typography.Text>,
-                <Tag key="remain" color={TONE_COLOR[item.remainTone]}>{item.remain}</Tag>,
+                <Typography.Text key="progress" type="secondary">已提交 {item.submitted}/{item.expected}</Typography.Text>,
+                <Tag key="remain" color={item.remainText.startsWith('已逾期') ? 'error' : 'default'}>{item.remainText}</Tag>,
               ]}
             >
               <List.Item.Meta
-                title={`${item.title} · ${item.course}`}
-                description={`截止 ${item.deadline}`}
+                title={`${item.title} · ${item.courseName}`}
+                description={`截止 ${item.dueTime.replace('T', ' ').slice(0, 16)}`}
               />
             </List.Item>
           )}
@@ -76,17 +88,6 @@ export default function TeacherWorkbench() {
             </Col>
           ))}
         </Row>
-      </DemoCard>
-
-      <DemoCard title="最近动态">
-        <Timeline
-          items={ACTIVITIES.map((a) => ({ color: a.color, children: (
-            <Space direction="vertical" size={0}>
-              <span>{a.text}</span>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{a.time}</Typography.Text>
-            </Space>
-          ) }))}
-        />
       </DemoCard>
     </DemoPage>
   )

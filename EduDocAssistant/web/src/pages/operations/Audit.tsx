@@ -1,22 +1,24 @@
 // 审计与安全（运维 13–20 屏）：操作日志 / 安全事件中心 / 异常与冲突复核 / 访问策略四段。
-// 数据全部来自 mock/domain/security.ts，写操作就地改内存数组，刷新回到种子状态。
+// 「操作日志」已接 /ops/audit-events 真实接口（06 切片 1）；其余三段仍走 mock/domain/security.ts，
+// 写操作就地改内存数组，刷新回到种子状态。
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Card, Col, Descriptions, Drawer, Input, Row, Select, Space, Statistic, Switch, Tabs, Tag, Timeline, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { AppButton, AppModal, AppTable } from '../../components'
 import DemoPage, { DemoCard } from '../DemoPage'
+import { getAuditEvent, listAuditEvents } from '../../api/audit'
+import type { AuditEventDetailView, AuditEventView, AuditRange, AuditResourceType } from '../../api/audit'
+import { getErrorMessage } from '../../api/http'
 import { recordPolicyChange } from '../../mock/domain/resource'
 import {
   accountOf,
   accountStatusLabel,
   anomalyConclusions,
   anomalyKindLabel,
-  chainOf,
   conflictKindLabel,
   conflictResolutions,
   freezeAccount,
   listAnomalies,
-  listAuditEvents,
   listConflicts,
   listPolicies,
   listSecurityEvents,
@@ -33,9 +35,6 @@ import {
 import type {
   Anomaly,
   AnomalyKind,
-  AuditEvent,
-  AuditQuery,
-  AuditResourceType,
   PermConflict,
   PolicyItem,
   PolicyValues,
@@ -48,37 +47,56 @@ import type {
 const RISK_COLOR: Record<RiskLevel, string> = { HIGH: 'red', MEDIUM: 'orange', LOW: 'blue' }
 const RESULT_COLOR = { SUCCESS: 'green', FAIL: 'red' } as const
 const RESULT_LABEL = { SUCCESS: '成功', FAIL: '失败' } as const
+/** 操作日志（真实接口）风险色：LOW 用 Tag 默认色，不复用演示页签的 RISK_COLOR（LOW 蓝）。 */
+const LIVE_RISK_COLOR: Record<AuditEventView['riskLevel'], string | undefined> = { HIGH: 'red', MEDIUM: 'orange', LOW: undefined }
+/** 操作日志检索条件：resourceType 空串代表「全部」，发请求时转 undefined 让 axios 省略该参数。 */
+type LogQuery = { range: AuditRange; resourceType: AuditResourceType | ''; actor: string; keyword: string }
 const SEC_STATUS_COLOR: Record<SecurityStatus, string> = { PENDING: 'orange', HANDLING: 'blue', CLOSED: 'green' }
 const SECURITY_TYPES: SecurityType[] = ['LOGIN_RISK', 'PRIVILEGE_ATTEMPT', 'ABNORMAL_EXPORT', 'ACCOUNT_ACTION']
 
-/** 屏 15 操作日志 + 屏 16 审计事件详情抽屉。 */
+/** 屏 15 操作日志 + 屏 16 审计事件详情抽屉：已接 /ops/audit-events 真实接口，筛选与分页由后端计算。 */
 function AuditLogTab() {
-  const [rows, setRows] = useState<AuditEvent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [query, setQuery] = useState<AuditQuery>({ range: '24h', resourceType: 'ALL', actor: '', keyword: '' })
+  const [rows, setRows] = useState<AuditEventView[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [query, setQuery] = useState<LogQuery>({ range: '24h', resourceType: '', actor: '', keyword: '' })
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [detail, setDetail] = useState<AuditEventDetailView | null>(null)
 
-  const load = (q: AuditQuery) => {
+  // 点「检索」或翻页才发请求；输入与筛选切换不打接口
+  const load = (q: LogQuery, p: number, ps: number) => {
     setLoading(true)
-    return listAuditEvents(q).then((r) => {
-      setRows(r)
-      setLoading(false)
+    return listAuditEvents({
+      range: q.range,
+      resourceType: q.resourceType || undefined,
+      actor: q.actor.trim() || undefined,
+      keyword: q.keyword.trim() || undefined,
+      page: p,
+      pageSize: ps,
     })
+      .then((r) => {
+        setRows(r.items)
+        setTotal(r.total)
+      })
+      .catch((e) => message.error(getErrorMessage(e)))
+      .finally(() => setLoading(false))
   }
-  // 首次加载走 loading 态，之后由 apply() 带着新条件主动重查
-  useEffect(() => {
-    load(query)
-  }, [])
-  const apply = (patch: Partial<AuditQuery>) => {
-    const next = { ...query, ...patch }
-    setQuery(next)
-    return load(next)
+  const search = () => {
+    setPage(1)
+    return load(query, 1, pageSize)
+  }
+  const openDetail = (id: string) => {
+    setDetailId(id)
+    setDetail(null)
+    getAuditEvent(id)
+      .then(setDetail)
+      .catch((e) => message.error(getErrorMessage(e)))
   }
 
-  const detail = rows.find((r) => r.id === detailId) ?? null
-
-  const columns: ColumnsType<AuditEvent> = [
-    { title: '时间', dataIndex: 'occurredAt', width: 165 },
+  const columns: ColumnsType<AuditEventView> = [
+    { title: '时间', dataIndex: 'occurredAt', width: 165, render: (v: string) => new Date(v).toLocaleString('zh-CN') },
     {
       title: '操作人',
       dataIndex: 'actor',
@@ -87,7 +105,7 @@ function AuditLogTab() {
         <Space direction="vertical" size={0}>
           <span>{v}</span>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {row.actorRole}
+            {row.actorAccount}
           </Typography.Text>
         </Space>
       ),
@@ -96,10 +114,10 @@ function AuditLogTab() {
     {
       title: '对象',
       dataIndex: 'resourceRef',
-      render: (v: string, row) => (
+      render: (v: string | null, row) => (
         <Space size={4}>
           <Tag>{resourceTypeLabel[row.resourceType]}</Tag>
-          <span>{v}</span>
+          <span>{v ?? '-'}</span>
         </Space>
       ),
     },
@@ -107,14 +125,20 @@ function AuditLogTab() {
       title: '结果',
       dataIndex: 'result',
       width: 90,
-      render: (v: AuditEvent['result']) => <Tag color={RESULT_COLOR[v]}>{RESULT_LABEL[v]}</Tag>,
+      render: (v: AuditEventView['result']) => <Tag color={RESULT_COLOR[v]}>{RESULT_LABEL[v]}</Tag>,
     },
-    { title: 'traceId', dataIndex: 'traceId', width: 150 },
+    {
+      title: '风险',
+      dataIndex: 'riskLevel',
+      width: 90,
+      render: (v: AuditEventView['riskLevel']) => <Tag color={LIVE_RISK_COLOR[v]}>{riskLabel[v]}</Tag>,
+    },
+    { title: 'traceId', dataIndex: 'traceId', width: 150, render: (v: string | null) => v ?? '-' },
     {
       title: '操作',
       width: 100,
       render: (_, row) => (
-        <AppButton type="link" size="small" onClick={() => setDetailId(row.id)}>
+        <AppButton type="link" size="small" onClick={() => openDetail(row.id)}>
           事件详情
         </AppButton>
       ),
@@ -128,7 +152,7 @@ function AuditLogTab() {
           <Select
             style={{ width: 150 }}
             value={query.range}
-            onChange={(v: AuditQuery['range']) => apply({ range: v })}
+            onChange={(v: AuditRange) => setQuery({ ...query, range: v })}
             options={[
               { value: '24h', label: '最近 24 小时' },
               { value: '7d', label: '最近 7 天' },
@@ -138,12 +162,12 @@ function AuditLogTab() {
           <Select
             style={{ width: 150 }}
             value={query.resourceType}
-            onChange={(v: AuditResourceType | 'ALL') => apply({ resourceType: v })}
+            onChange={(v: AuditResourceType | '') => setQuery({ ...query, resourceType: v })}
             options={
               [
-                { value: 'ALL', label: '全部对象类型' },
+                { value: '', label: '全部对象类型' },
                 ...Object.entries(resourceTypeLabel).map(([value, label]) => ({ value, label })),
-              ] as { value: AuditResourceType | 'ALL'; label: string }[]
+              ] as { value: AuditResourceType | ''; label: string }[]
             }
           />
           <Input
@@ -152,7 +176,7 @@ function AuditLogTab() {
             placeholder="操作人姓名 / 学号 / 工号"
             value={query.actor}
             onChange={(e) => setQuery({ ...query, actor: e.target.value })}
-            onPressEnter={() => apply({})}
+            onPressEnter={search}
           />
           <Input.Search
             allowClear
@@ -161,29 +185,44 @@ function AuditLogTab() {
             placeholder="搜索事件编号、动作、对象或 traceId"
             value={query.keyword}
             onChange={(e) => setQuery({ ...query, keyword: e.target.value })}
-            onSearch={(v) => apply({ keyword: v })}
+            onSearch={search}
           />
         </Space>
       </DemoCard>
 
       <DemoCard title="审计事件" extra={<Typography.Text type="secondary">成功与拒绝都写入 edudoc_audit_log</Typography.Text>}>
-        <AppTable<AuditEvent> rowKey="id" size="middle" loading={loading} columns={columns} dataSource={rows} />
-        <AppButton
-          type="default"
-          style={{ marginTop: 12 }}
-          onClick={() => message.success(`已导出 ${rows.length} 条检索结果（CSV），下载链接已发送至站内消息`)}
-        >
+        <AppTable<AuditEventView>
+          rowKey="id"
+          size="middle"
+          loading={loading}
+          columns={columns}
+          dataSource={rows}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            onChange: (p, ps) => {
+              setPage(p)
+              setPageSize(ps)
+              load(query, p, ps)
+            },
+          }}
+        />
+        <AppButton type="default" style={{ marginTop: 12 }} onClick={() => message.info('导出随审计投递链路开放')}>
           导出检索结果
         </AppButton>
       </DemoCard>
 
       <Drawer
-        open={!!detail}
-        onClose={() => setDetailId(null)}
+        open={!!detailId}
+        onClose={() => {
+          setDetailId(null)
+          setDetail(null)
+        }}
         width={760}
-        title={`审计事件详情 · ${detail?.id ?? ''}`}
+        title={`审计事件详情 · ${detail?.id ?? detailId ?? ''}`}
         extra={
-          <AppButton type="default" size="small" onClick={() => message.success('审计事件报告已导出')}>
+          <AppButton type="default" size="small" onClick={() => message.info('导出随审计投递链路开放')}>
             导出事件报告
           </AppButton>
         }
@@ -196,22 +235,22 @@ function AuditLogTab() {
               bordered
               items={[
                 { key: 'id', label: '事件编号', children: detail.id },
-                { key: 'at', label: '发生时间', children: detail.occurredAt },
-                { key: 'risk', label: '风险等级', children: <Tag color={RISK_COLOR[detail.riskLevel]}>{riskLabel[detail.riskLevel]}</Tag> },
+                { key: 'at', label: '发生时间', children: new Date(detail.occurredAt).toLocaleString('zh-CN') },
+                { key: 'risk', label: '风险等级', children: <Tag color={LIVE_RISK_COLOR[detail.riskLevel]}>{riskLabel[detail.riskLevel]}</Tag> },
                 { key: 'result', label: '处理结果', children: <Tag color={RESULT_COLOR[detail.result]}>{RESULT_LABEL[detail.result]}</Tag> },
               ]}
             />
-            <Alert type={detail.result === 'SUCCESS' ? 'info' : 'warning'} showIcon message="事件摘要" description={detail.summary} />
+            <Alert type={detail.result === 'SUCCESS' ? 'info' : 'warning'} showIcon message="事件摘要" description={detail.summary ?? '-'} />
             <div>
               <Typography.Title level={5}>事件链路</Typography.Title>
               <Timeline
-                items={chainOf(detail).map((s) => ({
+                items={detail.chain.map((s) => ({
                   children: (
                     <>
-                      <strong>{s.title}</strong>
+                      <strong>{s.detail}</strong>
                       <div>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {s.time} · {s.desc}
+                          第 {s.step} 步 · {new Date(s.at).toLocaleString('zh-CN')}
                         </Typography.Text>
                       </div>
                     </>
@@ -227,12 +266,12 @@ function AuditLogTab() {
                 bordered
                 items={[
                   { key: 'actor', label: '操作者', children: detail.actor },
-                  { key: 'role', label: '操作时角色', children: detail.actorRole },
-                  { key: 'ip', label: '来源 IP', children: detail.sourceIp },
-                  { key: 'ua', label: '终端', children: detail.userAgent },
-                  { key: 'res', label: '对象', children: `${resourceTypeLabel[detail.resourceType]} · ${detail.resourceRef}` },
-                  { key: 'code', label: '结果码', children: detail.resultCode },
-                  { key: 'trace', label: 'traceId', children: detail.traceId, span: 2 },
+                  { key: 'account', label: '操作账号', children: detail.actorAccount },
+                  { key: 'ip', label: '来源 IP', children: detail.sourceIp ?? '-' },
+                  { key: 'ua', label: '终端', children: detail.userAgent ?? '-' },
+                  { key: 'res', label: '对象', children: `${resourceTypeLabel[detail.resourceType]} · ${detail.resourceRef ?? '-'}` },
+                  { key: 'code', label: '结果码', children: detail.resultCode ?? '-' },
+                  { key: 'trace', label: 'traceId', children: detail.traceId ?? '-', span: 2 },
                 ]}
               />
             </div>
@@ -242,19 +281,18 @@ function AuditLogTab() {
                 rowKey="name"
                 size="small"
                 pagination={false}
-                dataSource={detail.impacts ?? []}
+                dataSource={detail.impacts}
                 columns={[
                   { title: '对象类型', dataIndex: 'type', width: 90 },
                   { title: '对象', dataIndex: 'name', width: 200 },
                   { title: '影响', dataIndex: 'detail' },
-                  { title: '标记', dataIndex: 'mark', width: 90, render: (v: string) => <Tag>{v}</Tag> },
                 ]}
               />
             </div>
             <div>
               <Typography.Title level={5}>处置建议</Typography.Title>
               <ul style={{ margin: 0, paddingLeft: 20 }}>
-                {(detail.advice ?? ['无需处置，保留审计记录。']).map((a) => (
+                {detail.advice.map((a) => (
                   <li key={a}>{a}</li>
                 ))}
               </ul>
@@ -860,6 +898,8 @@ export default function OpsAudit() {
       title="审计与安全"
       screens="对应原型：运维 13/14/15/16/17/18/19/20"
       desc="检索账号、课程、文档、权限与系统级操作，处置登录风险、越权尝试与异常导出事件，并维护访问策略。"
+      live
+      mixedNote="部分演示数据：安全事件 / 异常与冲突复核 / 访问策略"
     >
       <Tabs
         defaultActiveKey="log"

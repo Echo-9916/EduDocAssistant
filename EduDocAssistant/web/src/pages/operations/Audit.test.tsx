@@ -1,25 +1,95 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('../../auth/AuthContext', () => ({
   useAuth: () => ({ user: { roles: ['OPS'], permissions: ['AUDIT_READ'] } as never }),
 }))
+// 操作日志已接真实接口：网络层与审计 API 一并隔离；其余三个页签仍走 mock/domain/security 内存数据
+vi.mock('../../api/http', () => ({ getErrorMessage: (e: Error) => e?.message ?? 'err' }))
+vi.mock('../../api/audit', () => ({ listAuditEvents: vi.fn(), getAuditEvent: vi.fn() }))
 
 import OpsAudit from './Audit'
+import { getAuditEvent, listAuditEvents } from '../../api/audit'
+import type { AuditEventDetailView, AuditEventView } from '../../api/audit'
+
+/** 两行样本：一行 FAIL+HIGH、一行 SUCCESS+LOW，字段形状对齐 /ops/audit-events 实测返回。 */
+const ROWS: AuditEventView[] = [
+  {
+    id: 'AUD-20261110-0001',
+    occurredAt: '2026-11-10T11:41:44.931+08:00',
+    actor: '李老师',
+    actorAccount: 'teacher',
+    actionType: 'REMIND_UNSUBMITTED',
+    resourceType: 'COURSE',
+    resourceRef: '《Web开发技术》',
+    result: 'FAIL',
+    resultCode: '40101',
+    traceId: 'tr-9f2c41ab77e0',
+    sourceIp: '10.20.12.5',
+    userAgent: 'Chrome 130 / Windows 11',
+    riskLevel: 'HIGH',
+    summary: '越权访问被拒绝，内容未返回。',
+  },
+  {
+    id: 'AUD-20261110-0002',
+    occurredAt: '2026-11-10T09:12:03.120+08:00',
+    actor: '赵工',
+    actorAccount: 'ops',
+    actionType: 'AUTH',
+    resourceType: 'SYSTEM',
+    resourceRef: '统一身份认证服务',
+    result: 'SUCCESS',
+    resultCode: '200',
+    traceId: 'tr-4b81d0c93af5',
+    sourceIp: '10.20.8.2',
+    userAgent: 'Chrome 130 / Windows 11',
+    riskLevel: 'LOW',
+    summary: '登录成功。',
+  },
+]
+
+const DETAIL: AuditEventDetailView = {
+  ...ROWS[0],
+  chain: [{ step: 1, at: '2026-11-10T11:41:44.931+08:00', detail: '策略引擎拒绝访问' }],
+  impacts: [{ type: '文档', name: '《Web开发课程设计报告》', detail: '权限校验在内容返回前终止' }],
+  advice: ['通知课程负责人复核共享范围。', '若 24 小时内再次出现同类访问，升级为高风险事件。'],
+}
+
+beforeEach(() => {
+  vi.mocked(listAuditEvents).mockResolvedValue({ items: ROWS, total: 2, page: 1, pageSize: 10 })
+  vi.mocked(getAuditEvent).mockResolvedValue(DETAIL)
+})
 
 describe('运维审计与安全（13/14/15/16/17/18/19/20 屏门面）', () => {
-  it('操作日志渲染检索条件与审计事件，行操作打开事件详情抽屉', async () => {
+  it('操作日志：点检索走真实接口（range=24h），行含结果/风险 Tag，详情抽屉展示链路与处置建议（屏 15/16）', async () => {
     render(<OpsAudit />)
     expect(await screen.findByText('审计与安全')).toBeTruthy()
-    // 屏 15：检索条件 + 事件行（时间/操作人/动作/对象/结果/traceId）
-    expect(await screen.findByText('越权访问被拒绝')).toBeTruthy()
-    expect(screen.getAllByText('tr-9f2c41ab77e0').length).toBeGreaterThan(0)
     expect(screen.getByText('最近 24 小时')).toBeTruthy()
+    // 点「检索」前不打接口
+    expect(listAuditEvents).not.toHaveBeenCalled()
 
-    // 屏 16：事件详情抽屉（链路 + 请求上下文 + 影响对象 + 处置建议）
+    // antd Button 会给两个汉字的按钮自动插空格（「检 索」），用 role + 正则匹配
+    fireEvent.click(screen.getByRole('button', { name: /^检\s*索$/ }))
+    await waitFor(() =>
+      expect(listAuditEvents).toHaveBeenCalledWith(expect.objectContaining({ range: '24h', page: 1, pageSize: 10 })),
+    )
+
+    // 两行样本：FAIL+HIGH / SUCCESS+LOW，分页总数来自后端 total
+    expect(await screen.findByText('tr-9f2c41ab77e0')).toBeTruthy()
+    expect(screen.getByText('tr-4b81d0c93af5')).toBeTruthy()
+    expect(screen.getByText('REMIND_UNSUBMITTED')).toBeTruthy()
+    expect(screen.getByText('失败')).toBeTruthy()
+    expect(screen.getByText('成功')).toBeTruthy()
+    expect(screen.getByText('高风险')).toBeTruthy()
+    expect(screen.getByText('低风险')).toBeTruthy()
+    expect(screen.getByText(/共 2 条/)).toBeTruthy()
+
+    // 屏 16：事件详情抽屉走 getAuditEvent（链路 + 请求上下文 + 影响对象 + 处置建议）
     fireEvent.click(screen.getAllByText('事件详情')[0])
-    expect(await screen.findByText('事件链路')).toBeTruthy()
+    await waitFor(() => expect(getAuditEvent).toHaveBeenCalledWith('AUD-20261110-0001'))
+    expect(await screen.findByText('通知课程负责人复核共享范围。')).toBeTruthy()
+    expect(screen.getByText('事件链路')).toBeTruthy()
     expect(screen.getByText('请求上下文')).toBeTruthy()
     expect(screen.getByText('影响对象')).toBeTruthy()
     expect(screen.getByText('处置建议')).toBeTruthy()

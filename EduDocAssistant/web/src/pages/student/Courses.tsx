@@ -39,8 +39,16 @@ const CONV_META: Record<ConversionView['status'], { label: string; color: string
   CANCELED: { label: '已取消', color: 'warning' },
 }
 
-/** 后端 ISO 串（+08:00）→「YYYY-MM-DD HH:mm」 */
-const dt = (v: string | null) => (v ? v.slice(0, 16).replace('T', ' ') : '-')
+/**
+ * 后端 ISO 串 → 本地「YYYY-MM-DD HH:mm」。
+ * 不能裸 slice：库写的时间是 +00:00（Oracle 会话时区），slice 会把 UTC 墙钟当本地显示，早 8 小时。
+ */
+const dt = (v: string | null) => {
+  if (!v) return '-'
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return v.slice(0, 16).replace('T', ' ')
+  return d.toLocaleString('zh-CN', { hour12: false }).slice(0, 16)
+}
 
 /** 课程与作业（作业与交付分区）：我的作业 24 / 提交 25 / 导出文档 22 / 下载中心 23 屏。 */
 export default function StudentCourses() {
@@ -324,7 +332,7 @@ export default function StudentCourses() {
               <Descriptions.Item label="要求" span={2}>{submitRow.requirement ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="提交格式" span={2}>
                 {submitRow.submissionFormat === 'BOTH' ? 'DOCX / PDF' : submitRow.submissionFormat}
-                {submitRow.requireFormatCheck === 'Y' ? '，提交时执行格式校验' : ''}
+                {submitRow.requireFormatCheck === 'Y' ? '，提交后回填格式校验结论（暂不阻断）' : ''}
               </Descriptions.Item>
             </Descriptions>
             <Form form={submitForm} layout="vertical">

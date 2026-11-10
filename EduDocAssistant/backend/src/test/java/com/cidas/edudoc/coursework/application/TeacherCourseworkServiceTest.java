@@ -49,10 +49,9 @@ class TeacherCourseworkServiceTest {
     private static final String RUBRIC_JSON = "[{\"name\":\"内容\",\"maxScore\":60},{\"name\":\"格式\",\"maxScore\":40}]";
 
     private final CourseworkRepository repository = mock(CourseworkRepository.class);
-    private final CourseworkMapper mapper = mock(CourseworkMapper.class);
     private final AuditService auditService = mock(AuditService.class);
     private final TeacherCourseworkService service =
-            new TeacherCourseworkServiceImpl(repository, mapper, auditService);
+            new TeacherCourseworkServiceImpl(repository, auditService);
 
     @AfterEach
     void tearDown() {
@@ -110,6 +109,22 @@ class TeacherCourseworkServiceTest {
     }
 
     @Test
+    void publishDefaultsMissingYesNoFlagsInsteadOfRejecting() {
+        // 审查 P0：发布表单没暴露「允许迟交」，请求省略 allowLate 时后端不能回 400
+        teacher(HEX_COURSE);
+        when(repository.createAssignment(any())).thenReturn(HEX_ASSIGNMENT);
+
+        service.createAssignment(new AssignmentCreateCommand(HEX_COURSE, "课程设计报告", "要求见文档",
+                "2026-11-20T23:59:00+08:00", null, "DOCX", null, false,
+                List.of(new RubricInput("内容", 60))));
+
+        ArgumentCaptor<AssignmentCreate> captor = ArgumentCaptor.forClass(AssignmentCreate.class);
+        verify(repository).createAssignment(captor.capture());
+        assertEquals("N", captor.getValue().allowLate());
+        assertEquals("N", captor.getValue().requireFormatCheck());
+    }
+
+    @Test
     void publishRejectsEmptyRubric() {
         teacher(HEX_COURSE);
 
@@ -137,7 +152,7 @@ class TeacherCourseworkServiceTest {
     @Test
     void gradeRejectsScoreOverMaxAndNeverWrites() {
         teacher(HEX_COURSE);
-        when(mapper.selectSubmissionById(HEX_SUBMISSION)).thenReturn(submissionRow());
+        when(repository.findSubmissionById(HEX_SUBMISSION)).thenReturn(submissionRow());
         when(repository.findAssignment(HEX_ASSIGNMENT)).thenReturn(assignmentRow());
 
         var e = assertThrows(CidasBusinessException.class, () -> service.gradeSubmission(HEX_SUBMISSION,
@@ -150,7 +165,7 @@ class TeacherCourseworkServiceTest {
     @Test
     void gradeWritesNormalizedJsonAndServerSideTotal() {
         teacher(HEX_COURSE);
-        when(mapper.selectSubmissionById(HEX_SUBMISSION)).thenReturn(submissionRow());
+        when(repository.findSubmissionById(HEX_SUBMISSION)).thenReturn(submissionRow());
         when(repository.findAssignment(HEX_ASSIGNMENT)).thenReturn(assignmentRow());
 
         // 入参故意乱序且不带 maxScore：归一化与总分必须由服务端按评分标准计算

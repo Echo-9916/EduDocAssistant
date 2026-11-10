@@ -14,6 +14,7 @@ import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.OwnedDocument;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.StudentAssignment;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -57,6 +58,7 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
     }
 
     @Override
+    @Transactional
     public SubmissionResult submit(String assignmentId, String documentId) {
         if (!Ids.isHex16(assignmentId) || !Ids.isHex16(documentId)) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "ID 格式不合法");

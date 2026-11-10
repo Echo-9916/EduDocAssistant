@@ -49,8 +49,6 @@ public interface CourseworkMapper {
     /** 名单里无账号的学生：建未激活账号（account_status='I'），走统一身份认证首登激活。 */
     int insertInactiveUser(@Param("accountNo") String accountNo, @Param("name") String name);
 
-    int updateCourseStatus(@Param("courseIdHex") String courseIdHex, @Param("status") String status);
-
     // ---------- 作业（edudoc_assignment） ----------
 
     List<CourseworkRow.AssignmentStats> selectAssignments(@Param("userIdHex") String userIdHex,
@@ -59,14 +57,14 @@ public interface CourseworkMapper {
 
     CourseworkRow.AssignmentStats selectAssignmentById(@Param("assignmentIdHex") String assignmentIdHex);
 
-    int insertAssignment(@Param("courseIdHex") String courseIdHex, @Param("title") String title,
+    int insertAssignment(@Param("idHex") String idHex,
+                         @Param("courseIdHex") String courseIdHex, @Param("title") String title,
                          @Param("description") String description, @Param("publishedByHex") String publishedByHex,
                          @Param("dueTime") OffsetDateTime dueTime, @Param("allowLate") String allowLate,
                          @Param("submissionFormat") String submissionFormat,
                          @Param("requireFormatCheck") String requireFormatCheck,
                          @Param("rubricJson") String rubricJson, @Param("status") String status);
 
-    String selectAssignmentId(@Param("courseIdHex") String courseIdHex, @Param("title") String title);
 
     /** 未提交学生名单（提醒入口，投递随消息切片）。 */
     List<CourseworkRow.MemberAccount> selectUnsubmittedMembers(@Param("assignmentIdHex") String assignmentIdHex);

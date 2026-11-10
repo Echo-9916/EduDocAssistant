@@ -3,6 +3,7 @@ package com.cidas.edudoc.coursework.infrastructure;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
+import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.AssignmentStats;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.MemberAccount;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.OwnedDocument;
@@ -76,10 +77,6 @@ public class CourseworkRepository {
         return mapper.selectUserByAccount(accountNo).getUserId();
     }
 
-    public void archiveCourse(String courseIdHex) {
-        mapper.updateCourseStatus(courseIdHex, "C");
-    }
-
     // ---------- 作业 ----------
 
     public List<AssignmentStats> listAssignments(String userIdHex, String courseIdHex, String status) {
@@ -91,10 +88,11 @@ public class CourseworkRepository {
     }
 
     public String createAssignment(AssignmentCreate cmd) {
-        mapper.insertAssignment(cmd.courseIdHex(), cmd.title(), cmd.description(), cmd.publishedByHex(),
+        String idHex = Ids.hex16();
+        mapper.insertAssignment(idHex, cmd.courseIdHex(), cmd.title(), cmd.description(), cmd.publishedByHex(),
                 cmd.dueTime(), cmd.allowLate(), cmd.submissionFormat(), cmd.requireFormatCheck(),
                 cmd.rubricJson(), cmd.status());
-        return mapper.selectAssignmentId(cmd.courseIdHex(), cmd.title());
+        return idHex;
     }
 
     public List<MemberAccount> listUnsubmitted(String assignmentIdHex) {
@@ -142,6 +140,11 @@ public class CourseworkRepository {
             throw new CidasBusinessException(ErrorCode.DUPLICATE, "同一作业的同一提交次数已存在，请重试");
         }
         return mapper.selectSubmissionId(assignmentIdHex, studentIdHex, attemptNo);
+    }
+
+    /** 批改入口按主键取单条提交（只取归属列）；课程范围校验在应用服务层，越权 40301。 */
+    public Submission findSubmissionById(String submissionIdHex) {
+        return mapper.selectSubmissionById(submissionIdHex);
     }
 
     public List<Submission> listSubmissions(String userIdHex, String assignmentIdHex, String status) {

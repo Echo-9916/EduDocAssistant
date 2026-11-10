@@ -36,7 +36,30 @@
 - 审计成功码兼容 `'200'` 与 `'SUCCESS'`：既有写入路径两种都写过，严格照 `'200'` 判会把所有成功登录标成 FAIL。
 - 文档同步进度：`docs/design/数据库设计说明书.md` 复刻**已补**（`course_member.group_name`、`assignment` 三列、`submission.score_json`，并注明「按速度优先口径不建明细表」的代价）；**唯一剩余欠账是 `05_系统设计/02_数据库设计说明书.docx` 源文件**，需要走 `TempStore/docx-*.py` 工具链改 Word 交付物——属于对外交付文档，改坏成本高，待你点头再动。表数与触发器数无变化（本切片没建新表）。
 
-## 四、验证汇总
+## 三点五、独立审查结论与处置（2026-11-10，两个审查 agent）
+
+审查口径：**不可放行**（两份报告都点名两条 P0）。以下是逐条处置，已复验：
+
+| 级别 | 问题 | 处置 | 复验证据 |
+| --- | --- | --- | --- |
+| P0 | 教师 UI 发布作业不传 `allowLate` → 后端 400，屏 24 主流程不可用 | 后端按 DDL 默认兜 `'N'`（root cause，不在前端打补丁）；前端补「允许迟交」开关并显式提交；新增防回归用例 | curl 缺 `allowLate` 发布 → **201**；`TeacherCourseworkServiceTest` 7 例绿 |
+| P0 | 教师 token 可查全库审计（`AUDIT_READ` 曾授 TEACHER 且端点无课程范围过滤） | 双管：`SecurityConfig` 对 `/api/v1/ops/**` 加 `hasRole("OPS")`；`04_seed.sql` 与实库收回 TEACHER 的 `AUDIT_READ`。需求本意「教师看所授课程日志」列为待确认 **B1** | curl 教师 → **403/40301**；运维 → 200 正常返回 |
+| P1 | 审计时间与学生提交时间显示早 8 小时（`TO_CHAR` 丢偏移 + 前端裸 slice） | SQL 改 `SYS_EXTRACT_UTC(...) \|\| 'Z'`；前端 `dt()` 改本地化解析 | 实库返回 `2026-11-10T11:38:33Z`；`tsc`+页面测试 6 例绿 |
+| P1 | 同课程重名发布 → `TooManyResultsException` 500 + 孤儿行 | 主键改应用侧 `Ids.hex16()` 随 INSERT 落库，删掉「按 course+title 回读」 | curl 连发两次同标题 → **201 / 201**（不再 500），垃圾数据已按主键清库 |
+| P1 | 三处 UI 文案反向承诺后端没有的行为（阻断提交 / 执行校验 / 发送邀请） | 文案改为「提交后异步回填，暂不阻断」「邀请投递随消息切片」；`requireFormatCheck` 默认不勾 | 见 `web/src/pages/teacher/Courses.tsx`、`student/Courses.tsx` |
+| P1 | 审计列表缺 `actorRole`（REQ-09 明确要角色） | view + SQL 补 `actor_role` 并贯通前端 | curl 首行 `actorRole="TEACHER"` |
+| P1 | 需求 5.6.2 三项（批量下载提交文档、导出统计表格、作业关联模板）在计划里就漏了，且未披露 | **承认是计划漏项**，补记为待确认 **B4** | — |
+| P2 | 审计 `source_ip` / `user_agent` 自 01 切片起从未写入（761 行全空），登录记录与请求上下文因此恒空 | 属既有链路的 Must 级字段缺失，动它要改已过审的认证链路 → 记 **B3** 请你定夺，我没擅自动 | 实库 `COUNT(source_ip)=0` |
+| P2 | `GET /teacher/assignments/{id}/unsubmitted` 带审计写副作用 | 改为纯读（提醒投递本就随切片 2），去掉 record 调用 | 回归 6 例绿 |
+| P2 | 死代码 `archiveCourse` / `updateCourseStatus` | 三处删净（归档属运维屏 06） | 编译零引用 |
+| P2 | 文档债：CLAUDE.md 仍写六域、契约速查无新端点、详细设计表 3-9 路径分叉 | 三份都补：CLAUDE.md 改七域并加两条分层红线；契约速查新增 §6/§7/§8；分叉记在 §三 | — |
+
+**我此前两处夸大，据此更正**（原话保留以便追溯）：
+
+1. 「端到端：发布→提交→批改全链路真返回」——只对 **curl** 成立（示例请求带了 `allowLate`）；UI 发布当时必 400，所以「闭环可演示」这条退出判据在前端**不成立**，现已按上表修复并复验。
+2. 「唯一剩余欠账是 02_数据库设计说明书.docx」——不准确：CLAUDE.md、接口契约速查、详细设计表 3-9 同样欠着，均已在本轮补齐；`mvn test` 的「436 例」里还包含 3 个真库集成测试的 6 个方法（本机 Oracle 不可达时它们不执行，实测 `tests_total=430`），两个数字都对但要说清口径。
+
+正面确认（审查独立核过，供放行参考）：批改总分确为服务端算（乱序/缺 `maxScore`/缺项/超分/多项全拒，有测试）；提交五道门禁齐（未选修、非本人文档、DRAFT、CLOSED、超期禁迟交，均带 `never()` 断言不落库）；`teacherCourseScope` 使越权查询自然得空集；LIKE 已转义、成功码双口径兼容、`collabActive` 恒 0 带 Tooltip——**未发现在披露上撒谎的情况**，问题集中在「UI 声称的比后端做的多」。
 
 - 后端：`rm -rf target/classes target/test-classes && mvn -q test` → **436 例，0 失败 0 错误**（新增 coursework 17 例 + 审计 7 例）。注：`mvn clean` 不可用——8080 实例锁着 `target/template-sample.docx`（04 期 E2E 产物）。
 - 契约：`npx vitest run src/api/coursework.test.ts` → 3 例通过（前端 URL/参数与后端 Controller 逐条对齐）。

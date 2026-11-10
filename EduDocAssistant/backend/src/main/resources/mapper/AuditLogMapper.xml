@@ -13,4 +13,84 @@
             CAST(#{log.detailJson, jdbcType=VARCHAR} AS JSON))
     </insert>
 
+    <!-- ===== 06 切片 1：审计事件检索（只读追加，上方 insert 不动）=====
+         索引口径：时间窗 a.occurred_at >= since 走 ix_audit_time 作驱动条件；
+         failCount 相关子查询走 ix_audit_actor(actor_id, occurred_at)；
+         resource_type 无独立索引，仅作为时间窗范围内的附加过滤列。
+         取舍：actor/keyword 为前置模糊 LIKE，无法命中索引，靠时间窗先缩小行集再过滤——
+         演示数据量小可接受；不另建全文索引（01/02 脚本冻结）。 -->
+    <sql id="searchWhere">
+        WHERE a.occurred_at &gt;= #{since}
+        <if test="resourceType != null and resourceType != ''">
+            AND a.resource_type = #{resourceType}
+        </if>
+        <if test="actor != null and actor != ''">
+            AND (UPPER(u.username) LIKE '%' || UPPER(#{actor}) || '%' ESCAPE '\'
+                OR UPPER(u.display_name) LIKE '%' || UPPER(#{actor}) || '%' ESCAPE '\')
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (UPPER(a.action_type) LIKE '%' || UPPER(#{keyword}) || '%' ESCAPE '\'
+                OR UPPER(a.resource_ref) LIKE '%' || UPPER(#{keyword}) || '%' ESCAPE '\'
+                OR UPPER(a.trace_id) LIKE '%' || UPPER(#{keyword}) || '%' ESCAPE '\')
+        </if>
+    </sql>
+
+    <select id="searchEvents" resultType="map">
+        SELECT RAWTOHEX(a.id) AS "id",
+               TO_CHAR(a.occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "occurredAt",
+               u.display_name AS "actor", u.username AS "actorAccount",
+               a.action_type AS "actionType", a.resource_type AS "resourceType",
+               a.resource_ref AS "resourceRef", a.result_code AS "resultCode",
+               a.trace_id AS "traceId", a.source_ip AS "sourceIp", a.user_agent AS "userAgent",
+               (SELECT COUNT(*) FROM edudoc_audit_log f
+                 WHERE f.actor_id = a.actor_id
+                   AND f.result_code NOT IN ('200', 'SUCCESS')
+                   AND f.occurred_at &gt;= #{since}) AS "failCount"
+        FROM edudoc_audit_log a
+        LEFT JOIN edudoc_user u ON u.id = a.actor_id
+        <include refid="searchWhere"/>
+        ORDER BY a.occurred_at DESC, RAWTOHEX(a.id) DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="countEvents" resultType="long">
+        SELECT COUNT(*)
+        FROM edudoc_audit_log a
+        LEFT JOIN edudoc_user u ON u.id = a.actor_id
+        <include refid="searchWhere"/>
+    </select>
+
+    <!-- 详情主行：PK 命中 pk_audit_log；failCount 口径为事件时刻前 24 小时（详情无 range 参数），
+         子查询走 ix_audit_actor。documentTitle 供影响条目显示文档名。 -->
+    <select id="selectEventDetail" resultType="map">
+        SELECT RAWTOHEX(a.id) AS "id",
+               TO_CHAR(a.occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "occurredAt",
+               u.display_name AS "actor", u.username AS "actorAccount",
+               a.action_type AS "actionType", a.resource_type AS "resourceType",
+               a.resource_ref AS "resourceRef", a.result_code AS "resultCode",
+               a.trace_id AS "traceId", a.source_ip AS "sourceIp", a.user_agent AS "userAgent",
+               RAWTOHEX(a.document_id) AS "documentId", d.title AS "documentTitle",
+               (SELECT COUNT(*) FROM edudoc_audit_log f
+                 WHERE f.actor_id = a.actor_id
+                   AND f.result_code NOT IN ('200', 'SUCCESS')
+                   AND f.occurred_at BETWEEN a.occurred_at - NUMTODSINTERVAL(24, 'HOUR')
+                                         AND a.occurred_at) AS "failCount"
+        FROM edudoc_audit_log a
+        LEFT JOIN edudoc_user u ON u.id = a.actor_id
+        LEFT JOIN edudoc_document d ON d.id = a.document_id
+        WHERE a.id = HEXTORAW(#{eventId})
+    </select>
+
+    <!-- 链路聚合：trace_id 无独立索引（01/02 脚本冻结不新增），单 trace 行数极少，
+         演示数据量下按全表过滤可接受；ORDER BY 保证 step 编号稳定（Java 侧仍复排一次）。 -->
+    <select id="selectChainByTraceId" resultType="map">
+        SELECT RAWTOHEX(a.id) AS "id",
+               TO_CHAR(a.occurred_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS "occurredAt",
+               a.action_type AS "actionType", a.resource_type AS "resourceType",
+               a.resource_ref AS "resourceRef", a.result_code AS "resultCode"
+        FROM edudoc_audit_log a
+        WHERE a.trace_id = #{traceId}
+        ORDER BY a.occurred_at ASC, RAWTOHEX(a.id) ASC
+    </select>
+
 </mapper>

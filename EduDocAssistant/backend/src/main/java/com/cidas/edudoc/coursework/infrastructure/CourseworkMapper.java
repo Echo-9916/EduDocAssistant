@@ -111,4 +111,7 @@ public interface CourseworkMapper {
     int updateSubmissionGrade(@Param("submissionIdHex") String submissionIdHex, @Param("score") BigDecimal score,
                               @Param("feedback") String feedback, @Param("scoreJson") String scoreJson,
                               @Param("status") String status);
+
+    /** 批改入口按主键取单条提交（仅回填 id/assignmentId 列）；课程范围校验在应用服务层（40301）。 */
+    CourseworkRow.Submission selectSubmissionById(@Param("submissionIdHex") String submissionIdHex);
 }

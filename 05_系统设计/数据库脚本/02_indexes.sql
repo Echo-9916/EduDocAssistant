@@ -67,3 +67,8 @@ ORGANIZATION INMEMORY NEIGHBOR GRAPH
 DISTANCE COSINE
 WITH TARGET ACCURACY 95;
 
+
+-- 站内信箱与偏好（06 切片2）
+CREATE INDEX ix_notification_recipient ON edudoc_notification (recipient_id, read_at, create_time);
+CREATE INDEX ix_notification_type ON edudoc_notification (notif_type, create_time);
+CREATE INDEX ix_notif_pref_user ON edudoc_notification_preference (user_id, enabled);

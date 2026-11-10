@@ -17,11 +17,13 @@ CREATE TABLE edudoc_user (
     account_status CHAR(1) DEFAULT 'A' NOT NULL,
     last_login_time TIMESTAMP(6) WITH TIME ZONE,
     remark VARCHAR2(500),
+    mfa_enabled CHAR(1) DEFAULT 'N' NOT NULL,
     CONSTRAINT pk_user PRIMARY KEY (id),
     CONSTRAINT uk_user_1 UNIQUE (username),
     CONSTRAINT uk_user_2 UNIQUE (external_subject_id),
     CONSTRAINT ck_user_auth CHECK (auth_source IN ('LOCAL','SSO')),
-    CONSTRAINT ck_user_status CHECK (account_status IN ('A','I','L','D'))
+    CONSTRAINT ck_user_status CHECK (account_status IN ('A','I','L','D')),
+    CONSTRAINT ck_user_mfa CHECK (mfa_enabled IN ('Y','N'))
 );
 
 COMMENT ON TABLE edudoc_user IS '保存校内用户、统一身份认证映射和本地兼容账号。';
@@ -38,6 +40,7 @@ COMMENT ON COLUMN edudoc_user.password_hash IS '本地兼容账号密码哈希�
 COMMENT ON COLUMN edudoc_user.account_status IS '账号状态：A 正常、I 未激活、L 锁定、D 注销';
 COMMENT ON COLUMN edudoc_user.last_login_time IS '最近登录时间';
 COMMENT ON COLUMN edudoc_user.remark IS '管理备注';
+COMMENT ON COLUMN edudoc_user.mfa_enabled IS '是否启用双因素认证：Y/N；运维角色由应用层强制为 Y';
 
 -- 角色表: 保存学生、教师、运维人员及自定义角色。
 CREATE TABLE edudoc_role (
@@ -1264,3 +1267,87 @@ COMMENT ON COLUMN edudoc_outbox_event.status IS '状态：NEW、PUBLISHED、FAIL
 COMMENT ON COLUMN edudoc_outbox_event.retry_count IS '投递重试次数';
 COMMENT ON COLUMN edudoc_outbox_event.next_retry_at IS '下次重试时间';
 COMMENT ON COLUMN edudoc_outbox_event.published_at IS '投递成功时间';
+
+-- 站内信箱表: 记录投递给用户的一条条消息，投递幂等由收件人与去重键保证。
+CREATE TABLE edudoc_notification (
+    id RAW(16) DEFAULT SYS_GUID() NOT NULL,
+    create_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    update_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    recipient_id RAW(16) NOT NULL,
+    notif_type VARCHAR2(20) NOT NULL,
+    title VARCHAR2(200) NOT NULL,
+    body VARCHAR2(1000),
+    resource_type VARCHAR2(20),
+    resource_ref VARCHAR2(200),
+    actor_id RAW(16),
+    dedup_key VARCHAR2(64) NOT NULL,
+    read_at TIMESTAMP(6) WITH TIME ZONE,
+    CONSTRAINT pk_notification PRIMARY KEY (id),
+    CONSTRAINT uk_notification_1 UNIQUE (recipient_id, dedup_key),
+    CONSTRAINT fk_notification_1 FOREIGN KEY (recipient_id) REFERENCES edudoc_user (id),
+    CONSTRAINT fk_notification_2 FOREIGN KEY (actor_id) REFERENCES edudoc_user (id),
+    CONSTRAINT ck_notification_type CHECK (notif_type IN ('COURSE','SUBMISSION','FEEDBACK','FORMAT','PERMISSION','ALERT','APPROVAL','SYSTEM'))
+);
+
+COMMENT ON TABLE edudoc_notification IS '记录站内信箱中投递给单个用户的消息。';
+COMMENT ON COLUMN edudoc_notification.id IS '主键，数据库自动生成 GUID';
+COMMENT ON COLUMN edudoc_notification.create_time IS '创建时间，默认数据库当前时间';
+COMMENT ON COLUMN edudoc_notification.update_time IS '最后更新时间，由触发器维护';
+COMMENT ON COLUMN edudoc_notification.recipient_id IS '收件用户 ID';
+COMMENT ON COLUMN edudoc_notification.notif_type IS '消息类型：COURSE 课程组更新、SUBMISSION 提交提醒、FEEDBACK 教师反馈、FORMAT 格式异常、PERMISSION 权限变更、ALERT 系统告警、APPROVAL 审批通知、SYSTEM 系统通知';
+COMMENT ON COLUMN edudoc_notification.title IS '消息标题';
+COMMENT ON COLUMN edudoc_notification.body IS '消息正文';
+COMMENT ON COLUMN edudoc_notification.resource_type IS '关联对象类型，供前端跳转';
+COMMENT ON COLUMN edudoc_notification.resource_ref IS '关联对象业务标识，供前端跳转';
+COMMENT ON COLUMN edudoc_notification.actor_id IS '触发人用户 ID，系统消息为空';
+COMMENT ON COLUMN edudoc_notification.dedup_key IS '投递去重键：事件类型:聚合标识:收件人[:日期]，与 uk_notification_1 配合保证重投不产生第二封信';
+COMMENT ON COLUMN edudoc_notification.read_at IS '已读时间，为空表示未读';
+
+-- 通知偏好表: 用户按消息类型与通道控制是否接收，缺省视为接收。
+CREATE TABLE edudoc_notification_preference (
+    id RAW(16) DEFAULT SYS_GUID() NOT NULL,
+    create_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    update_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    user_id RAW(16) NOT NULL,
+    notif_type VARCHAR2(20) NOT NULL,
+    channel VARCHAR2(20) DEFAULT 'INBOX' NOT NULL,
+    enabled CHAR(1) DEFAULT 'Y' NOT NULL,
+    CONSTRAINT pk_notification_pref PRIMARY KEY (id),
+    CONSTRAINT uk_notif_pref_1 UNIQUE (user_id, notif_type, channel),
+    CONSTRAINT fk_notification_pref_1 FOREIGN KEY (user_id) REFERENCES edudoc_user (id),
+    CONSTRAINT ck_notif_pref_type CHECK (notif_type IN ('COURSE','SUBMISSION','FEEDBACK','FORMAT','PERMISSION','ALERT','APPROVAL','SYSTEM')),
+    CONSTRAINT ck_notif_pref_channel CHECK (channel IN ('INBOX','EMAIL')),
+    CONSTRAINT ck_notif_pref_enabled CHECK (enabled IN ('Y','N'))
+);
+
+COMMENT ON TABLE edudoc_notification_preference IS '维护用户对消息类型与接收通道的偏好。';
+COMMENT ON COLUMN edudoc_notification_preference.id IS '主键，数据库自动生成 GUID';
+COMMENT ON COLUMN edudoc_notification_preference.create_time IS '创建时间，默认数据库当前时间';
+COMMENT ON COLUMN edudoc_notification_preference.update_time IS '最后更新时间，由触发器维护';
+COMMENT ON COLUMN edudoc_notification_preference.user_id IS '用户 ID';
+COMMENT ON COLUMN edudoc_notification_preference.notif_type IS '消息类型，取值同 edudoc_notification.notif_type';
+COMMENT ON COLUMN edudoc_notification_preference.channel IS '接收通道：INBOX 站内，EMAIL 邮件（本期仅占位不实现投递）';
+COMMENT ON COLUMN edudoc_notification_preference.enabled IS '是否接收：Y/N；无记录时按 Y 处理';
+
+-- 访问策略表: 保存统一身份认证、课程访问、会话安全与敏感操作验证的策略项。
+CREATE TABLE edudoc_access_policy (
+    id RAW(16) DEFAULT SYS_GUID() NOT NULL,
+    create_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    update_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    policy_key VARCHAR2(64) NOT NULL,
+    policy_json VARCHAR2(2000) NOT NULL,
+    description VARCHAR2(500),
+    updated_by RAW(16),
+    CONSTRAINT pk_access_policy PRIMARY KEY (id),
+    CONSTRAINT uk_access_policy_1 UNIQUE (policy_key),
+    CONSTRAINT fk_access_policy_1 FOREIGN KEY (updated_by) REFERENCES edudoc_user (id)
+);
+
+COMMENT ON TABLE edudoc_access_policy IS '保存系统访问与安全策略项及其变更留痕。';
+COMMENT ON COLUMN edudoc_access_policy.id IS '主键，数据库自动生成 GUID';
+COMMENT ON COLUMN edudoc_access_policy.create_time IS '创建时间，默认数据库当前时间';
+COMMENT ON COLUMN edudoc_access_policy.update_time IS '最后更新时间，由触发器维护';
+COMMENT ON COLUMN edudoc_access_policy.policy_key IS '策略键，如 session.concurrency、mfa.ops.required';
+COMMENT ON COLUMN edudoc_access_policy.policy_json IS '策略值 JSON';
+COMMENT ON COLUMN edudoc_access_policy.description IS '策略说明';
+COMMENT ON COLUMN edudoc_access_policy.updated_by IS '最后修改人用户 ID';

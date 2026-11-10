@@ -304,3 +304,27 @@ BEGIN
     :NEW.update_time := SYSTIMESTAMP;
 END;
 /
+
+CREATE OR REPLACE TRIGGER trg_notification_bu
+BEFORE UPDATE ON edudoc_notification
+FOR EACH ROW
+BEGIN
+    :NEW.update_time := SYSTIMESTAMP;
+END;
+/
+
+CREATE OR REPLACE TRIGGER trg_notification_pref_bu
+BEFORE UPDATE ON edudoc_notification_preference
+FOR EACH ROW
+BEGIN
+    :NEW.update_time := SYSTIMESTAMP;
+END;
+/
+
+CREATE OR REPLACE TRIGGER trg_access_policy_bu
+BEFORE UPDATE ON edudoc_access_policy
+FOR EACH ROW
+BEGIN
+    :NEW.update_time := SYSTIMESTAMP;
+END;
+/

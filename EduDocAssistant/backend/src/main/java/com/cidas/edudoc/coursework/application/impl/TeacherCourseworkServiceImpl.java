@@ -5,6 +5,7 @@ import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
 import com.cidas.edudoc.common.persistence.Ids;
+import com.cidas.edudoc.common.outbox.OutboxEventRepository;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import com.cidas.edudoc.coursework.application.CourseworkJson;
@@ -19,6 +20,7 @@ import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.AssignmentStats;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.MemberAccount;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.Submission;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.TeacherCourse;
+import com.cidas.edudoc.message.application.NotificationEvents;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -55,6 +57,7 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
 
     private final CourseworkRepository repository;
     private final AuditService auditService;
+    private final OutboxEventRepository outboxEventRepository;
 
     // ---------- 课程 ----------
 
@@ -232,6 +235,19 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
                 CourseworkJson.writeScores(grade.items()), CourseworkRules.GRADED);
         auditService.record("SUBMISSION_GRADED", "SUBMISSION", submissionId, null, "200",
                 Map.of("assignmentId", assignment.getId(), "score", grade.total()));
+        // 2-5 生产者②（设计 §4.1）：批改完成 → 提交学生收 FEEDBACK 消息，与业务写、审计同事务。
+        // 总分沿用服务端算出的 grade.total()（不信任入参），文案里的分数与落库值同源。
+        // 去重聚合 = submissionId：同一提交重复批改/重放不产生第二封信（§4.3「重放即原结果」）。
+        if (submission.getStudentId() != null) {
+            String scoreText = BigDecimal.valueOf(grade.total()).stripTrailingZeros().toPlainString();
+            String body = "《" + assignment.getTitle() + "》已批改，总分 " + scoreText + " 分。"
+                    + (command.feedback() == null || command.feedback().isBlank()
+                            ? "" : "教师评语：" + command.feedback());
+            outboxEventRepository.publish("SUBMISSION", submissionId, NotificationEvents.EVENT_TYPE,
+                    NotificationEvents.payload(NotificationEvents.TYPE_FEEDBACK, submissionId, null,
+                            "ASSIGNMENT", submission.getAssignmentId(), principal.userId(),
+                            List.of(submission.getStudentId()), "作业批改反馈", body));
+        }
         return new GradeResult(grade.total(), CourseworkRules.GRADED);
     }
 

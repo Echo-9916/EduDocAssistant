@@ -4,14 +4,18 @@ import com.cidas.edudoc.access.application.AuditService;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
+import com.cidas.edudoc.common.outbox.OutboxEventRepository;
 import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
+import com.cidas.edudoc.common.security.UserPrincipal;
 import com.cidas.edudoc.coursework.application.StudentCourseworkService;
 import com.cidas.edudoc.coursework.domain.CourseworkRules;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRepository;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.AssignmentStats;
+import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.MemberAccount;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.OwnedDocument;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.StudentAssignment;
+import com.cidas.edudoc.message.application.NotificationEvents;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +34,7 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
 
     private final CourseworkRepository courseworkRepository;
     private final AuditService auditService;
+    private final OutboxEventRepository outboxEventRepository;
 
     @Override
     public PageResult<StudentAssignmentView> listAssignments(ListQuery query) {
@@ -63,7 +68,8 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
         if (!Ids.isHex16(assignmentId) || !Ids.isHex16(documentId)) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "ID 格式不合法");
         }
-        String studentId = AuthContext.require().userId();
+        UserPrincipal principal = AuthContext.require();
+        String studentId = principal.userId();
         AssignmentStats assignment = courseworkRepository.findAssignment(assignmentId);
         if (assignment == null) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "作业不存在");
@@ -91,6 +97,19 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
                 document.getVersionId(), null, attemptNo, outcome.name());
         auditService.record("SUBMIT_ASSIGNMENT", "SUBMISSION", submissionId, documentId, "200",
                 Map.of("assignmentId", assignmentId, "attemptNo", attemptNo, "status", outcome.name()));
+        // 2-5 生产者①（设计 §4.1）：提交 → 该课 TEACHER 成员收 SUBMISSION 消息，
+        // publish 与业务写、审计同事务；去重聚合 = submissionId（重交是新提交，教师会再收一封）
+        List<String> teachers = courseworkRepository.listTeacherMembers(assignment.getCourseId()).stream()
+                .map(MemberAccount::getUserId)
+                .toList();
+        if (!teachers.isEmpty()) {
+            outboxEventRepository.publish("SUBMISSION", submissionId, NotificationEvents.EVENT_TYPE,
+                    NotificationEvents.payload(NotificationEvents.TYPE_SUBMISSION, submissionId, null,
+                            "ASSIGNMENT", assignmentId, studentId, teachers,
+                            "作业提交通知",
+                            "学生 " + principal.displayName() + " 已提交《" + assignment.getTitle()
+                                    + "》（第 " + attemptNo + " 次），请及时批改。"));
+        }
         return new SubmissionResult(submissionId, attemptNo, outcome.name());
     }
 

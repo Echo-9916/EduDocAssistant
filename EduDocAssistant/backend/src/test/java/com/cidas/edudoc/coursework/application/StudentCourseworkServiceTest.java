@@ -4,6 +4,7 @@ import com.cidas.edudoc.access.application.AuditService;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
+import com.cidas.edudoc.common.outbox.OutboxEventRepository;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import com.cidas.edudoc.coursework.application.StudentCourseworkService.ListQuery;
@@ -16,14 +17,17 @@ import com.cidas.edudoc.coursework.infrastructure.CourseworkRow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,10 +52,14 @@ class StudentCourseworkServiceTest {
     private static final String SUBMISSION_ID = "AA0000000000000000000000000000D1";
     private static final String COURSE_ID = "AA0000000000000000000000000000E1";
 
+    private static final String TEACHER_1 = "AA0000000000000000000000000000F2";
+    private static final String TEACHER_2 = "AA0000000000000000000000000000F3";
+
     private final CourseworkMapper mapper = mock(CourseworkMapper.class);
     private final AuditService auditService = mock(AuditService.class);
-    private final StudentCourseworkService service =
-            new StudentCourseworkServiceImpl(new CourseworkRepository(mapper), auditService);
+    private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
+    private final StudentCourseworkService service = new StudentCourseworkServiceImpl(
+            new CourseworkRepository(mapper), auditService, outboxEventRepository);
 
     @BeforeEach
     void login() {
@@ -98,6 +106,53 @@ class StudentCourseworkServiceTest {
         verify(mapper).insertSubmission(ASSIGNMENT_ID, STUDENT_ID, DOCUMENT_ID, VERSION_ID, null, 2L, "SUBMITTED");
         verify(auditService).record(eq("SUBMIT_ASSIGNMENT"), eq("SUBMISSION"), eq(SUBMISSION_ID),
                 eq(DOCUMENT_ID), eq("200"), any());
+    }
+
+    // ---------- 提交消息生产者（2-5 生产者①） ----------
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void submitPublishesNotificationToCourseTeachers() {
+        when(mapper.selectAssignmentById(ASSIGNMENT_ID))
+                .thenReturn(assignment("PUBLISHED", OffsetDateTime.now().plusDays(2), "N"));
+        when(mapper.selectOwnedReadyDocument(STUDENT_ID, DOCUMENT_ID)).thenReturn(ownedDocument());
+        when(mapper.countSubmissions(ASSIGNMENT_ID, STUDENT_ID)).thenReturn(1L);
+        when(mapper.selectSubmissionId(ASSIGNMENT_ID, STUDENT_ID, 2L)).thenReturn(SUBMISSION_ID);
+        when(mapper.selectTeacherMembers(COURSE_ID)).thenReturn(List.of(
+                memberAccount(TEACHER_1), memberAccount(TEACHER_2)));
+
+        service.submit(ASSIGNMENT_ID, DOCUMENT_ID);
+
+        // 与提交写入、审计同事务 publish；载荷只带定位信息（NotificationEvents 契约）
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(outboxEventRepository).publish(eq("SUBMISSION"), eq(SUBMISSION_ID),
+                eq("NOTIFICATION_REQUESTED"), captor.capture());
+        Map<String, Object> payload = captor.getValue();
+        assertEquals("SUBMISSION", payload.get("notifType"));
+        assertEquals(SUBMISSION_ID, payload.get("aggregateRef"));
+        assertNull(payload.get("dedupDate")); // 提交类不含日期段，重交是新 submissionId 新键
+        assertEquals(List.of(TEACHER_1, TEACHER_2), payload.get("recipientIds"));
+        assertEquals(STUDENT_ID, payload.get("actorId"));
+        assertEquals("ASSIGNMENT", payload.get("resourceType"));
+        assertEquals(ASSIGNMENT_ID, payload.get("resourceRef"));
+        String body = (String) payload.get("body");
+        assertTrue(body.contains("张同学"));
+        assertTrue(body.contains("实验一"));
+        assertTrue(body.contains("第 2 次"));
+    }
+
+    @Test
+    void submitWithoutTeachersSkipsPublish() {
+        when(mapper.selectAssignmentById(ASSIGNMENT_ID))
+                .thenReturn(assignment("PUBLISHED", OffsetDateTime.now().plusDays(2), "N"));
+        when(mapper.selectOwnedReadyDocument(STUDENT_ID, DOCUMENT_ID)).thenReturn(ownedDocument());
+        when(mapper.countSubmissions(ASSIGNMENT_ID, STUDENT_ID)).thenReturn(0L);
+        when(mapper.selectSubmissionId(ASSIGNMENT_ID, STUDENT_ID, 1L)).thenReturn(SUBMISSION_ID);
+        when(mapper.selectTeacherMembers(COURSE_ID)).thenReturn(List.of());
+
+        service.submit(ASSIGNMENT_ID, DOCUMENT_ID);
+
+        verify(outboxEventRepository, never()).publish(any(), any(), any(), any());
     }
 
     @Test
@@ -230,10 +285,17 @@ class StudentCourseworkServiceTest {
         CourseworkRow.AssignmentStats row = new CourseworkRow.AssignmentStats();
         row.setId(ASSIGNMENT_ID);
         row.setCourseId(COURSE_ID);
+        row.setTitle("实验一");
         row.setStatus(status);
         row.setDueTime(dueTime);
         row.setAllowLate(allowLate);
         return row;
+    }
+
+    private static CourseworkRow.MemberAccount memberAccount(String userIdHex) {
+        CourseworkRow.MemberAccount member = new CourseworkRow.MemberAccount();
+        member.setUserId(userIdHex);
+        return member;
     }
 
     private static CourseworkRow.OwnedDocument ownedDocument() {

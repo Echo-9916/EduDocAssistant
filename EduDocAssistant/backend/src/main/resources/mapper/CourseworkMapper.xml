@@ -133,6 +133,24 @@
         ORDER BY u.username
     </select>
 
+    <!-- 提交作业的收件人：该课 TEACHER 成员（2-5 生产者①，与 teacherCourseScope 同口径） -->
+    <select id="selectTeacherMembers" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$MemberAccount">
+        SELECT RAWTOHEX(u.id) AS userId, u.username AS accountNo, u.display_name AS name
+        FROM edudoc_course_member m
+        JOIN edudoc_user u ON u.id = m.user_id
+        WHERE m.course_id = HEXTORAW(#{courseIdHex}) AND m.member_role = 'TEACHER' AND m.status = 'A'
+        ORDER BY u.username
+    </select>
+
+    <!-- 临近截止扫描（2-5 生产者④）：定时任务全局视角，不走 teacherCourseScope；统计列不取，
+         只回提醒文案所需的 id/title/due_time（窗口与 PUBLISHED 过滤即「48h 内且未关闭」口径） -->
+    <select id="selectDueSoonAssignments" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$AssignmentStats">
+        SELECT RAWTOHEX(a.id) AS id, a.title AS title, a.due_time AS dueTime
+        FROM edudoc_assignment a
+        WHERE a.status = 'PUBLISHED' AND a.due_time BETWEEN #{from} AND #{to}
+        ORDER BY a.due_time
+    </select>
+
     <select id="selectPriorityAssignments" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$Priority">
         SELECT RAWTOHEX(a.id) AS assignmentId, c.course_name AS courseName, a.title AS title,
                a.due_time AS dueTime,
@@ -270,9 +288,11 @@
         WHERE id = HEXTORAW(#{submissionIdHex})
     </update>
 
-    <!-- 批改入口按主键取单条提交（只取归属列）；课程范围校验在应用服务层，越权 40301 -->
+    <!-- 批改入口按主键取单条提交（只取归属列，studentId 供批改反馈消息收件人，2-5 生产者②）；
+         课程范围校验在应用服务层，越权 40301 -->
     <select id="selectSubmissionById" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$Submission">
-        SELECT RAWTOHEX(s.id) AS id, RAWTOHEX(s.assignment_id) AS assignmentId
+        SELECT RAWTOHEX(s.id) AS id, RAWTOHEX(s.assignment_id) AS assignmentId,
+               RAWTOHEX(s.student_id) AS studentId
         FROM edudoc_submission s
         WHERE s.id = HEXTORAW(#{submissionIdHex})
     </select>

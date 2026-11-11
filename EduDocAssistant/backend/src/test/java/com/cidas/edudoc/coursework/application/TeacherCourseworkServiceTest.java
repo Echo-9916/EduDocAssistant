@@ -2,6 +2,7 @@ package com.cidas.edudoc.coursework.application;
 
 import com.cidas.edudoc.access.application.AuditService;
 import com.cidas.edudoc.common.api.CidasBusinessException;
+import com.cidas.edudoc.common.outbox.OutboxEventRepository;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.AssignmentCreateCommand;
@@ -26,10 +27,13 @@ import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -46,12 +50,14 @@ class TeacherCourseworkServiceTest {
     private static final String HEX_OTHER_COURSE = "B".repeat(32);
     private static final String HEX_ASSIGNMENT = "D".repeat(32);
     private static final String HEX_SUBMISSION = "E".repeat(32);
+    private static final String HEX_STUDENT = "F".repeat(32);
     private static final String RUBRIC_JSON = "[{\"name\":\"内容\",\"maxScore\":60},{\"name\":\"格式\",\"maxScore\":40}]";
 
     private final CourseworkRepository repository = mock(CourseworkRepository.class);
     private final AuditService auditService = mock(AuditService.class);
+    private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
     private final TeacherCourseworkService service =
-            new TeacherCourseworkServiceImpl(repository, auditService);
+            new TeacherCourseworkServiceImpl(repository, auditService, outboxEventRepository);
 
     @AfterEach
     void tearDown() {
@@ -73,6 +79,7 @@ class TeacherCourseworkServiceTest {
         AssignmentStats row = new AssignmentStats();
         row.setId(HEX_ASSIGNMENT);
         row.setCourseId(HEX_COURSE);
+        row.setTitle("课程设计报告");
         row.setRubricJson(RUBRIC_JSON);
         return row;
     }
@@ -81,6 +88,7 @@ class TeacherCourseworkServiceTest {
         Submission row = new Submission();
         row.setId(HEX_SUBMISSION);
         row.setAssignmentId(HEX_ASSIGNMENT);
+        row.setStudentId(HEX_STUDENT);
         return row;
     }
 
@@ -183,6 +191,38 @@ class TeacherCourseworkServiceTest {
                 + "{\"name\":\"格式\",\"maxScore\":40,\"score\":30}]", jsonCaptor.getValue());
         verify(auditService).record(eq("SUBMISSION_GRADED"), eq("SUBMISSION"), eq(HEX_SUBMISSION),
                 any(), eq("200"), any());
+    }
+
+    // ---------- 批改反馈生产者（2-5 生产者②） ----------
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void gradePublishesFeedbackWithServerSideTotal() {
+        teacher(HEX_COURSE);
+        when(repository.findSubmissionById(HEX_SUBMISSION)).thenReturn(submissionRow());
+        when(repository.findAssignment(HEX_ASSIGNMENT)).thenReturn(assignmentRow());
+
+        GradeResult result = service.gradeSubmission(HEX_SUBMISSION, new GradeCommand(
+                List.of(new GradeInput("格式", 30), new GradeInput("内容", 50)), "做得不错"));
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(outboxEventRepository).publish(eq("SUBMISSION"), eq(HEX_SUBMISSION),
+                eq("NOTIFICATION_REQUESTED"), captor.capture());
+        Map<String, Object> payload = captor.getValue();
+        assertEquals("FEEDBACK", payload.get("notifType"));
+        assertEquals(HEX_SUBMISSION, payload.get("aggregateRef"));
+        assertNull(payload.get("dedupDate"));
+        assertEquals(List.of(HEX_STUDENT), payload.get("recipientIds"));
+        assertEquals(HEX_TEACHER, payload.get("actorId"));
+        assertEquals("ASSIGNMENT", payload.get("resourceType"));
+        assertEquals(HEX_ASSIGNMENT, payload.get("resourceRef"));
+        // 文案里的总分必须与服务端算出并落库的值一致（不信任入参的口径贯穿到消息）
+        String scoreText = BigDecimal.valueOf(result.score()).stripTrailingZeros().toPlainString();
+        String body = (String) payload.get("body");
+        assertEquals(80.0, result.score());
+        assertTrue(body.contains("总分 " + scoreText + " 分"), body);
+        assertTrue(body.contains("课程设计报告"));
+        assertTrue(body.contains("做得不错"));
     }
 
     // ---------- 名单导入 ----------

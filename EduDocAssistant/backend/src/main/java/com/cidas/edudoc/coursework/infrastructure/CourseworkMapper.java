@@ -66,8 +66,15 @@ public interface CourseworkMapper {
                          @Param("rubricJson") String rubricJson, @Param("status") String status);
 
 
-    /** 未提交学生名单（提醒入口，投递随消息切片）。 */
+    /** 未提交学生名单（临近截止扫描的收件人来源，2-5 生产者④）。 */
     List<CourseworkRow.MemberAccount> selectUnsubmittedMembers(@Param("assignmentIdHex") String assignmentIdHex);
+
+    /** 课程 TEACHER 成员（提交作业的收件人来源，2-5 生产者①）。 */
+    List<CourseworkRow.MemberAccount> selectTeacherMembers(@Param("courseIdHex") String courseIdHex);
+
+    /** 临近截止扫描（每小时）：全局取 PUBLISHED 且 due_time 落在 [from,to] 的作业，只回文案所需列。 */
+    List<CourseworkRow.AssignmentStats> selectDueSoonAssignments(@Param("from") OffsetDateTime from,
+                                                                 @Param("to") OffsetDateTime to);
 
     /** 教师工作台：本人课程内已发布作业按截止升序 + 提交缺口。 */
     List<CourseworkRow.Priority> selectPriorityAssignments(@Param("userIdHex") String userIdHex,
@@ -110,6 +117,6 @@ public interface CourseworkMapper {
                               @Param("feedback") String feedback, @Param("scoreJson") String scoreJson,
                               @Param("status") String status);
 
-    /** 批改入口按主键取单条提交（仅回填 id/assignmentId 列）；课程范围校验在应用服务层（40301）。 */
+    /** 批改入口按主键取单条提交（回填 id/assignmentId/studentId 归属列）；课程范围校验在应用服务层（40301）。 */
     CourseworkRow.Submission selectSubmissionById(@Param("submissionIdHex") String submissionIdHex);
 }

@@ -99,6 +99,16 @@ public class CourseworkRepository {
         return mapper.selectUnsubmittedMembers(assignmentIdHex);
     }
 
+    /** 课程 TEACHER 成员（提交作业消息的收件人，2-5 生产者①）。 */
+    public List<MemberAccount> listTeacherMembers(String courseIdHex) {
+        return mapper.selectTeacherMembers(courseIdHex);
+    }
+
+    /** 临近截止扫描：PUBLISHED 且 due_time 在 [from,to] 窗口内的作业（2-5 生产者④）。 */
+    public List<AssignmentStats> listDueSoonAssignments(OffsetDateTime from, OffsetDateTime to) {
+        return mapper.selectDueSoonAssignments(from, to);
+    }
+
     public List<Priority> listPriorities(String userIdHex, int limit) {
         return mapper.selectPriorityAssignments(userIdHex, limit);
     }

@@ -66,6 +66,7 @@ edudoc:
       AI_TASK_REQUESTED: edudoc:stream:ai-task
       FORMAT_CHECK_REQUESTED: edudoc:stream:format-check
       CONVERSION_REQUESTED: edudoc:stream:conversion
+      NOTIFICATION_REQUESTED: edudoc:stream:notification
   ai-task:
     enabled: true
     concurrency: 2
@@ -90,6 +91,12 @@ edudoc:
     concurrency: 2
     stream-key: edudoc:stream:format-check
     group: cg-format-check
+  # 信箱投递 worker（2-4）；enabled=false 同时停掉临近截止扫描（2-5），避免事件无人消费
+  notification:
+    enabled: true
+    concurrency: 1
+    stream-key: edudoc:stream:notification
+    group: cg-notification
   conversion:
     enabled: true
     concurrency: 1

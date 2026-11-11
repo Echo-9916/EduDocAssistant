@@ -1,6 +1,8 @@
 package com.cidas.edudoc.template.application.impl;
 
 import com.cidas.edudoc.access.application.AuditService;
+import com.cidas.edudoc.common.outbox.OutboxEventRepository;
+import com.cidas.edudoc.message.application.NotificationEvents;
 import com.cidas.edudoc.template.application.FormatCheckTxService;
 import com.cidas.edudoc.template.domain.IssueDraft;
 import com.cidas.edudoc.template.infrastructure.FormatCheckRepository;
@@ -20,6 +22,7 @@ public class FormatCheckTxServiceImpl implements FormatCheckTxService {
     private final FormatCheckRepository checkRepository;
     private final FormatIssueRepository issueRepository;
     private final AuditService auditService;
+    private final OutboxEventRepository outboxEventRepository;
 
     @Override
     @Transactional
@@ -35,6 +38,18 @@ public class FormatCheckTxServiceImpl implements FormatCheckTxService {
                 status.equals("PASSED") ? "200" : "42202",
                 Map.of("status", status, "totalIssueCount", total, "blockingIssueCount", blocking,
                         "versionId", versionId));
+        // 2-5 生产者③（设计 §4.1）：结论 BLOCKER>0 → 文档 owner 收 FORMAT 消息，与结论回写、审计同事务。
+        // 挂在 RUNNING 守卫之后：迟到/重复投递进不来，重新校验是新 checkId 会有新去重键（该再提醒）。
+        if (blocking > 0) {
+            String ownerId = checkRepository.selectDocumentOwner(documentId);
+            if (ownerId != null) {
+                outboxEventRepository.publish("FORMAT_CHECK", checkId, NotificationEvents.EVENT_TYPE,
+                        NotificationEvents.payload(NotificationEvents.TYPE_FORMAT, checkId, null,
+                                "DOCUMENT", documentId, null, List.of(ownerId),
+                                "格式校验未通过",
+                                "文档格式校验发现 " + blocking + " 项阻塞问题，请修复后重新校验。"));
+            }
+        }
     }
 
     @Override

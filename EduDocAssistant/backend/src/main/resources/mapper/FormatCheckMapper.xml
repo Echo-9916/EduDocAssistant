@@ -72,6 +72,13 @@
         WHERE d.id = HEXTORAW(#{documentId})
     </select>
 
+    <!-- 格式异常消息收件人 = 文档 owner（2-5 生产者③，跨读 document 域单列，同 selectDocumentTemplateBinding 先例） -->
+    <select id="selectDocumentOwner" resultType="string">
+        SELECT RAWTOHEX(d.owner_id)
+        FROM edudoc_document d
+        WHERE d.id = HEXTORAW(#{documentId})
+    </select>
+
     <select id="selectCoursePublishedTemplate" resultType="string">
         SELECT RAWTOHEX(t.current_version_id)
         FROM edudoc_template t

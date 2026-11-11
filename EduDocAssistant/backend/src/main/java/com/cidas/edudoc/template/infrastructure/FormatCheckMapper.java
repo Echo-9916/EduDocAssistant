@@ -26,5 +26,8 @@ public interface FormatCheckMapper {
 
     String selectDocumentTemplateBinding(@Param("documentId") String documentIdHex);
 
+    /** 文档 owner（格式异常消息收件人，2-5 生产者③）。 */
+    String selectDocumentOwner(@Param("documentId") String documentIdHex);
+
     String selectCoursePublishedTemplate(@Param("courseId") String courseIdHex);
 }

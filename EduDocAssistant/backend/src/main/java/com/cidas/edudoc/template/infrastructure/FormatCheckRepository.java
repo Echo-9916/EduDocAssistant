@@ -54,6 +54,11 @@ public class FormatCheckRepository {
         return mapper.selectDocumentTemplateBinding(documentIdHex);
     }
 
+    /** 文档 owner（格式异常消息收件人，2-5 生产者③）；文档不存在回 null。 */
+    public String selectDocumentOwner(String documentIdHex) {
+        return mapper.selectDocumentOwner(documentIdHex);
+    }
+
     public String selectCoursePublishedTemplate(String courseIdHex) {
         return mapper.selectCoursePublishedTemplate(courseIdHex);
     }

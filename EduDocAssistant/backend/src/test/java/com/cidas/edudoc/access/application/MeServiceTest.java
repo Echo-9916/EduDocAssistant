@@ -226,7 +226,7 @@ class MeServiceTest {
 
         verify(meRepository).updatePasswordHash(USER_ID, "newhash");
         verify(auditLogRepository).record(eq("PASSWORD_CHANGE"), eq("ACCOUNT"), eq("student001"),
-                eq(USER_ID), eq("STUDENT"), isNull(), eq("SUCCESS"), isNull());
+                eq(USER_ID), eq("STUDENT"), isNull(), eq("SUCCESS"), isNull(), isNull(), isNull());
         verify(txManager).commit(any());
         // 取舍：撤销表无用户→jti 索引，「他处令牌」不可枚举；现撤销当前令牌强制重登，
         // 他处令牌在 TTL（≤30 分钟）内自然过期（见 MeServiceImpl 类注释，已进待确认清单）

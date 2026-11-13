@@ -21,7 +21,7 @@ CREATE TABLE edudoc_user (
     CONSTRAINT pk_user PRIMARY KEY (id),
     CONSTRAINT uk_user_1 UNIQUE (username),
     CONSTRAINT uk_user_2 UNIQUE (external_subject_id),
-    CONSTRAINT ck_user_auth CHECK (auth_source IN ('LOCAL','SSO')),
+    CONSTRAINT ck_user_auth CHECK (auth_source IN ('LOCAL','SSO','ACADEMIC')),
     CONSTRAINT ck_user_status CHECK (account_status IN ('A','I','L','D')),
     CONSTRAINT ck_user_mfa CHECK (mfa_enabled IN ('Y','N'))
 );
@@ -35,7 +35,7 @@ COMMENT ON COLUMN edudoc_user.external_subject_id IS '统一身份认证 subject
 COMMENT ON COLUMN edudoc_user.display_name IS '显示姓名';
 COMMENT ON COLUMN edudoc_user.email IS '校内邮箱';
 COMMENT ON COLUMN edudoc_user.department IS '所属院系或部门';
-COMMENT ON COLUMN edudoc_user.auth_source IS '认证来源：LOCAL 或 SSO';
+COMMENT ON COLUMN edudoc_user.auth_source IS '认证来源：LOCAL、SSO 或 ACADEMIC（名单导入的未激活账号）';
 COMMENT ON COLUMN edudoc_user.password_hash IS '本地兼容账号密码哈希，SSO 用户为空';
 COMMENT ON COLUMN edudoc_user.account_status IS '账号状态：A 正常、I 未激活、L 锁定、D 注销';
 COMMENT ON COLUMN edudoc_user.last_login_time IS '最近登录时间';

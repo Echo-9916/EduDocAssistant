@@ -17,4 +17,6 @@ public class AuditLog {
     private String resultCode;
     private String traceId;
     private String detailJson;
+    private String sourceIp;
+    private String userAgent;
 }

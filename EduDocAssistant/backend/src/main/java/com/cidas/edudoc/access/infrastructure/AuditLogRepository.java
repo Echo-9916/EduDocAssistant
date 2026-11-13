@@ -14,15 +14,19 @@ public class AuditLogRepository {
 
     private final AuditLogMapper mapper;
 
-    public void recordAuth(String username, String actorIdHex, String resultCode) {
-        record("AUTH", "USER", username, actorIdHex, null, null, resultCode, null);
+    /** 认证动作写入：登录时 AuthContext 尚未建立，actor 与角色由调用方显式传入。 */
+    public void recordAuth(String username, String actorIdHex, String actorRole, String resultCode,
+                           String sourceIp, String userAgent) {
+        record("AUTH", "USER", username, actorIdHex, actorRole, null, resultCode, null,
+                sourceIp, userAgent);
     }
 
-    /** 通用写入：documentIdHex/detailJson 可空，trace 自动关联。 */
+    /** 通用写入：documentIdHex/detailJson 可空，trace 自动关联；sourceIp/userAgent 由请求上下文提供。 */
     public void record(String actionType, String resourceType, String resourceRef, String actorIdHex,
-                       String actorRole, String documentIdHex, String resultCode, String detailJson) {
+                       String actorRole, String documentIdHex, String resultCode, String detailJson,
+                       String sourceIp, String userAgent) {
         mapper.insert(new AuditLog(actorIdHex, actorRole, actionType, resourceType, resourceRef,
-                documentIdHex, resultCode, traceId(), detailJson));
+                documentIdHex, resultCode, traceId(), detailJson, sourceIp, userAgent));
     }
 
     private String traceId() {

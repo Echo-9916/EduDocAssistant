@@ -11,6 +11,7 @@ import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.JwtService;
+import com.cidas.edudoc.common.security.RequestMeta;
 import com.cidas.edudoc.common.security.TokenRevocationStore;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -116,7 +117,7 @@ public class MeServiceImpl implements MeService {
         if (RoleCode.OPS.equals(role)) {
             return List.of(
                     new ExtraField("值班组", department != null && !department.isBlank() ? department : "未分配"),
-                    new ExtraField("账号来源", AuthSource.SSO.code().equals(authSource) ? "统一身份认证" : "本地账号"));
+                    new ExtraField("账号来源", AuthSource.LOCAL.code().equals(authSource) ? "本地账号" : "统一身份认证"));
         }
         boolean student = RoleCode.STUDENT.equals(role);
         String names = courseRepository.listByUser(userIdHex).stream()
@@ -181,7 +182,8 @@ public class MeServiceImpl implements MeService {
         transactionTemplate.executeWithoutResult(status -> {
             meRepository.updatePasswordHash(principal.userId(), encoded);
             auditLogRepository.record("PASSWORD_CHANGE", "ACCOUNT", str(row, "username"),
-                    principal.userId(), primaryRole(principal.roles()), null, "SUCCESS", null);
+                    principal.userId(), primaryRole(principal.roles()), null, "SUCCESS", null,
+                    RequestMeta.clientIp(), RequestMeta.userAgent());
         });
         // 撤销范围取舍：撤销表无用户→jti 索引，「其余令牌」不可枚举；现撤销当前令牌强制重登
         //（设计文档「返回需在登录页重登」），他处令牌在 TTL（≤30 分钟）内自然过期。
@@ -247,7 +249,7 @@ public class MeServiceImpl implements MeService {
         List<Map<String, Object>> rows = meRepository.listAuthLogins(principal.userId(),
                 OffsetDateTime.now().minusHours(hours), RECORD_LIMIT);
         // 行按时间降序；异地 = 与上一条（更早记录）IP 前两段不同，现算。
-        // 现 AUTH 审计不写 source_ip（登录链路禁改，无法回填），IP 缺失时恒 false；窗口内最早一条看不到窗外前一条，恒 false。
+        // AUTH 审计自 2026-11-13 起写 source_ip；历史行 IP 为空时该条恒 false，窗口内最早一条看不到窗外前一条，恒 false。
         List<LoginRecordView> list = new ArrayList<>(rows.size());
         for (int i = 0; i < rows.size(); i++) {
             Map<String, Object> row = rows.get(i);
@@ -336,7 +338,7 @@ public class MeServiceImpl implements MeService {
         return phone == null || phone.isNull() ? null : phone.asText();
     }
 
-    /** 设备名：现 AUTH 审计不写 user_agent，缺失时给「未知设备」。 */
+    /** 设备名：AUTH 审计自 2026-11-13 起写 user_agent，历史行缺失时给「未知设备」。 */
     private static String deviceOf(String userAgent) {
         return userAgent == null || userAgent.isBlank() ? "未知设备" : userAgent;
     }

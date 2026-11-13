@@ -5,12 +5,13 @@
     <insert id="insert">
         INSERT INTO edudoc_audit_log
             (actor_id, actor_role, action_type, resource_type, resource_ref, document_id,
-             result_code, trace_id, detail_json)
+             result_code, trace_id, detail_json, source_ip, user_agent)
         VALUES (HEXTORAW(#{log.actorIdHex, jdbcType=VARCHAR}), #{log.actorRole, jdbcType=VARCHAR},
             #{log.actionType, jdbcType=VARCHAR}, #{log.resourceType, jdbcType=VARCHAR},
             #{log.resourceRef, jdbcType=VARCHAR}, HEXTORAW(#{log.documentIdHex, jdbcType=VARCHAR}),
             #{log.resultCode, jdbcType=VARCHAR}, #{log.traceId, jdbcType=VARCHAR},
-            CAST(#{log.detailJson, jdbcType=VARCHAR} AS JSON))
+            CAST(#{log.detailJson, jdbcType=VARCHAR} AS JSON),
+            #{log.sourceIp, jdbcType=VARCHAR}, #{log.userAgent, jdbcType=VARCHAR})
     </insert>
 
     <!-- ===== 06 切片 1：审计事件检索（只读追加，上方 insert 不动）=====

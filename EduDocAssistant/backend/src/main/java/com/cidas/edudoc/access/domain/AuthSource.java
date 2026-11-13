@@ -4,7 +4,9 @@ package com.cidas.edudoc.access.domain;
 public enum AuthSource {
 
     LOCAL("LOCAL"),
-    SSO("SSO");
+    SSO("SSO"),
+    /** 名单导入生成的未激活账号，首登走统一身份认证。 */
+    ACADEMIC("ACADEMIC");
 
     private final String code;
 

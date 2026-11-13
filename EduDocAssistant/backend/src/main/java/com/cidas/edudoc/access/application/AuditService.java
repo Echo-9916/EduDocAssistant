@@ -7,4 +7,10 @@ public interface AuditService {
 
     void record(String actionType, String resourceType, String resourceRef,
                 String documentIdHex, String resultCode, Map<String, Object> detail);
+
+    /**
+     * 认证链路专用：登录时 AuthContext 尚未建立，操作者与角色需显式传入；
+     * 来源 IP / 终端由实现层从当前 HttpServletRequest 补全。
+     */
+    void recordAuth(String username, String actorIdHex, String actorRole, String resultCode);
 }

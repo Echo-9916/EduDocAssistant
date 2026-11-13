@@ -1,7 +1,6 @@
 package com.cidas.edudoc.access.application;
 
 import com.cidas.edudoc.access.application.impl.AuthServiceImpl;
-import com.cidas.edudoc.access.infrastructure.AuditLogRepository;
 import com.cidas.edudoc.access.infrastructure.UserAccountRepository;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
@@ -31,11 +30,11 @@ class AuthServiceTest {
     private final AuthProvider authProvider = mock(AuthProvider.class);
     private final JwtService jwtService = mock(JwtService.class);
     private final UserAccountRepository userAccountRepository = mock(UserAccountRepository.class);
-    private final AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    private final AuditService auditService = mock(AuditService.class);
     private final TokenRevocationStore tokenRevocationStore = mock(TokenRevocationStore.class);
     private final PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
     private final AuthService authService = new AuthServiceImpl(authProvider, jwtService,
-            userAccountRepository, auditLogRepository, tokenRevocationStore,
+            userAccountRepository, auditService, tokenRevocationStore,
             new TransactionTemplate(txManager));
 
     @Test
@@ -50,7 +49,7 @@ class AuthServiceTest {
         assertEquals("tok", result.token());
         assertEquals(principal, result.user());
         verify(userAccountRepository).updateLastLoginTime("ABC");
-        verify(auditLogRepository).recordAuth("u1", "ABC", "SUCCESS");
+        verify(auditService).recordAuth("u1", "ABC", "STUDENT", "SUCCESS");
         verify(txManager).commit(any());
     }
 
@@ -75,7 +74,7 @@ class AuthServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> authService.login("u1", "wrong"));
         assertEquals(ErrorCode.UNAUTHORIZED, e.errorCode());
-        verify(auditLogRepository).recordAuth("u1", null, "40101");
+        verify(auditService).recordAuth("u1", null, null, "40101");
         verifyNoInteractions(jwtService);
         verify(userAccountRepository, never()).updateLastLoginTime(anyString());
     }
@@ -88,7 +87,7 @@ class AuthServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> authService.login("u1", "pw"));
         assertEquals(ErrorCode.UNAUTHORIZED, e.errorCode());
-        verify(auditLogRepository).recordAuth("u1", null, "40101");
+        verify(auditService).recordAuth("u1", null, null, "40101");
         verifyNoInteractions(jwtService);
     }
 
@@ -97,7 +96,7 @@ class AuthServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> authService.login(" ", "pw"));
         assertEquals(ErrorCode.BAD_REQUEST, e.errorCode());
-        verifyNoInteractions(auditLogRepository, userAccountRepository, jwtService);
+        verifyNoInteractions(auditService, userAccountRepository, jwtService);
     }
 
     @Test

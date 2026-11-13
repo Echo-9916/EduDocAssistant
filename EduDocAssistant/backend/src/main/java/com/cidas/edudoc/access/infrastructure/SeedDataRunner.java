@@ -1,6 +1,7 @@
 package com.cidas.edudoc.access.infrastructure;
 
 import com.cidas.edudoc.ai.infrastructure.AiModelProperties;
+import com.cidas.edudoc.common.persistence.Ids;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -37,6 +38,30 @@ public class SeedDataRunner implements ApplicationRunner {
                     + "{\"name\":\"实现与测试\",\"maxScore\":20},{\"name\":\"格式规范\",\"maxScore\":20},"
                     + "{\"name\":\"结论与思考\",\"maxScore\":20}]";
 
+    /** 演示同班学生：名单导入生成的未激活账号（auth_source=ACADEMIC，不可本地登录），只用于作业统计层次。 */
+    private static final List<DemoStudent> DEMO_STUDENTS = List.of(
+            new DemoStudent("2023001", "陈同学"), new DemoStudent("2023002", "刘同学"),
+            new DemoStudent("2023003", "王同学"), new DemoStudent("2023004", "李同学"),
+            new DemoStudent("2023005", "赵同学"), new DemoStudent("2023006", "周同学"),
+            new DemoStudent("2023007", "吴同学"), new DemoStudent("2023008", "郑同学"),
+            new DemoStudent("2023009", "孙同学"), new DemoStudent("2023010", "黄同学"));
+
+    /** 已批改学生的分项得分（与 DEMO_RUBRIC_JSON 同序，五项合计即总分）。 */
+    private static final Map<String, String> DEMO_SCORE_JSON = Map.of(
+            "2023003", "[{\"name\":\"需求分析\",\"maxScore\":20,\"score\":18},"
+                    + "{\"name\":\"系统设计\",\"maxScore\":20,\"score\":18},"
+                    + "{\"name\":\"实现与测试\",\"maxScore\":20,\"score\":18},"
+                    + "{\"name\":\"格式规范\",\"maxScore\":20,\"score\":17},"
+                    + "{\"name\":\"结论与思考\",\"maxScore\":20,\"score\":17}]",
+            "2023004", "[{\"name\":\"需求分析\",\"maxScore\":20,\"score\":16},"
+                    + "{\"name\":\"系统设计\",\"maxScore\":20,\"score\":15},"
+                    + "{\"name\":\"实现与测试\",\"maxScore\":20,\"score\":16},"
+                    + "{\"name\":\"格式规范\",\"maxScore\":20,\"score\":15},"
+                    + "{\"name\":\"结论与思考\",\"maxScore\":20,\"score\":14}]");
+
+    private static final String DEMO_DOCX_MIME =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
     @Override
     public void run(ApplicationArguments args) throws Exception {
         String csv = StreamUtils.copyToString(
@@ -44,9 +69,31 @@ public class SeedDataRunner implements ApplicationRunner {
                 StandardCharsets.UTF_8);
         seed(parse(csv));
         alignDemoIdentity();
+        seedDemoStudents();
         seedCourses();
         seedCoursework();
+        seedDemoSubmissions();
         seedAiModelProfiles();
+    }
+
+    /** 演示学生账号幂等补插：未激活、无本地密码，显示名沿用 05 世界观（张/陈/刘同学…）。 */
+    void seedDemoStudents() {
+        for (DemoStudent student : DEMO_STUDENTS) {
+            int inserted = jdbcTemplate.update(
+                    "INSERT INTO edudoc_user (username, display_name, auth_source, account_status) "
+                            + "SELECT ?, ?, 'ACADEMIC', 'I' FROM dual WHERE NOT EXISTS "
+                            + "(SELECT 1 FROM edudoc_user WHERE username = ?)",
+                    student.username(), student.displayName(), student.username());
+            jdbcTemplate.update(
+                    "INSERT INTO edudoc_user_role (user_id, role_id) "
+                            + "SELECT u.id, r.id FROM edudoc_user u, edudoc_role r "
+                            + "WHERE u.username = ? AND r.role_code = 'STUDENT' AND NOT EXISTS "
+                            + "(SELECT 1 FROM edudoc_user_role ur WHERE ur.user_id = u.id AND ur.role_id = r.id)",
+                    student.username());
+            if (inserted > 0) {
+                log.info("演示学生已创建：{}（{}，未激活）", student.displayName(), student.username());
+            }
+        }
     }
 
     /** C-02 模型档案：三条 profile 幂等 seed（LLM_MAIN / EMB_BGE_M3 / RERANK_BGE_V2），不存明文密钥。 */
@@ -91,10 +138,20 @@ public class SeedDataRunner implements ApplicationRunner {
      */
     void seedCourses() {
         // 第三列是课程组名：edudoc_course_member.group_name，课程列表的「班级/课程组数」据此现算
-        seedCourse("CS101", "Web开发技术", "2026-FALL",
-                new String[][]{{"teacher", "TEACHER", null}, {"student", "STUDENT", "Web开发-1组"}});
-        seedCourse("MATH201", "数据库原理", "2026-FALL",
-                new String[][]{{"teacher", "TEACHER", null}, {"student", "STUDENT", "数据库-1组"}});
+        seedCourse("CS101", "Web开发技术", "2026-FALL", demoMembers("Web开发", 3));
+        seedCourse("MATH201", "数据库原理", "2026-FALL", demoMembers("数据库", 2));
+    }
+
+    /** 成员表：教师 + 本地演示学生 + 10 名演示学生，按组数轮转落 group_name。 */
+    private static String[][] demoMembers(String groupPrefix, int groupCount) {
+        List<String[]> members = new ArrayList<>();
+        members.add(new String[]{"teacher", "TEACHER", null});
+        members.add(new String[]{"student", "STUDENT", groupPrefix + "-1组"});
+        for (int i = 0; i < DEMO_STUDENTS.size(); i++) {
+            members.add(new String[]{DEMO_STUDENTS.get(i).username(), "STUDENT",
+                    groupPrefix + "-" + (i % groupCount + 1) + "组"});
+        }
+        return members.toArray(String[][]::new);
     }
 
     private void seedCourse(String courseCode, String courseName, String termCode, String[][] members) {
@@ -174,6 +231,89 @@ public class SeedDataRunner implements ApplicationRunner {
         log.info("种子作业已创建：{}（{}，状态 {}）", title, courseCode, status);
     }
 
+    /**
+     * 演示提交：前 4 名学生给已发布作业交作业（2 份已批改、2 份待批改），让教师端统计出现层次。
+     * 文档/版本/OSS 对象按学生幂等补插；提交按 (assignment, student, attempt_no=1) 去重。
+     */
+    void seedDemoSubmissions() {
+        String assignmentIdHex = findAssignmentIdHex("CS101", "Web开发课程设计报告");
+        if (assignmentIdHex == null) {
+            return;
+        }
+        String[] statuses = {"SUBMITTED", "SUBMITTED", "GRADED", "GRADED"};
+        String[] feedbacks = {null, null, "结构完整，索引设计部分需补充执行计划对比。",
+                "完成度尚可，格式与结论部分需补充。"};
+        double[] scores = {0, 0, 88, 76};
+        for (int i = 0; i < statuses.length; i++) {
+            DemoStudent student = DEMO_STUDENTS.get(i);
+            String documentIdHex = ensureSubmissionDocument(student);
+            String versionIdHex = jdbcTemplate.queryForObject(
+                    "SELECT RAWTOHEX(current_version_id) FROM edudoc_document WHERE id = HEXTORAW(?)",
+                    String.class, documentIdHex);
+            boolean graded = "GRADED".equals(statuses[i]);
+            jdbcTemplate.update(
+                    "INSERT INTO edudoc_submission (assignment_id, student_id, document_id, document_version_id, "
+                            + "attempt_no, submitted_at, status, score, feedback, score_json) "
+                            + "SELECT HEXTORAW(?), u.id, HEXTORAW(?), HEXTORAW(?), 1, SYSTIMESTAMP, ?, ?, ?, ? "
+                            + "FROM edudoc_user u WHERE u.username = ? AND NOT EXISTS "
+                            + "(SELECT 1 FROM edudoc_submission s WHERE s.assignment_id = HEXTORAW(?) "
+                            + "AND s.student_id = u.id AND s.attempt_no = 1)",
+                    assignmentIdHex, documentIdHex, versionIdHex, statuses[i],
+                    graded ? scores[i] : null, feedbacks[i],
+                    graded ? DEMO_SCORE_JSON.get(student.username()) : null,
+                    student.username(), assignmentIdHex);
+        }
+        log.info("演示提交已就绪：{} 份（已批改 {} 份）", statuses.length,
+                (int) java.util.Arrays.stream(statuses).filter("GRADED"::equals).count());
+    }
+
+    /** 学生提交用的文档：READY + 版本 1 + 一个演示 OSS 对象，重复启动复用同一行。 */
+    private String ensureSubmissionDocument(DemoStudent student) {
+        String title = "Web开发课程设计报告_" + student.displayName();
+        List<String> existing = jdbcTemplate.queryForList(
+                "SELECT RAWTOHEX(d.id) FROM edudoc_document d JOIN edudoc_user u ON u.id = d.owner_id "
+                        + "WHERE u.username = ? AND d.title = ?", String.class, student.username(), title);
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+        String objectKey = "seed/coursework/" + student.username() + ".docx";
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_oss_object (id, bucket_name, region, object_key, content_hash, size_bytes, "
+                        + "mime_type, encryption_type, object_role) "
+                        + "SELECT HEXTORAW(?), 'cidas-demo', 'local', ?, ?, 1024, ?, 'SSE-S3', 'ORIGINAL' "
+                        + "FROM dual WHERE NOT EXISTS "
+                        + "(SELECT 1 FROM edudoc_oss_object WHERE bucket_name = 'cidas-demo' AND object_key = ?)",
+                Ids.hex16(), objectKey, "demo-" + student.username(), DEMO_DOCX_MIME, objectKey);
+        String objectIdHex = jdbcTemplate.queryForObject(
+                "SELECT RAWTOHEX(id) FROM edudoc_oss_object WHERE bucket_name = 'cidas-demo' AND object_key = ?",
+                String.class, objectKey);
+        String documentIdHex = Ids.hex16();
+        String versionIdHex = Ids.hex16();
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_document (id, course_id, owner_id, title, doc_type, status) "
+                        + "SELECT HEXTORAW(?), c.id, u.id, ?, 'HOMEWORK', 'READY' "
+                        + "FROM edudoc_course c, edudoc_user u "
+                        + "WHERE c.course_code = 'CS101' AND c.term_code = '2026-FALL' AND u.username = ?",
+                documentIdHex, title, student.username());
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_document_version (id, document_id, version_no, version_type, source_object_id, "
+                        + "editor_id, change_summary, content_hash) "
+                        + "SELECT HEXTORAW(?), HEXTORAW(?), 1, 'UPLOAD', HEXTORAW(?), u.id, '课程作业提交', ? "
+                        + "FROM edudoc_user u WHERE u.username = ?",
+                versionIdHex, documentIdHex, objectIdHex, "demo-" + student.username(), student.username());
+        jdbcTemplate.update("UPDATE edudoc_document SET current_version_id = HEXTORAW(?) WHERE id = HEXTORAW(?)",
+                versionIdHex, documentIdHex);
+        return documentIdHex;
+    }
+
+    private String findAssignmentIdHex(String courseCode, String title) {
+        List<String> ids = jdbcTemplate.queryForList(
+                "SELECT RAWTOHEX(a.id) FROM edudoc_assignment a JOIN edudoc_course c ON c.id = a.course_id "
+                        + "WHERE c.course_code = ? AND c.term_code = '2026-FALL' AND a.title = ?",
+                String.class, courseCode, title);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
     private String queryUserId(String username) {
         return jdbcTemplate.queryForObject(
                 "SELECT RAWTOHEX(id) FROM edudoc_user WHERE username = ?", String.class, username);
@@ -220,5 +360,9 @@ public class SeedDataRunner implements ApplicationRunner {
     }
 
     record SeedAccount(String username, String displayName, String roleCode, String status, String password) {
+    }
+
+    /** 演示同班学生（学号即 username）。 */
+    record DemoStudent(String username, String displayName) {
     }
 }

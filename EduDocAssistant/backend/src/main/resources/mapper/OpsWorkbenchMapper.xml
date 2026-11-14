@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.access.infrastructure.OpsWorkbenchMapper">
+
+    <!-- 运维工作台计数摘要：现有表只读聚合，不建表、不写库。
+         时间口径：返回给前端的时间串一律 SYS_EXTRACT_UTC(...) || 'Z'；本查询只返回计数，没有时间列。
+         「今日」按服务器本地日界线：TRUNC(SYSTIMESTAMP) 取数据库会话时区（部署机本地时区）的当日 00:00，
+         不是 UTC 日界线；7 天窗口用绝对时刻相减，不受时区影响。
+         高风险口径沿用审计页：同一操作人 7 天窗口内失败（result_code 不是 200/SUCCESS）≥2 条时，
+         该操作人在窗口内的每条事件都按 HIGH 计，所以这里数的是「被标 HIGH 的事件行数」。 -->
+    <select id="selectSummary" resultType="com.cidas.edudoc.access.infrastructure.OpsWorkbenchRow">
+        SELECT
+            (SELECT COUNT(*) FROM edudoc_user) AS "userTotal",
+            (SELECT COUNT(*) FROM edudoc_user WHERE account_status = 'L') AS "userLocked",
+            (SELECT COUNT(*) FROM edudoc_document
+              WHERE deleted_at IS NULL AND status &lt;&gt; 'DELETED') AS "documentTotal",
+            (SELECT COUNT(*) FROM edudoc_ai_task
+              WHERE create_time &gt;= TRUNC(SYSTIMESTAMP)) AS "aiTasksToday",
+            (SELECT COUNT(*) FROM edudoc_ai_task
+              WHERE create_time &gt;= TRUNC(SYSTIMESTAMP) AND status = 'SUCCEEDED') AS "aiSucceededToday",
+            (SELECT NVL(SUM(size_bytes), 0) FROM edudoc_oss_object) AS "storageBytes",
+            (SELECT COUNT(*) FROM edudoc_oss_object) AS "storageObjects",
+            (SELECT COUNT(*) FROM edudoc_audit_log a
+              WHERE a.occurred_at &gt;= SYSTIMESTAMP - NUMTODSINTERVAL(7, 'DAY')
+                AND (SELECT COUNT(*) FROM edudoc_audit_log f
+                      WHERE f.actor_id = a.actor_id
+                        AND f.result_code NOT IN ('200', 'SUCCESS')
+                        AND f.occurred_at &gt;= SYSTIMESTAMP - NUMTODSINTERVAL(7, 'DAY')) &gt;= 2
+            ) AS "auditHighRisk7d"
+        FROM dual
+    </select>
+
+</mapper>

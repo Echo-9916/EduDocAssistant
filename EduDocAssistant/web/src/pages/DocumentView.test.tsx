@@ -23,6 +23,17 @@ const api = vi.hoisted(() => ({
 vi.mock('../api/ai', () => api)
 const getDocument = vi.hoisted(() => vi.fn())
 vi.mock('../api/documents', () => ({ getDocument }))
+vi.mock('../api/collaboration', () => ({
+  listAnnotations: vi.fn().mockResolvedValue([]),
+  listPresence: vi.fn().mockResolvedValue([]),
+  heartbeatPresence: vi.fn().mockResolvedValue(undefined),
+  createAnnotation: vi.fn(),
+  deleteAnnotation: vi.fn(),
+  resolveAnnotation: vi.fn(),
+  listCollaborators: vi.fn().mockResolvedValue([]),
+  addCollaborator: vi.fn(),
+  removeCollaborator: vi.fn(),
+}))
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({
     user: { userId: 'U1', username: 't', roles: ['TEACHER'], permissions: [

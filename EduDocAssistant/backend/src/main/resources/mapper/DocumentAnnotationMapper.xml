@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.document.infrastructure.DocumentAnnotationMapper">
+
+    <insert id="insert">
+        INSERT INTO edudoc_document_annotation
+            (id, document_id, document_version_id, author_id, char_start, char_end, content, status)
+        VALUES (HEXTORAW(#{idHex}), HEXTORAW(#{documentIdHex}), HEXTORAW(#{versionIdHex}),
+                HEXTORAW(#{authorIdHex}), #{charStart}, #{charEnd}, #{content}, 'O')
+    </insert>
+
+    <sql id="annotationColumns">
+        RAWTOHEX(a.id) AS id, RAWTOHEX(a.document_id) AS documentId,
+        RAWTOHEX(a.document_version_id) AS documentVersionId, RAWTOHEX(a.author_id) AS authorId,
+        au.display_name AS authorName, au.username AS authorAccount,
+        a.char_start AS charStart, a.char_end AS charEnd, a.content AS content, a.status AS status,
+        RAWTOHEX(a.resolved_by) AS resolvedBy, ru.display_name AS resolvedByName,
+        a.resolved_time AS resolvedTime, a.create_time AS createTime
+    </sql>
+
+    <select id="selectByDocument" resultType="com.cidas.edudoc.document.infrastructure.DocumentAnnotationRow">
+        SELECT <include refid="annotationColumns"/>
+        FROM edudoc_document_annotation a
+        JOIN edudoc_user au ON au.id = a.author_id
+        LEFT JOIN edudoc_user ru ON ru.id = a.resolved_by
+        WHERE a.document_id = HEXTORAW(#{documentIdHex})
+        <if test="status != null and status != ''">AND a.status = #{status}</if>
+        ORDER BY a.create_time DESC
+    </select>
+
+    <select id="selectById" resultType="com.cidas.edudoc.document.infrastructure.DocumentAnnotationRow">
+        SELECT <include refid="annotationColumns"/>
+        FROM edudoc_document_annotation a
+        JOIN edudoc_user au ON au.id = a.author_id
+        LEFT JOIN edudoc_user ru ON ru.id = a.resolved_by
+        WHERE a.id = HEXTORAW(#{annotationIdHex})
+    </select>
+
+    <update id="resolve">
+        UPDATE edudoc_document_annotation
+        SET status = 'R', resolved_by = HEXTORAW(#{resolvedByHex}), resolved_time = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{annotationIdHex})
+    </update>
+
+    <update id="reopen">
+        UPDATE edudoc_document_annotation
+        SET status = 'O', resolved_by = NULL, resolved_time = NULL
+        WHERE id = HEXTORAW(#{annotationIdHex})
+    </update>
+
+    <delete id="delete">
+        DELETE FROM edudoc_document_annotation WHERE id = HEXTORAW(#{annotationIdHex})
+    </delete>
+
+</mapper>

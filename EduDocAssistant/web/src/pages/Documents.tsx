@@ -2,7 +2,7 @@
 // 状态徽标文字+颜色双编码（详细设计 §4.2）；存在 UPLOADING/PARSING 行时 3s 轮询。
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Input, Popconfirm, Segmented, Select, Space, Tag, message } from 'antd'
+import { Input, Popconfirm, Segmented, Select, Space, Tag, Typography, message } from 'antd'
 import { AppButton, AppTable } from '../components'
 import { getErrorMessage } from '../api/http'
 import {
@@ -232,6 +232,8 @@ export default function Documents({ role }: Props) {
         rowSelection={view === 'mine' && canConvert ? {
           selectedRowKeys: selectedKeys,
           onChange: (keys) => setSelectedKeys(keys as string[]),
+          // 协作文档不参与批量转换（转换等上传者操作仅 OWNER 可用）
+          getCheckboxProps: (row) => ({ disabled: row.relation === 'COLLAB' }),
         } : undefined}
         pagination={{
           current: data.page,
@@ -244,6 +246,12 @@ export default function Documents({ role }: Props) {
         }}
         columns={[
           { title: '标题', dataIndex: 'title', ellipsis: true },
+          {
+            title: '归属', width: 130,
+            render: (_, row) => row.relation === 'COLLAB'
+              ? <Space size={4}><Tag color="blue">协作</Tag><span>{row.ownerName ?? '-'}</span></Space>
+              : <Typography.Text type="secondary">本人</Typography.Text>,
+          },
           { title: '类型', dataIndex: 'docType', width: 90, render: (v: string) => DOC_TYPE_LABEL[v] ?? v },
           {
             title: '状态',
@@ -264,18 +272,20 @@ export default function Documents({ role }: Props) {
             title: '操作',
             key: 'actions',
             width: 260,
-            render: (_: unknown, row: DocumentSummary) => (
+            render: (_: unknown, row: DocumentSummary) => {
+              const isCollab = row.relation === 'COLLAB'
+              return (
               <Space>
-                <a onClick={() => setDetailId(row.id)}>详情</a>
+                {!isCollab && <a onClick={() => setDetailId(row.id)}>详情</a>}
                 <a onClick={() => setVersionsDoc(row)}>版本</a>
-                {view === 'mine' && <a onClick={() => setShareDoc(row)}>共享</a>}
+                {view === 'mine' && !isCollab && <a onClick={() => setShareDoc(row)}>共享</a>}
                 {row.status === 'READY' && (
                   // 1106 P1-1：当前路由已是 .../documents，相对段只补 `{id}/view`
                   <a onClick={() => navigate(`${row.id}/view`)}>预览</a>
                 )}
                 {view === 'trash' ? (
                   <a onClick={() => onRestore(row.id)}>恢复</a>
-                ) : (
+                ) : isCollab ? null : (
                   <>
                     {row.status === 'FAILED' && <a onClick={() => onReparse(row.id)}>重新解析</a>}
                     {canConvert && directionReady(row) && (
@@ -291,7 +301,8 @@ export default function Documents({ role }: Props) {
                   </>
                 )}
               </Space>
-            ),
+              )
+            },
           },
         ]}
       />

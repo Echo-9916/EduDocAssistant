@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.document.infrastructure.DocumentCollaboratorMapper">
+
+    <select id="selectSessionIdByDocument" resultType="string">
+        SELECT RAWTOHEX(id) FROM edudoc_collab_session
+        WHERE document_id = HEXTORAW(#{documentIdHex})
+        ORDER BY create_time DESC FETCH FIRST 1 ROWS ONLY
+    </select>
+
+    <insert id="insertSession">
+        INSERT INTO edudoc_collab_session
+            (id, document_id, base_version_id, provider_doc_key, status, created_by)
+        VALUES (HEXTORAW(#{idHex}), HEXTORAW(#{documentIdHex}), HEXTORAW(#{baseVersionIdHex}),
+                #{providerDocKey}, 'OPEN', HEXTORAW(#{createdByHex}))
+    </insert>
+
+    <sql id="memberColumns">
+        RAWTOHEX(m.id) AS id, RAWTOHEX(m.user_id) AS userId, u.username AS username,
+        u.display_name AS displayName, m.permission_level AS permission,
+        m.connection_status AS connectionStatus, m.joined_at AS joinedAt
+    </sql>
+
+    <select id="selectMembers" resultType="com.cidas.edudoc.document.infrastructure.CollaboratorRow">
+        SELECT <include refid="memberColumns"/>
+        FROM edudoc_collab_member m JOIN edudoc_user u ON u.id = m.user_id
+        WHERE m.collab_session_id = HEXTORAW(#{sessionIdHex})
+          AND m.connection_status &lt;&gt; 'REMOVED'
+        ORDER BY m.joined_at
+    </select>
+
+    <select id="selectMember" resultType="com.cidas.edudoc.document.infrastructure.CollaboratorRow">
+        SELECT <include refid="memberColumns"/>
+        FROM edudoc_collab_member m JOIN edudoc_user u ON u.id = m.user_id
+        WHERE m.collab_session_id = HEXTORAW(#{sessionIdHex})
+          AND m.user_id = HEXTORAW(#{userIdHex})
+    </select>
+
+    <select id="countActiveMember" resultType="int">
+        SELECT COUNT(*)
+        FROM edudoc_collab_member m JOIN edudoc_collab_session s ON s.id = m.collab_session_id
+        WHERE s.document_id = HEXTORAW(#{documentIdHex})
+          AND m.user_id = HEXTORAW(#{userIdHex})
+          AND m.connection_status &lt;&gt; 'REMOVED'
+    </select>
+
+    <insert id="insertMember">
+        INSERT INTO edudoc_collab_member
+            (id, collab_session_id, user_id, permission_level, connection_status)
+        VALUES (HEXTORAW(#{idHex}), HEXTORAW(#{sessionIdHex}), HEXTORAW(#{userIdHex}),
+                #{permissionLevel}, 'OFFLINE')
+    </insert>
+
+    <update id="reactivateMember">
+        UPDATE edudoc_collab_member
+        SET permission_level = #{permissionLevel}, connection_status = 'OFFLINE', left_at = NULL
+        WHERE collab_session_id = HEXTORAW(#{sessionIdHex}) AND user_id = HEXTORAW(#{userIdHex})
+          AND connection_status = 'REMOVED'
+    </update>
+
+    <update id="removeMember">
+        UPDATE edudoc_collab_member
+        SET connection_status = 'REMOVED', left_at = SYSTIMESTAMP
+        WHERE collab_session_id = HEXTORAW(#{sessionIdHex}) AND user_id = HEXTORAW(#{userIdHex})
+          AND connection_status &lt;&gt; 'REMOVED'
+    </update>
+
+    <select id="selectUserByUsername" resultType="com.cidas.edudoc.document.infrastructure.CollaboratorRow">
+        SELECT RAWTOHEX(id) AS userId, username AS username, display_name AS displayName
+        FROM edudoc_user WHERE username = #{username}
+    </select>
+
+</mapper>

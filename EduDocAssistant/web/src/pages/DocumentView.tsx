@@ -1,8 +1,9 @@
 // C-10：文档预览页（D2 文本阅读视图）——左正文块流+右四面板 Tabs；引用回跳=滚动至块并 <mark> 高亮；
 // 块勾选为润色选择面；文档 PARSING 时 2s 轮询直至 READY（复用文档态停步逻辑）。
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Card, Checkbox, Segmented, Spin, Tabs, Tag } from 'antd'
+import { Alert, Card, Checkbox, Empty, Input, Popconfirm, Segmented, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd'
 import FormatPane from './view/FormatPane'
+import { AppButton } from '../components'
 import { useLocation, useParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/http'
 import { getDocument } from '../api/documents'
@@ -10,6 +11,15 @@ import type { DocumentDetail } from '../api/documents'
 import { getPreview } from '../api/ai'
 import type { Preview, PreviewBlock } from '../api/ai'
 import { PermissionCode } from '../api/types'
+import {
+  createAnnotation,
+  deleteAnnotation,
+  heartbeatPresence,
+  listAnnotations,
+  listPresence,
+  resolveAnnotation,
+} from '../api/collaboration'
+import type { AnnotationView, PresenceView } from '../api/collaboration'
 import { useAuth } from '../auth/AuthContext'
 import { splitAcrossBlocks, sliceMarks } from './view/highlight'
 import { locateByParagraph, scrollToPageMarker } from './view/locate'
@@ -65,6 +75,13 @@ export default function DocumentView() {
   const [highlight, setHighlight] = useState<Highlight | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const { user } = useAuth()
+  // 批注与在线状态：3 秒轮询（心跳 15 秒窗口）
+  const [annotations, setAnnotations] = useState<AnnotationView[]>([])
+  const [presence, setPresence] = useState<PresenceView[]>([])
+  const [collabError, setCollabError] = useState<string | null>(null)
+  const [annotationBlock, setAnnotationBlock] = useState<string>()
+  const [annotationText, setAnnotationText] = useState('')
+  const [savingAnnotation, setSavingAnnotation] = useState(false)
 
   const can = useCallback(
     (code: string) => !!user?.permissions.includes(code),
@@ -73,6 +90,89 @@ export default function DocumentView() {
   const blocks = preview?.blocks ?? []
 
   const byChunk = useMemo(() => new Map(blocks.map((b) => [b.chunkId, b])), [blocks])
+
+  const refreshCollab = useCallback(async () => {
+    if (!docId) return
+    try {
+      const [a, p] = await Promise.all([listAnnotations(docId), listPresence(docId)])
+      setAnnotations(a)
+      setPresence(p)
+      setCollabError(null)
+    } catch (e) {
+      setCollabError(getErrorMessage(e))
+    }
+  }, [docId])
+
+  // 3 秒轮询批注与在线列表；心跳写入进程内 TTL Map（15 秒窗口）
+  useEffect(() => {
+    if (!docId) return
+    let alive = true
+    const tick = async () => {
+      await heartbeatPresence(docId).catch(() => undefined)
+      if (!alive) return
+      try {
+        const [a, p] = await Promise.all([listAnnotations(docId), listPresence(docId)])
+        if (!alive) return
+        setAnnotations(a)
+        setPresence(p)
+        setCollabError(null)
+      } catch (e) {
+        if (alive) setCollabError(getErrorMessage(e))
+      }
+    }
+    void tick()
+    const timer = setInterval(tick, 3000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [docId])
+
+  const activeAnnotationBlock = blocks.find((b) => b.chunkId === annotationBlock) ?? blocks[0]
+
+  const submitAnnotation = async () => {
+    if (!docId || !activeAnnotationBlock) return
+    if (!annotationText.trim()) {
+      message.warning('请输入批注内容')
+      return
+    }
+    setSavingAnnotation(true)
+    try {
+      await createAnnotation(docId, {
+        versionId: preview?.versionId,
+        charStart: activeAnnotationBlock.charStart,
+        charEnd: activeAnnotationBlock.charEnd,
+        content: annotationText.trim(),
+      })
+      setAnnotationText('')
+      message.success('批注已添加')
+      await refreshCollab()
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    } finally {
+      setSavingAnnotation(false)
+    }
+  }
+
+  const toggleAnnotation = async (row: AnnotationView) => {
+    try {
+      await resolveAnnotation(row.id, row.status === 'O')
+      message.success(row.status === 'O' ? '批注已标记为已解决' : '批注已重新打开')
+      await refreshCollab()
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    }
+  }
+
+  const removeAnnotation = async (row: AnnotationView) => {
+    try {
+      await deleteAnnotation(row.id)
+      message.success('批注已删除')
+      await refreshCollab()
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    }
+  }
 
   const highlightRange = useCallback(
     (absStart: number, absEnd: number) => {
@@ -143,6 +243,73 @@ export default function DocumentView() {
             reload()
           }}
         />
+      ),
+    },
+    {
+      key: 'collab',
+      label: '批注',
+      children: (
+        <div>
+          <Space wrap style={{ marginBottom: 8 }}>
+            <Typography.Text type="secondary">在线</Typography.Text>
+            {presence.length === 0 ? (
+              <Typography.Text type="secondary">15 秒内暂无活跃成员</Typography.Text>
+            ) : presence.map((m) => (
+              <Tag key={m.userId} color="blue">{m.displayName}</Tag>
+            ))}
+          </Space>
+          {collabError && <Alert type="warning" showIcon message={collabError} style={{ marginBottom: 8 }} />}
+          <Space direction="vertical" style={{ width: '100%', marginBottom: 12 }} size={8}>
+            <Select
+              style={{ width: '100%' }}
+              value={activeAnnotationBlock?.chunkId}
+              placeholder="选择批注段落"
+              onChange={setAnnotationBlock}
+              options={blocks.map((b) => ({
+                value: b.chunkId,
+                label: `字符 ${b.charStart}-${b.charEnd}：${b.text.replace(/\s+/g, ' ').slice(0, 36)}`,
+              }))}
+            />
+            <Input.TextArea rows={3} value={annotationText}
+              onChange={(e) => setAnnotationText(e.target.value)}
+              placeholder="对该段落添加批注（owner 与协作者可见）…" />
+            <AppButton loading={savingAnnotation} disabled={!activeAnnotationBlock}
+              onClick={submitAnnotation}>
+              添加批注
+            </AppButton>
+          </Space>
+          {annotations.length === 0 ? (
+            <Empty description="暂无批注" />
+          ) : annotations.map((a) => (
+            <div key={a.id} style={{ borderTop: '1px solid #f0f0f0', padding: '8px 0' }}>
+              <Space wrap size={4}>
+                <Typography.Text strong>{a.authorName}</Typography.Text>
+                <Tag>字符 {a.charStart}-{a.charEnd}</Tag>
+                <Tag color={a.status === 'O' ? 'orange' : 'green'}>
+                  {a.status === 'O' ? '待处理' : '已解决'}
+                </Tag>
+                {a.resolvedByName && <Tag color="green">由 {a.resolvedByName} 解决</Tag>}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {new Date(a.createTime).toLocaleString('zh-CN', { hour12: false })}
+                </Typography.Text>
+              </Space>
+              <div style={{ margin: '4px 0' }}>{a.content}</div>
+              <Space size={4}>
+                {a.canResolve && (
+                  <AppButton type="link" size="small" onClick={() => toggleAnnotation(a)}>
+                    {a.status === 'O' ? '标记解决' : '重新打开'}
+                  </AppButton>
+                )}
+                {a.canDelete && (
+                  <Popconfirm title="删除该批注？" okText="删除" cancelText="取消"
+                    onConfirm={() => removeAnnotation(a)}>
+                    <AppButton type="link" size="small" danger>删除</AppButton>
+                  </Popconfirm>
+                )}
+              </Space>
+            </div>
+          ))}
+        </div>
       ),
     },
     {

@@ -45,6 +45,8 @@ CREATE INDEX ix_ai_doc ON edudoc_ai_task (document_id, document_version_id, task
 CREATE INDEX ix_qa_session_user ON edudoc_qa_session (user_id, document_id, status);
 -- 协作会话查询
 CREATE INDEX ix_collab_doc ON edudoc_collab_session (document_id, status);
+-- 文档批注列表（按文档 + 状态）
+CREATE INDEX ix_annotation_doc_status ON edudoc_document_annotation (document_id, status);
 -- 作业列表
 CREATE INDEX ix_assignment_course ON edudoc_assignment (course_id, status, due_time);
 -- 提交统计

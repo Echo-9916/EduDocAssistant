@@ -508,6 +508,43 @@ COMMENT ON COLUMN edudoc_document_chunk.token_count IS '估算 token 数';
 COMMENT ON COLUMN edudoc_document_chunk.content_hash IS '分块内容摘要';
 COMMENT ON COLUMN edudoc_document_chunk.index_status IS '索引状态：PENDING、READY、FAILED';
 
+-- 文档批注表: 记录协作者对文档当前版本字符区间的批注与解决状态。
+CREATE TABLE edudoc_document_annotation (
+    id RAW(16) DEFAULT SYS_GUID() NOT NULL,
+    create_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    update_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    document_id RAW(16) NOT NULL,
+    document_version_id RAW(16) NOT NULL,
+    author_id RAW(16) NOT NULL,
+    char_start NUMBER(12) NOT NULL,
+    char_end NUMBER(12) NOT NULL,
+    content VARCHAR2(2000) NOT NULL,
+    status CHAR(1) DEFAULT 'O' NOT NULL,
+    resolved_by RAW(16),
+    resolved_time TIMESTAMP(6) WITH TIME ZONE,
+    CONSTRAINT pk_document_annotation PRIMARY KEY (id),
+    CONSTRAINT fk_document_annotation_1 FOREIGN KEY (document_id) REFERENCES edudoc_document (id),
+    CONSTRAINT fk_document_annotation_2 FOREIGN KEY (document_version_id) REFERENCES edudoc_document_version (id),
+    CONSTRAINT fk_document_annotation_3 FOREIGN KEY (author_id) REFERENCES edudoc_user (id),
+    CONSTRAINT fk_document_annotation_4 FOREIGN KEY (resolved_by) REFERENCES edudoc_user (id),
+    CONSTRAINT ck_annotation_status CHECK (status IN ('O','R')),
+    CONSTRAINT ck_annotation_range CHECK (char_end >= char_start)
+);
+
+COMMENT ON TABLE edudoc_document_annotation IS '保存文档批注的字符区间、作者与解决状态。';
+COMMENT ON COLUMN edudoc_document_annotation.id IS '主键，数据库自动生成 GUID';
+COMMENT ON COLUMN edudoc_document_annotation.create_time IS '创建时间，默认数据库当前时间';
+COMMENT ON COLUMN edudoc_document_annotation.update_time IS '最后更新时间，由触发器维护';
+COMMENT ON COLUMN edudoc_document_annotation.document_id IS '文档 ID';
+COMMENT ON COLUMN edudoc_document_annotation.document_version_id IS '文档版本 ID';
+COMMENT ON COLUMN edudoc_document_annotation.author_id IS '批注作者 ID';
+COMMENT ON COLUMN edudoc_document_annotation.char_start IS '原文起始字符位置（闭区间，chunk 口径）';
+COMMENT ON COLUMN edudoc_document_annotation.char_end IS '原文结束字符位置（闭区间，chunk 口径）';
+COMMENT ON COLUMN edudoc_document_annotation.content IS '批注内容';
+COMMENT ON COLUMN edudoc_document_annotation.status IS '状态：O 待处理、R 已解决';
+COMMENT ON COLUMN edudoc_document_annotation.resolved_by IS '解决人 ID';
+COMMENT ON COLUMN edudoc_document_annotation.resolved_time IS '解决时间';
+
 -- 模型配置表: 保存模型类型、服务引用和向量维度，不保存明文密钥。
 CREATE TABLE edudoc_ai_model_profile (
     id RAW(16) DEFAULT SYS_GUID() NOT NULL,

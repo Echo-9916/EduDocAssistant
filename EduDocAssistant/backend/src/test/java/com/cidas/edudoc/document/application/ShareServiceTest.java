@@ -144,7 +144,7 @@ class ShareServiceTest {
     }
 
     private static DocumentViewRow documentRow() {
-        return new DocumentViewRow(DOC_ID, OWNER, "课程设计报告", "REPORT", "READY", null, null,
+        return new DocumentViewRow(DOC_ID, OWNER, null, null, "课程设计报告", "REPORT", "READY", null, null,
                 null, "text/plain", 2, "V2", "V2", "h", 2, "2026-11-14T10:00:00",
                 "2026-11-14T10:00:00", null, null);
     }

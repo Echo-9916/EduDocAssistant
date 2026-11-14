@@ -100,6 +100,10 @@ export interface DocumentVersionRow {
 export const listDocumentVersions = (id: string) =>
   get<DocumentVersionRow[]>(`/documents/${id}/versions`)
 
+/** 恢复历史版本：服务端复制为新版本（RESTORE）并前移当前版本，返回新版本定位。 */
+export const restoreDocumentVersion = (id: string, versionId: string) =>
+  post<{ versionId: string; versionNo: number }>(`/documents/${id}/versions/${versionId}/restore`)
+
 /** 格式视图字节流：某版本源文件（PDF 原件内嵌显示用） */
 export const fetchVersionFile = (id: string, versionId: string) =>
   getBlob(`/documents/${id}/versions/${versionId}/file`)

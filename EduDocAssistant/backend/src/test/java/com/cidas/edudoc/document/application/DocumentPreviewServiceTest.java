@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/** C-08 预览：owner 40401、非当前版本 40901、块序与 C-01 密铺偏移不变量。 */
+/** C-08 预览：owner 40401、文档内历史版本可读、跨文档版本 40401、块序与 C-01 密铺偏移不变量。 */
 class DocumentPreviewServiceTest {
 
     private static final String DOC_ID = "AA0000000000000000000000000000A1";
@@ -87,10 +87,29 @@ class DocumentPreviewServiceTest {
     }
 
     @Test
-    void nonCurrentVersionRejectedWith40901() {
+    void historicalVersionOfSameDocumentReturnsItsBlocks() {
+        // 版本抽屉文本对比复用预览端点：历史版本必须能按 versionId 取回自己的分块
+        String old = "BB0000000000000000000000000000B2";
+        when(versionRepository.findById(old)).thenReturn(Optional.of(
+                new DocumentVersion(old, DOC_ID, 0, "UPLOAD", "O0", "U1", "h", "A")));
+        when(chunkRepository.selectAllByVersion(old)).thenReturn(List.of(
+                new DocumentChunk("C1", old, 1, null, 1, 0, 4, "old v", 4, "h", "READY")));
+
+        DocumentPreviewService.Preview preview = service.preview(DOC_ID, old);
+
+        assertEquals(old, preview.versionId());
+        assertEquals("old v", preview.blocks().get(0).text());
+    }
+
+    @Test
+    void versionFromAnotherDocumentIs40401() {
+        String foreign = "CC0000000000000000000000000000C1";
+        when(versionRepository.findById(foreign)).thenReturn(Optional.of(
+                new DocumentVersion(foreign, "OTHER_DOC", 1, "UPLOAD", "O9", "U1", "h", "A")));
+
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
-                () -> service.preview(DOC_ID, "CC0000000000000000000000000000X9"));
-        assertEquals(ErrorCode.CONFLICT, e.errorCode());
+                () -> service.preview(DOC_ID, foreign));
+        assertEquals(ErrorCode.NOT_FOUND, e.errorCode());
     }
 
     @Test

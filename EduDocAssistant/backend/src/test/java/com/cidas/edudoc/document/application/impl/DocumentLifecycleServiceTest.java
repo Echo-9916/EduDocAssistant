@@ -25,6 +25,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -178,6 +179,57 @@ class DocumentLifecycleServiceTest {
 
         assertCode(ErrorCode.CONFLICT, () -> service.reparse(DOC_ID, null));
         verify(outboxEventRepository, never()).publish(anyString(), anyString(), anyString(), any());
+    }
+
+    // ===== 版本恢复 =====
+
+    private static final String V_SRC = "BB0000000000000000000000000000B1";
+    private static final String V_FOREIGN = "CC0000000000000000000000000000C1";
+
+    @Test
+    void restoreVersionCopiesSourceAsNewVersionAndMovesCurrent() {
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("READY")));
+        when(versionRepository.findById(V_SRC)).thenReturn(Optional.of(
+                new DocumentVersion(V_SRC, DOC_ID, 2, "EDIT", "O2", "U1", "hash-v2", "A")));
+        when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(4);
+        when(documentRepository.updateCurrentVersionCas(eq(DOC_ID), eq("V1"), anyString())).thenReturn(1);
+        when(outboxEventRepository.publish(eq("DOCUMENT_VERSION"), anyString(),
+                eq("DOCUMENT_EMBED_REQUESTED"), any(Map.class))).thenReturn("T1");
+
+        var restored = service.restoreVersion(DOC_ID, V_SRC);
+
+        assertEquals(5, restored.versionNo());
+        verify(versionRepository).insertRestore(restored.versionId(), DOC_ID, 5, "O2", "U1",
+                "hash-v2", "恢复自 v2");
+        // 分块按新版本复制（PENDING），并发布重新索引事件
+        verify(chunkRepository).copyAsPending(V_SRC, restored.versionId());
+        verify(outboxEventRepository).publish(eq("DOCUMENT_VERSION"), eq(restored.versionId()),
+                eq("DOCUMENT_EMBED_REQUESTED"), any(Map.class));
+        verify(auditService).record(eq("VERSION_RESTORED"), eq("DOCUMENT"), eq(DOC_ID), eq(DOC_ID),
+                eq("200"), eq(Map.of("versionId", restored.versionId(), "sourceVersionId", V_SRC,
+                        "versionNo", 5, "taskId", "T1")));
+    }
+
+    @Test
+    void restoreVersionFromForeignDocumentIs40401() {
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("READY")));
+        when(versionRepository.findById(V_FOREIGN)).thenReturn(Optional.of(
+                new DocumentVersion(V_FOREIGN, "OTHER_DOC", 1, "UPLOAD", "O9", "U1", "h", "A")));
+
+        assertCode(ErrorCode.NOT_FOUND, () -> service.restoreVersion(DOC_ID, V_FOREIGN));
+        verify(versionRepository, never()).insertRestore(anyString(), anyString(), anyInt(),
+                anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void restoreVersionConcurrentAdvanceConflicts() {
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(doc("READY")));
+        when(versionRepository.findById(V_SRC)).thenReturn(Optional.of(
+                new DocumentVersion(V_SRC, DOC_ID, 1, "UPLOAD", "O1", "U1", "h", "A")));
+        when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(1);
+        when(documentRepository.updateCurrentVersionCas(eq(DOC_ID), eq("V1"), anyString())).thenReturn(0);
+
+        assertCode(ErrorCode.CONFLICT, () -> service.restoreVersion(DOC_ID, V_SRC));
     }
 
     private static void assertCode(ErrorCode expected, Runnable action) {

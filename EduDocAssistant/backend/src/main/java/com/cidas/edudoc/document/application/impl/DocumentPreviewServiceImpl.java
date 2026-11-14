@@ -13,7 +13,10 @@ import com.cidas.edudoc.document.infrastructure.DocumentVersionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-/** 预览只读：owner 口径同 02 详情（非本人 40401 不泄露存在性）；versionId 仅允许当前版本（40901）。 */
+/**
+ * 预览只读：owner 口径同 02 详情（非本人 40401 不泄露存在性）。
+ * versionId 允许文档内任意历史版本：版本抽屉的文本对比直接复用本端点取块文本。
+ */
 @Service
 @RequiredArgsConstructor
 public class DocumentPreviewServiceImpl implements DocumentPreviewService {
@@ -34,11 +37,10 @@ public class DocumentPreviewServiceImpl implements DocumentPreviewService {
         }
         String targetVersion = versionId == null || versionId.isBlank()
                 ? doc.getCurrentVersionId() : versionId;
-        if (!targetVersion.equalsIgnoreCase(doc.getCurrentVersionId())) {
-            throw new CidasBusinessException(ErrorCode.CONFLICT, "仅可预览当前版本");
-        }
+        // 版本必须属于本文档：跨文档 versionId 视为不存在（40401），不泄露其他文档版本
         DocumentVersion version = versionRepository.findById(targetVersion)
-                .orElseThrow(() -> new CidasBusinessException(ErrorCode.CONFLICT, "版本缺失"));
+                .filter(v -> v.getDocumentId().equalsIgnoreCase(documentId))
+                .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "版本不存在"));
         var chunks = chunkRepository.selectAllByVersion(targetVersion);
         // R3/1106 P2-1：前端据此区分「文本 READY」与「索引 READY」
         boolean vectorReady = !chunks.isEmpty()

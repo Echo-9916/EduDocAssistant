@@ -16,6 +16,13 @@ public class DocumentVersionRepository {
         mapper.insert(version);
     }
 
+    /** 版本恢复专用：带 change_summary（其余插入路径不带说明）。 */
+    public void insertRestore(String idHex, String documentIdHex, int versionNo, String sourceObjectIdHex,
+                              String editorIdHex, String contentHash, String changeSummary) {
+        mapper.insertRestore(idHex, documentIdHex, versionNo, sourceObjectIdHex, editorIdHex,
+                contentHash, changeSummary);
+    }
+
     public Optional<DocumentVersion> findBySourceObject(String sourceObjectIdHex) {
         return Optional.ofNullable(mapper.selectBySourceObject(sourceObjectIdHex));
     }

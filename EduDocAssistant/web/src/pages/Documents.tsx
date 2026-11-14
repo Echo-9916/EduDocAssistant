@@ -301,7 +301,7 @@ export default function Documents({ role }: Props) {
       />
       <DocumentDetailDrawer docId={detailId} onClose={() => setDetailId(null)} onChanged={reload} />
       <VersionDrawer open={!!versionsDoc} documentId={versionsDoc?.id ?? null}
-        documentTitle={versionsDoc?.title} onClose={() => setVersionsDoc(null)} />
+        documentTitle={versionsDoc?.title} onClose={() => setVersionsDoc(null)} onRestored={reload} />
       <ConversionModal open={convertOpen}
         docs={data.items.filter((d) => selectedKeys.includes(d.id))}
         onClose={() => setConvertOpen(false)} />

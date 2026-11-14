@@ -10,6 +10,14 @@
             #{version.contentHash}, #{version.versionStatus})
     </insert>
 
+    <insert id="insertRestore">
+        INSERT INTO edudoc_document_version (id, document_id, version_no, version_type,
+            source_object_id, editor_id, change_summary, content_hash, version_status)
+        VALUES (HEXTORAW(#{idHex}), HEXTORAW(#{documentIdHex}), #{versionNo}, 'RESTORE',
+            HEXTORAW(#{sourceObjectIdHex}), HEXTORAW(#{editorIdHex}), #{changeSummary},
+            #{contentHash}, 'A')
+    </insert>
+
     <select id="selectBySourceObject" resultType="com.cidas.edudoc.document.infrastructure.DocumentVersion">
         SELECT RAWTOHEX(v.id) AS id, RAWTOHEX(v.document_id) AS documentId, v.version_no AS versionNo,
                v.version_type AS versionType, RAWTOHEX(v.source_object_id) AS sourceObjectId,

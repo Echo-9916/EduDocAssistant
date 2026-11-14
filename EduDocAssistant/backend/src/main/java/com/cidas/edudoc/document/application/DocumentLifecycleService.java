@@ -9,4 +9,13 @@ public interface DocumentLifecycleService {
 
     /** 发布重解析事件，返回 taskId（= outbox eventId hex）。 */
     String reparse(String documentId, String versionId);
+
+    /**
+     * 恢复历史版本：复制该版本为新版本（version_type=RESTORE，同一源对象与解析文本），
+     * 前移当前版本指针；历史版本只读不改。
+     */
+    RestoredVersion restoreVersion(String documentId, String versionId);
+
+    record RestoredVersion(String versionId, int versionNo) {
+    }
 }

@@ -69,6 +69,16 @@ public class DocumentController {
         return ApiResponse.ok(documentQueryService.listVersions(documentId));
     }
 
+    /** 恢复历史版本：复制为新版本并前移当前版本（写审计；non-owner 40401，无编辑权 40301）。 */
+    @PostMapping("/{documentId}/versions/{versionId}/restore")
+    @ResponseStatus(HttpStatus.CREATED)
+    @RequirePermission(PermissionCode.DOCUMENT_EDIT)
+    public ApiResponse<DocumentLifecycleService.RestoredVersion> restoreVersion(
+            @PathVariable("documentId") String documentId,
+            @PathVariable("versionId") String versionId) {
+        return ApiResponse.ok(documentLifecycleService.restoreVersion(documentId, versionId));
+    }
+
     /** 格式视图字节流：某版本源文件（前端 fetch→blob 内嵌；owner 校验同 detail）。 */
     @GetMapping("/{documentId}/versions/{versionId}/file")
     @RequirePermission(PermissionCode.DOCUMENT_READ)

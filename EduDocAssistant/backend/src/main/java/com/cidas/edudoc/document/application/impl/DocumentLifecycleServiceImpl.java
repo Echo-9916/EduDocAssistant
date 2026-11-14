@@ -10,6 +10,7 @@ import com.cidas.edudoc.document.application.DocumentLifecycleService;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentChunkRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
+import com.cidas.edudoc.document.infrastructure.DocumentVersion;
 import com.cidas.edudoc.document.infrastructure.DocumentVersionRepository;
 import com.cidas.edudoc.document.infrastructure.OssObjectRepository;
 import lombok.RequiredArgsConstructor;
@@ -98,6 +99,36 @@ public class DocumentLifecycleServiceImpl implements DocumentLifecycleService {
         auditService.record("PARSE_REQUESTED", "DOCUMENT", documentId, documentId, "200",
                 Map.of("versionId", targetVersion, "taskId", taskId));
         return taskId;
+    }
+
+    @Override
+    @Transactional
+    public RestoredVersion restoreVersion(String documentId, String versionId) {
+        Document doc = requireOwned(documentId);
+        if (!Ids.isHex16(versionId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "版本 ID 格式不合法");
+        }
+        // 版本必须属于本文档：跨文档 versionId 一律 40401，不泄露其他文档的版本存在性
+        DocumentVersion source = documentVersionRepository.findById(versionId)
+                .filter(v -> v.getDocumentId().equalsIgnoreCase(documentId))
+                .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "版本不存在"));
+        String newVersionId = Ids.hex16();
+        int versionNo = documentVersionRepository.maxVersionNo(documentId) + 1;
+        documentVersionRepository.insertRestore(newVersionId, documentId, versionNo,
+                source.getSourceObjectId(), AuthContext.require().userId(), source.getContentHash(),
+                "恢复自 v" + source.getVersionNo());
+        // 分块表按版本隔离：复制一份（PENDING）让新版本可预览；源对象不变，历史版本原样保留
+        chunkRepository.copyAsPending(source.getId(), newVersionId);
+        if (documentRepository.updateCurrentVersionCas(documentId, doc.getCurrentVersionId(), newVersionId) == 0) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT, "文档版本已变化，请刷新后重试");
+        }
+        String taskId = outboxEventRepository.publish("DOCUMENT_VERSION", newVersionId,
+                "DOCUMENT_EMBED_REQUESTED",
+                Map.of("schemaVersion", 1, "documentId", documentId, "versionId", newVersionId));
+        auditService.record("VERSION_RESTORED", "DOCUMENT", doc.getId(), doc.getId(), "200",
+                Map.of("versionId", newVersionId, "sourceVersionId", source.getId(),
+                        "versionNo", versionNo, "taskId", taskId));
+        return new RestoredVersion(newVersionId, versionNo);
     }
 
     /** owner 校验：非本人或不存在一律 40401，与详情一致不泄露存在性。 */

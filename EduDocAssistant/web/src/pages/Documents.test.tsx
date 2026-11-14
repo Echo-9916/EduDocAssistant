@@ -11,15 +11,18 @@ vi.mock('../api/documents', () => ({
   restoreDocument: vi.fn(),
   reparseDocument: vi.fn(),
   listDocumentVersions: vi.fn(),
+  restoreDocumentVersion: vi.fn(),
 }))
+vi.mock('../api/ai', () => ({ getPreview: vi.fn() }))
 vi.mock('./DocumentUploadModal', () => ({ default: () => <div data-testid="upload-modal" /> }))
 vi.mock('./ConversionModal', () => ({ default: () => <div data-testid="conv-modal" /> }))
 vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: null }) }))
 vi.mock('./DocumentDetailDrawer', () => ({ default: () => <div data-testid="detail-drawer" /> }))
 
-import { listCourses, listDocumentVersions, listDocuments, reparseDocument, restoreDocument } from '../api/documents'
+import { listCourses, listDocumentVersions, listDocuments, reparseDocument, restoreDocument, restoreDocumentVersion } from '../api/documents'
+import { getPreview } from '../api/ai'
 import Documents from './Documents'
-import type { DocumentSummary } from '../api/documents'
+import type { DocumentSummary, DocumentVersionRow } from '../api/documents'
 
 function row(over: Partial<DocumentSummary> = {}): DocumentSummary {
   return {
@@ -127,7 +130,46 @@ describe('Documents', () => {
     expect(await screen.findByText('当前')).toBeTruthy()
     expect(screen.getByText('一键修复')).toBeTruthy()
     expect(screen.getByRole('button', { name: '下载' })).toBeTruthy()
-    expect(screen.getByText(/回滚到历史版本随/)).toBeTruthy()
+    expect(screen.getByText(/恢复会复制为新版本/)).toBeTruthy()
+  })
+
+  it('历史版本可恢复：调用恢复接口并刷新版本链', async () => {
+    const versions: DocumentVersionRow[] = [
+      { versionId: 'V2', versionNo: 2, versionType: 'EDIT', createTime: '2026-11-09T10:00:00',
+        changeSummary: '一键修复', downloadUrl: null, current: true },
+      { versionId: 'V1', versionNo: 1, versionType: 'UPLOAD', createTime: '2026-11-09T09:00:00',
+        changeSummary: null, downloadUrl: null, current: false },
+    ]
+    vi.mocked(listDocumentVersions).mockResolvedValue(versions)
+    vi.mocked(restoreDocumentVersion).mockResolvedValue({ versionId: 'V3', versionNo: 3 })
+    render(<Documents role="STUDENT" />)
+    fireEvent.click(await screen.findByText('版本', { selector: 'a' }))
+    fireEvent.click(await screen.findByText('恢复'))
+    fireEvent.click(await screen.findByText('确认恢复'))
+    await waitFor(() => expect(restoreDocumentVersion).toHaveBeenCalledWith('D1', 'V1'))
+    await waitFor(() => expect(listDocumentVersions).toHaveBeenCalledTimes(2))
+  })
+
+  it('历史版本对比：两版文本走 preview 并渲染行级增删', async () => {
+    vi.mocked(listDocumentVersions).mockResolvedValue([
+      { versionId: 'V2', versionNo: 2, versionType: 'EDIT', createTime: '2026-11-09T10:00:00',
+        changeSummary: null, downloadUrl: null, current: true },
+      { versionId: 'V1', versionNo: 1, versionType: 'UPLOAD', createTime: '2026-11-09T09:00:00',
+        changeSummary: null, downloadUrl: null, current: false },
+    ])
+    const preview = (text: string, versionId: string) => ({
+      documentId: 'D1', versionId, versionNo: 1, vectorReady: true,
+      blocks: [{ chunkId: 'C1', chunkNo: 1, headingPath: null, pageNo: 1, charStart: 0,
+        charEnd: text.length - 1, text }],
+    })
+    vi.mocked(getPreview).mockImplementation(async (_id: string, versionId?: string) =>
+      versionId === 'V1' ? preview('旧版本内容', 'V1') : preview('当前版本内容', 'V2'))
+    render(<Documents role="STUDENT" />)
+    fireEvent.click(await screen.findByText('版本', { selector: 'a' }))
+    fireEvent.click(await screen.findByText('对比'))
+    expect(await screen.findByText(/版本对比/)).toBeTruthy()
+    expect(await screen.findByText(/旧版本内容/)).toBeTruthy()
+    expect(await screen.findByText(/当前版本内容/)).toBeTruthy()
   })
 
   it('非 READY 状态行同样有版本入口；接口失败给干净 Alert', async () => {

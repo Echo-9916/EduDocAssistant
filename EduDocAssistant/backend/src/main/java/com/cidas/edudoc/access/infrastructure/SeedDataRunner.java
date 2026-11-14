@@ -73,6 +73,7 @@ public class SeedDataRunner implements ApplicationRunner {
         seedCourses();
         seedCoursework();
         seedDemoSubmissions();
+        seedVersionCompareDemo();
         seedAiModelProfiles();
     }
 
@@ -304,6 +305,85 @@ public class SeedDataRunner implements ApplicationRunner {
         jdbcTemplate.update("UPDATE edudoc_document SET current_version_id = HEXTORAW(?) WHERE id = HEXTORAW(?)",
                 versionIdHex, documentIdHex);
         return documentIdHex;
+    }
+
+    /**
+     * 版本对比演示文档：v1 原文、v2 修订稿（改标题、改内容、删一段、加一段），
+     * 两个版本的分块直接写库并标 READY，不依赖解析/向量化 Worker。按 owner+title 幂等。
+     */
+    void seedVersionCompareDemo() {
+        String title = "课程设计报告（演示：版本对比）";
+        List<String> existing = jdbcTemplate.queryForList(
+                "SELECT RAWTOHEX(d.id) FROM edudoc_document d JOIN edudoc_user u ON u.id = d.owner_id "
+                        + "WHERE u.username = 'student' AND d.title = ?", String.class, title);
+        if (!existing.isEmpty()) {
+            log.info("版本对比演示文档已存在，跳过：{}", existing.get(0));
+            return;
+        }
+        String ownerIdHex = queryUserId("student");
+        String courseIdHex = queryCourseIdHex("CS101", "2026-FALL");
+        String v1Object = ensureDemoOssObject("seed/version-compare/v1.txt");
+        String v2Object = ensureDemoOssObject("seed/version-compare/v2.txt");
+        String documentId = Ids.hex16();
+        String v1 = Ids.hex16();
+        String v2 = Ids.hex16();
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_document (id, course_id, owner_id, title, doc_type, status, current_version_id) "
+                        + "VALUES (HEXTORAW(?), HEXTORAW(?), HEXTORAW(?), ?, 'REPORT', 'READY', HEXTORAW(?))",
+                documentId, courseIdHex, ownerIdHex, title, v2);
+        insertDemoVersion(v1, documentId, 1, "UPLOAD", v1Object, ownerIdHex, "初稿", "demo-version-v1");
+        insertDemoVersion(v2, documentId, 2, "EDIT", v2Object, ownerIdHex,
+                "修订稿：改标题、删减后续计划、新增版本恢复说明", "demo-version-v2");
+        insertDemoChunks(v1, List.of(
+                "一、项目概述",
+                "本项目基于 React 与 Spring Boot 实现校园文档辅助系统，面向学生与教师提供文档上传、智能摘要与作业提交能力。",
+                "后续计划：补充协作编辑与导出能力，并在下一阶段接入消息通知。",
+                "二、总结\n文档接入链路已经稳定，作业提交与批改可以完整演示。"));
+        insertDemoChunks(v2, List.of(
+                "一、项目背景",
+                "本项目基于 React 18 与 Spring Boot 3 实现校园文档辅助系统，面向学生与教师提供文档上传、智能摘要、作业提交与批改统计能力。",
+                "新增：版本历史支持恢复与文本对比，恢复不会覆盖历史版本。",
+                "二、总结\n文档接入、作业链路与版本恢复均已稳定，可以完整演示。"));
+        log.info("版本对比演示文档已创建：{}（文档 {}，v1 {}，v2 {}）", title, documentId, v1, v2);
+    }
+
+    private String ensureDemoOssObject(String objectKey) {
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_oss_object (id, bucket_name, region, object_key, content_hash, size_bytes, "
+                        + "mime_type, encryption_type, object_role) "
+                        + "SELECT HEXTORAW(?), 'cidas-demo', 'local', ?, ?, 1024, 'text/plain', 'SSE-S3', 'ORIGINAL' "
+                        + "FROM dual WHERE NOT EXISTS "
+                        + "(SELECT 1 FROM edudoc_oss_object WHERE bucket_name = 'cidas-demo' AND object_key = ?)",
+                Ids.hex16(), objectKey, "demo-" + objectKey, objectKey);
+        return jdbcTemplate.queryForObject(
+                "SELECT RAWTOHEX(id) FROM edudoc_oss_object WHERE bucket_name = 'cidas-demo' AND object_key = ?",
+                String.class, objectKey);
+    }
+
+    private void insertDemoVersion(String versionIdHex, String documentIdHex, int versionNo, String versionType,
+                                   String objectIdHex, String editorIdHex, String changeSummary, String contentHash) {
+        jdbcTemplate.update(
+                "INSERT INTO edudoc_document_version (id, document_id, version_no, version_type, source_object_id, "
+                        + "editor_id, change_summary, content_hash, version_status) "
+                        + "VALUES (HEXTORAW(?), HEXTORAW(?), ?, ?, HEXTORAW(?), HEXTORAW(?), ?, ?, 'A')",
+                versionIdHex, documentIdHex, versionNo, versionType, objectIdHex, editorIdHex,
+                changeSummary, contentHash);
+    }
+
+    /** 分块按闭区间密铺：块文本含分隔换行，相邻 char_end + 1 = 后块 char_start。 */
+    private void insertDemoChunks(String versionIdHex, List<String> paragraphs) {
+        int start = 0;
+        for (int i = 0; i < paragraphs.size(); i++) {
+            String text = paragraphs.get(i) + (i < paragraphs.size() - 1 ? "\n" : "");
+            int end = start + text.length() - 1;
+            jdbcTemplate.update(
+                    "INSERT INTO edudoc_document_chunk (id, document_version_id, chunk_no, heading_path, page_no, "
+                            + "char_start, char_end, content_text, token_count, content_hash, index_status) "
+                            + "VALUES (HEXTORAW(?), HEXTORAW(?), ?, NULL, NULL, ?, ?, ?, ?, ?, 'READY')",
+                    Ids.hex16(), versionIdHex, i + 1, start, end, text,
+                    Math.max(1, text.length() / 2), "demo-" + versionIdHex + "-" + (i + 1));
+            start = end + 1;
+        }
     }
 
     private String findAssignmentIdHex(String courseCode, String title) {

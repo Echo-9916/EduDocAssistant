@@ -17,6 +17,7 @@ import type { PageResult, RoleCodeValue } from '../api/types'
 import DocumentUploadModal from './DocumentUploadModal'
 import DocumentDetailDrawer from './DocumentDetailDrawer'
 import VersionDrawer from './VersionDrawer'
+import ShareModal from './ShareModal'
 import ConversionModal, { directionOf } from './ConversionModal'
 import ConversionHistoryDrawer from './ConversionHistoryDrawer'
 
@@ -69,6 +70,8 @@ export default function Documents({ role }: Props) {
   const [detailId, setDetailId] = useState<string | null>(null)
   // 验收决议④：版本历史 Drawer（owner 可见）
   const [versionsDoc, setVersionsDoc] = useState<DocumentSummary | null>(null)
+  // 共享链接弹窗（owner 可见）
+  const [shareDoc, setShareDoc] = useState<DocumentSummary | null>(null)
   // D-13：批量转换（多选 + Modal）
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
   const [convertOpen, setConvertOpen] = useState(false)
@@ -265,6 +268,7 @@ export default function Documents({ role }: Props) {
               <Space>
                 <a onClick={() => setDetailId(row.id)}>详情</a>
                 <a onClick={() => setVersionsDoc(row)}>版本</a>
+                {view === 'mine' && <a onClick={() => setShareDoc(row)}>共享</a>}
                 {row.status === 'READY' && (
                   // 1106 P1-1：当前路由已是 .../documents，相对段只补 `{id}/view`
                   <a onClick={() => navigate(`${row.id}/view`)}>预览</a>
@@ -302,6 +306,8 @@ export default function Documents({ role }: Props) {
       <DocumentDetailDrawer docId={detailId} onClose={() => setDetailId(null)} onChanged={reload} />
       <VersionDrawer open={!!versionsDoc} documentId={versionsDoc?.id ?? null}
         documentTitle={versionsDoc?.title} onClose={() => setVersionsDoc(null)} onRestored={reload} />
+      <ShareModal open={!!shareDoc} documentId={shareDoc?.id ?? null}
+        documentTitle={shareDoc?.title} onClose={() => setShareDoc(null)} />
       <ConversionModal open={convertOpen}
         docs={data.items.filter((d) => selectedKeys.includes(d.id))}
         onClose={() => setConvertOpen(false)} />

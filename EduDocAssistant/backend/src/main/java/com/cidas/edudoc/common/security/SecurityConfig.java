@@ -22,7 +22,8 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/reset-password",
-                                "/api/v1/auth/access-request", "/api/smoke", "/actuator/health").permitAll()
+                                "/api/v1/auth/access-request", "/api/v1/public/shares/**",
+                                "/api/smoke", "/actuator/health").permitAll()
                         // 运维端点第二道闸：权限点之外还要角色匹配。
                         // AUDIT_READ 历史上也授给 TEACHER（需求表 3-2 本意是「所授课程日志」，该视图未实现），
                         // 只靠权限点会让教师 token 翻到全库审计，见 docs/tasks/06-待确认清单.md B1。

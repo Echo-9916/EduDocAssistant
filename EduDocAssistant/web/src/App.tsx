@@ -26,6 +26,7 @@ import CollabSection from './pages/shared/Collab'
 import MessagesSection from './pages/shared/Messages'
 import ProfileSection from './pages/shared/Profile'
 import Demo from './pages/Demo'
+import PublicShare from './pages/PublicShare'
 import { roleNav, rolePath } from './routes'
 import type { NavItem } from './routes'
 import { PermissionCode } from './api/types'
@@ -86,6 +87,7 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/403" element={<Forbidden />} />
           <Route path="/demo" element={<Demo />} />
+          <Route path="/s/:token" element={<PublicShare />} />
           <Route path="/" element={<Home />} />
           {ROLES.map(({ role, nav }) => (
             <Route

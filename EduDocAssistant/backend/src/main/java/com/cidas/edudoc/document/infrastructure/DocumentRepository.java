@@ -50,12 +50,13 @@ public class DocumentRepository {
     }
 
     public List<DocumentViewRow> page(String ownerId, String courseId, String docType, String status,
-                                      String keyword, long offset, int limit) {
-        return mapper.selectPage(ownerId, courseId, docType, status, keyword, offset, limit);
+                                      String keyword, boolean includeCollab, long offset, int limit) {
+        return mapper.selectPage(ownerId, courseId, docType, status, keyword, includeCollab, offset, limit);
     }
 
-    public long count(String ownerId, String courseId, String docType, String status, String keyword) {
-        return mapper.countPage(ownerId, courseId, docType, status, keyword);
+    public long count(String ownerId, String courseId, String docType, String status, String keyword,
+                      boolean includeCollab) {
+        return mapper.countPage(ownerId, courseId, docType, status, keyword, includeCollab);
     }
 
     public Optional<DocumentViewRow> detail(String documentIdHex) {

@@ -4,6 +4,7 @@ import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
+import com.cidas.edudoc.document.application.CollaborationService;
 import com.cidas.edudoc.document.application.DocumentPreviewService;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentChunkRepository;
@@ -24,6 +25,7 @@ public class DocumentPreviewServiceImpl implements DocumentPreviewService {
     private final DocumentRepository documentRepository;
     private final DocumentVersionRepository versionRepository;
     private final DocumentChunkRepository chunkRepository;
+    private final CollaborationService collaborationService;
 
     @Override
     public Preview preview(String documentId, String versionId) {
@@ -32,7 +34,8 @@ public class DocumentPreviewServiceImpl implements DocumentPreviewService {
         }
         Document doc = documentRepository.findById(documentId)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND));
-        if (!AuthContext.require().userId().equalsIgnoreCase(doc.getOwnerId())) {
+        String userId = AuthContext.require().userId();
+        if (!userId.equalsIgnoreCase(doc.getOwnerId()) && !collaborationService.isCollaborator(documentId, userId)) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在或不可见");
         }
         String targetVersion = versionId == null || versionId.isBlank()

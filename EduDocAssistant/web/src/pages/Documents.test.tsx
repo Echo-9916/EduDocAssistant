@@ -172,6 +172,19 @@ describe('Documents', () => {
     expect(await screen.findByText(/当前版本内容/)).toBeTruthy()
   })
 
+  it('协作文档显示「协作」标签与所有者，隐藏上传者专属操作', async () => {
+    vi.mocked(listDocuments).mockResolvedValue(page([
+      row({ id: 'D2', title: '协作课件', relation: 'COLLAB', ownerName: '李老师' }),
+    ]))
+    render(<Documents role="STUDENT" />)
+    expect(await screen.findByText('协作')).toBeTruthy()
+    expect(screen.getByText('李老师')).toBeTruthy()
+    expect(await screen.findByText('版本', { selector: 'a' })).toBeTruthy()
+    expect(screen.getByText('预览', { selector: 'a' })).toBeTruthy()
+    expect(screen.queryByText('删除', { selector: 'a' })).toBeNull()
+    expect(screen.queryByText('共享', { selector: 'a' })).toBeNull()
+  })
+
   it('非 READY 状态行同样有版本入口；接口失败给干净 Alert', async () => {
     vi.mocked(listDocumentVersions).mockRejectedValue(new Error('boom'))
     render(<Documents role="STUDENT" />)

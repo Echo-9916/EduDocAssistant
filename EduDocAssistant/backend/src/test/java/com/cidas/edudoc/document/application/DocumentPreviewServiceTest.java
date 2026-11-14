@@ -4,6 +4,7 @@ import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
+import com.cidas.edudoc.document.application.CollaborationService;
 import com.cidas.edudoc.document.application.impl.DocumentPreviewServiceImpl;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentChunk;
@@ -35,8 +36,10 @@ class DocumentPreviewServiceTest {
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final DocumentVersionRepository versionRepository = mock(DocumentVersionRepository.class);
     private final DocumentChunkRepository chunkRepository = mock(DocumentChunkRepository.class);
+    private final CollaborationService collaborationService = mock(CollaborationService.class);
     private final DocumentPreviewService service =
-            new DocumentPreviewServiceImpl(documentRepository, versionRepository, chunkRepository);
+            new DocumentPreviewServiceImpl(documentRepository, versionRepository, chunkRepository,
+                    collaborationService);
 
     @BeforeEach
     void login() {

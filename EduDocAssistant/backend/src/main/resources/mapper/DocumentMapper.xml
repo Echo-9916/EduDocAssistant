@@ -45,7 +45,18 @@
     </update>
 
     <sql id="listWhere">
-        WHERE d.owner_id = HEXTORAW(#{ownerId})
+        <!-- 我的文档 + 活跃协作文档；回收站模式由 service 传 includeCollab=false，保持原行为 -->
+        WHERE (d.owner_id = HEXTORAW(#{ownerId})
+        <if test="includeCollab">
+            OR EXISTS (
+                SELECT 1 FROM edudoc_collab_member m
+                JOIN edudoc_collab_session s ON s.id = m.collab_session_id
+                WHERE s.document_id = d.id
+                  AND m.user_id = HEXTORAW(#{ownerId})
+                  AND m.connection_status != 'REMOVED'
+            )
+        </if>
+        )
         <choose>
             <when test="status != null and status != ''">AND d.status = #{status}</when>
             <otherwise>AND d.status != 'DELETED'</otherwise>
@@ -62,12 +73,15 @@
                d.doc_type AS docType, d.status, RAWTOHEX(d.course_id) AS courseId,
                c.course_name AS courseName, o.size_bytes AS sizeBytes, o.mime_type AS mimeType,
                v.version_no AS versionNo,
+               u.display_name AS ownerName,
+               CASE WHEN d.owner_id = HEXTORAW(#{ownerId}) THEN 'OWNER' ELSE 'COLLAB' END AS relation,
                TO_CHAR(d.create_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS createTime,
                TO_CHAR(d.update_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS updateTime
         FROM edudoc_document d
         LEFT JOIN edudoc_document_version v ON v.id = d.current_version_id
         LEFT JOIN edudoc_oss_object o ON o.id = v.source_object_id
         LEFT JOIN edudoc_course c ON c.id = d.course_id
+        LEFT JOIN edudoc_user u ON u.id = d.owner_id
         <include refid="listWhere"/>
         ORDER BY d.update_time DESC
         OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY

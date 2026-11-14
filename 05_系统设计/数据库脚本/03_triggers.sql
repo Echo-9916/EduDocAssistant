@@ -233,6 +233,14 @@ BEGIN
 END;
 /
 
+CREATE OR REPLACE TRIGGER trg_document_annotation_bu
+BEFORE UPDATE ON edudoc_document_annotation
+FOR EACH ROW
+BEGIN
+    :NEW.update_time := SYSTIMESTAMP;
+END;
+/
+
 CREATE OR REPLACE TRIGGER trg_collab_session_bu
 BEFORE UPDATE ON edudoc_collab_session
 FOR EACH ROW

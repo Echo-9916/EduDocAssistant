@@ -32,12 +32,12 @@ public interface DocumentMapper {
 
     List<DocumentViewRow> selectPage(@Param("ownerId") String ownerId, @Param("courseId") String courseId,
                                      @Param("docType") String docType, @Param("status") String status,
-                                     @Param("keyword") String keyword, @Param("offset") long offset,
-                                     @Param("limit") int limit);
+                                     @Param("keyword") String keyword, @Param("includeCollab") boolean includeCollab,
+                                     @Param("offset") long offset, @Param("limit") int limit);
 
     long countPage(@Param("ownerId") String ownerId, @Param("courseId") String courseId,
                    @Param("docType") String docType, @Param("status") String status,
-                   @Param("keyword") String keyword);
+                   @Param("keyword") String keyword, @Param("includeCollab") boolean includeCollab);
 
     DocumentViewRow selectDetail(@Param("documentId") String documentIdHex);
 

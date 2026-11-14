@@ -12,6 +12,9 @@ public class DocumentViewRow {
 
     private String id;
     private String ownerId;
+    private String ownerName;
+    /** OWNER / COLLAB（列表查询投影；详情查询为空）。 */
+    private String relation;
     private String title;
     private String docType;
     private String status;

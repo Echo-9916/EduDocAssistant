@@ -22,32 +22,40 @@ import type { ColumnsType } from 'antd/es/table'
 import { AppButton, AppModal, AppTable } from '../../components'
 import DemoPage, { DemoCard } from '../DemoPage'
 import type { RoleCodeValue } from '../../api/types'
+import { getErrorMessage } from '../../api/http'
+import { listDocuments } from '../../api/documents'
+import type { DocumentSummary } from '../../api/documents'
 import {
-  COLLAB_CANDIDATES,
-  ONLINE_MEMBERS,
   addCollaborator,
+  deleteAnnotation,
+  heartbeatPresence,
+  listAnnotations,
+  listCollaborators,
+  listPresence,
+  removeCollaborator,
+  resolveAnnotation,
+} from '../../api/collaboration'
+import type {
+  AnnotationView,
+  CollabPermission,
+  CollaboratorView,
+  PresenceView,
+} from '../../api/collaboration'
+import {
   getShare,
   linkExpiryOptions,
   listActivities,
-  listComments,
   listVersions,
   ownerName,
-  removeCollaborator,
   restoreVersion,
-  setCollabPerm,
-  setCommentStatus,
   setLinkExpiry,
   setShareScope,
   shareScopeOptions,
   versionSourceColor,
   versionSourceLabel,
-  collabPermOptions,
 } from '../../mock/domain/collab'
 import type {
   Activity,
-  CollabPerm,
-  Collaborator,
-  DocComment,
   DocVersion,
   PermLog,
   ShareData,
@@ -55,93 +63,174 @@ import type {
   VersionSource,
 } from '../../mock/domain/collab'
 
-/** 协作与版本：协作编辑 / 版本记录 / 共享设置（学生 16/17/18/19/20/21、教师 15/16/17/18/19 屏）。 */
+const PERM_LABEL: Record<CollabPermission, string> = { VIEW: '只读', COMMENT: '可批注', EDIT: '可编辑' }
+const PERM_OPTIONS: { value: CollabPermission; label: string }[] = [
+  { value: 'VIEW', label: '只读' },
+  { value: 'COMMENT', label: '可批注' },
+  { value: 'EDIT', label: '可编辑' },
+]
+
+const fmt = (v: string | null) => (v ? new Date(v).toLocaleString('zh-CN', { hour12: false }) : '-')
+
+/** 协作与版本：批注/在线/协作者已接真实接口；版本记录与共享范围仍为演示数据。 */
 export default function Collab({ role }: { role: RoleCodeValue }) {
   const isTeacher = role === 'TEACHER'
   const owner = ownerName(role)
+  const [docs, setDocs] = useState<DocumentSummary[]>([])
+  const [docId, setDocId] = useState<string>()
+
+  useEffect(() => {
+    listDocuments({ status: 'READY', pageSize: 100 })
+      .then((r) => {
+        setDocs(r.items)
+        setDocId((current) => current ?? r.items[0]?.id)
+      })
+      .catch((e) => message.error(getErrorMessage(e)))
+  }, [])
+
   return (
     <DemoPage
+      live
+      mixedNote="版本记录与共享范围仍为演示数据"
       title="协作与版本"
       screens="对应原型：学生 16/17/18/19/20/21、教师 15/16/17/18/19"
       desc={
         isTeacher
           ? '与课程组成员共同维护教学文档，集中查看教师批注、编辑活动、版本链与成员权限。'
-          : '与小组共同维护《Web开发课程设计报告_张同学_v3.docx》，追溯版本链并管理访问范围。'
+          : '与小组共同维护课程文档，批注与在线状态实时同步。'
       }
     >
+      <Space wrap style={{ marginBottom: 12 }}>
+        <Typography.Text type="secondary">协作文档</Typography.Text>
+        <Select
+          style={{ width: 360 }}
+          value={docId}
+          placeholder="选择已解析完成的文档"
+          options={docs.map((d) => ({
+            value: d.id,
+            label: `${d.title}（v${d.versionNo ?? '?'}）${d.relation === 'COLLAB' ? ` · 协作 · ${d.ownerName ?? ''}` : ''}`,
+          }))}
+          onChange={setDocId}
+          notFoundContent="暂无已解析文档"
+        />
+      </Space>
       <Tabs
         defaultActiveKey="collab"
         items={[
-          { key: 'collab', label: '协作编辑', children: <CollabEditTab owner={owner} /> },
+          { key: 'collab', label: '协作编辑', children: <CollabEditTab documentId={docId} /> },
           { key: 'versions', label: '版本记录', children: <VersionsTab owner={owner} /> },
-          { key: 'share', label: '共享设置', children: <ShareTab owner={owner} /> },
+          { key: 'share', label: '共享设置', children: <ShareTab owner={owner} documentId={docId} /> },
         ]}
       />
     </DemoPage>
   )
 }
 
-/* ---------- 协作编辑 ---------- */
+/* ---------- 协作编辑：批注 + 在线成员（真实接口，3s 轮询） ---------- */
 
-function CollabEditTab({ owner }: { owner: string }) {
-  const [comments, setComments] = useState<DocComment[]>([])
+function CollabEditTab({ documentId }: { documentId?: string }) {
+  const [annotations, setAnnotations] = useState<AnnotationView[]>([])
+  const [presence, setPresence] = useState<PresenceView[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'RESOLVED'>('ALL')
+  const [error, setError] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'ALL' | 'O' | 'R'>('ALL')
 
-  const reload = () => {
-    Promise.all([listComments(), listActivities()]).then(([c, a]) => {
-      setComments(c)
-      setActivities(a)
+  useEffect(() => {
+    listActivities().then(setActivities)
+  }, [])
+
+  useEffect(() => {
+    if (!documentId) {
+      setAnnotations([])
+      setPresence([])
       setLoading(false)
-    })
-  }
-  useEffect(reload, [])
+      return
+    }
+    let alive = true
+    const tick = async () => {
+      try {
+        await heartbeatPresence(documentId).catch(() => undefined)
+        const [a, p] = await Promise.all([listAnnotations(documentId), listPresence(documentId)])
+        if (!alive) return
+        setAnnotations(a)
+        setPresence(p)
+        setError(null)
+      } catch (e) {
+        if (alive) setError(getErrorMessage(e))
+      } finally {
+        if (alive) setLoading(false)
+      }
+    }
+    setLoading(true)
+    void tick()
+    const timer = setInterval(tick, 3000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [documentId])
 
-  const open = comments.filter((c) => c.status === 'OPEN').length
-  const shown = comments.filter((c) => filter === 'ALL' || c.status === filter)
+  const open = annotations.filter((c) => c.status === 'O').length
+  const shown = annotations.filter((c) => filter === 'ALL' || c.status === filter)
 
-  const toggle = async (row: DocComment) => {
-    const next = row.status === 'OPEN' ? 'RESOLVED' : 'OPEN'
-    setComments(await setCommentStatus(row.id, next, owner))
-    setActivities(await listActivities())
-    message.success(next === 'RESOLVED' ? '批注已标记为已解决' : '批注已重新打开')
+  const toggle = async (row: AnnotationView) => {
+    try {
+      await resolveAnnotation(row.id, row.status === 'O')
+      message.success(row.status === 'O' ? '批注已标记为已解决' : '批注已重新打开')
+      if (documentId) setAnnotations(await listAnnotations(documentId))
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    }
   }
+
+  const remove = async (row: AnnotationView) => {
+    try {
+      await deleteAnnotation(row.id)
+      message.success('批注已删除')
+      if (documentId) setAnnotations(await listAnnotations(documentId))
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    }
+  }
+
+  if (!documentId) return <Empty description="请选择一份已解析文档后再查看批注与在线成员" />
 
   return (
     <Spin spinning={loading}>
+      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
       <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 12 }}
-        message="真实实时协同（在线光标、并发合并、自动保存）将随协作网关上线后接入；本页为门面演示，批注与活动流可交互。"
+        type="info" showIcon style={{ marginBottom: 12 }}
+        message="在线成员由 15 秒心跳维护，批注与在线列表每 3 秒刷新；正文与活动流仍为演示内容。"
       />
       <DemoCard
         title="在线成员"
-        extra={<Badge status="processing" text={`${ONLINE_MEMBERS.length} 人在线 · 自动保存已开启`} />}
+        extra={<Badge status="processing" text={`${presence.length} 人在线 · 自动保存已开启`} />}
       >
-        <Space size="large" wrap>
-          {ONLINE_MEMBERS.map((m) => (
-            <Space key={m.name} size={6}>
-              <Avatar style={{ background: m.color }}>{m.name.slice(0, 1)}</Avatar>
-              <span>{m.name}</span>
-            </Space>
-          ))}
-        </Space>
+        {presence.length === 0 ? (
+          <Typography.Text type="secondary">15 秒内暂无活跃成员</Typography.Text>
+        ) : (
+          <Space size="large" wrap>
+            {presence.map((m) => (
+              <Space key={m.userId} size={6}>
+                <Avatar style={{ background: m.role === 'TEACHER' ? '#6d28d9' : '#2563eb' }}>
+                  {m.displayName?.slice(0, 1) ?? '?'}
+                </Avatar>
+                <span>{m.displayName}</span>
+                {m.role && <Tag>{m.role === 'TEACHER' ? '教师' : m.role === 'STUDENT' ? '学生' : m.role}</Tag>}
+              </Space>
+            ))}
+          </Space>
+        )}
         <div
           style={{ marginTop: 12, border: '1px solid #f0f0f0', borderRadius: 8, padding: '16px 24px', background: '#fff' }}
         >
-          <Typography.Title level={5} style={{ marginTop: 0 }}>
-            3 系统设计
-          </Typography.Title>
+          <Space style={{ marginBottom: 6 }}>
+            <Tag>正文示意</Tag>
+            <Typography.Text type="secondary">真实正文与批注定位请打开文档预览页</Typography.Text>
+          </Space>
           <Typography.Paragraph>
             系统采用前后端分离结构。前端负责工作台、文档预览与交互状态；服务层承担权限验证、任务调度和格式处理。
-          </Typography.Paragraph>
-          <Typography.Paragraph>
-            文档数据与处理结果通过对象存储分层保存，原始文件、解析结果和导出文件分别归档，避免版本覆盖。
-            <Tag color="purple" style={{ marginLeft: 8 }}>
-              陈同学正在编辑
-            </Tag>
           </Typography.Paragraph>
         </div>
       </DemoCard>
@@ -152,9 +241,9 @@ function CollabEditTab({ owner }: { owner: string }) {
             value={filter}
             onChange={(v) => setFilter(v as typeof filter)}
             options={[
-              { label: `全部 ${comments.length}`, value: 'ALL' },
-              { label: `待处理 ${open}`, value: 'OPEN' },
-              { label: '已解决', value: 'RESOLVED' },
+              { label: `全部 ${annotations.length}`, value: 'ALL' },
+              { label: `待处理 ${open}`, value: 'O' },
+              { label: '已解决', value: 'R' },
             ]}
           />
         }
@@ -165,22 +254,33 @@ function CollabEditTab({ owner }: { owner: string }) {
           renderItem={(c) => (
             <List.Item
               actions={[
-                <AppButton key="locate" type="link" size="small" onClick={() => message.info(`已定位到「${c.anchor}」`)}>
-                  定位原文
+                <AppButton key="locate" type="link" size="small"
+                  onClick={() => message.info(`批注区间：字符 ${c.charStart}-${c.charEnd}`)}>
+                  定位区间
                 </AppButton>,
-                <AppButton key="toggle" type="link" size="small" onClick={() => toggle(c)}>
-                  {c.status === 'OPEN' ? '标记解决' : '重新打开'}
-                </AppButton>,
-              ]}
+                c.canResolve && (
+                  <AppButton key="toggle" type="link" size="small" onClick={() => toggle(c)}>
+                    {c.status === 'O' ? '标记解决' : '重新打开'}
+                  </AppButton>
+                ),
+                c.canDelete && (
+                  <Popconfirm key="del" title="删除该批注？" okText="删除" cancelText="取消"
+                    onConfirm={() => remove(c)}>
+                    <AppButton type="link" size="small" danger>删除</AppButton>
+                  </Popconfirm>
+                ),
+              ].filter(Boolean)}
             >
               <List.Item.Meta
                 title={
                   <Space wrap size={4}>
-                    <span>{c.author}</span>
-                    <Tag color={c.authorRole === '教师' ? 'purple' : 'blue'}>{c.authorRole}</Tag>
-                    <Tag>锚点：{c.anchor}</Tag>
-                    <Tag color={c.status === 'OPEN' ? 'orange' : 'green'}>{c.status === 'OPEN' ? '待处理' : '已解决'}</Tag>
-                    <Typography.Text type="secondary">{c.time}</Typography.Text>
+                    <span>{c.authorName}</span>
+                    <Tag>字符 {c.charStart}-{c.charEnd}</Tag>
+                    <Tag color={c.status === 'O' ? 'orange' : 'green'}>
+                      {c.status === 'O' ? '待处理' : '已解决'}
+                    </Tag>
+                    {c.resolvedByName && <Tag color="green">由 {c.resolvedByName} 解决</Tag>}
+                    <Typography.Text type="secondary">{fmt(c.createTime)}</Typography.Text>
                   </Space>
                 }
                 description={c.content}
@@ -189,7 +289,7 @@ function CollabEditTab({ owner }: { owner: string }) {
           )}
         />
       </DemoCard>
-      <DemoCard title="编辑活动流">
+      <DemoCard title="编辑活动流" extra={<Tag color="orange">演示数据</Tag>}>
         <Timeline
           items={activities.map((a) => ({
             children: (
@@ -206,7 +306,7 @@ function CollabEditTab({ owner }: { owner: string }) {
   )
 }
 
-/* ---------- 版本记录 / 对比 / 恢复 ---------- */
+/* ---------- 版本记录 / 对比 / 恢复（演示数据） ---------- */
 
 function VersionsTab({ owner }: { owner: string }) {
   const [rows, setRows] = useState<DocVersion[]>([])
@@ -287,6 +387,7 @@ function VersionsTab({ owner }: { owner: string }) {
         title="版本链"
         extra={
           <Space wrap>
+            <Tag color="orange">演示数据</Tag>
             <Select
               style={{ width: 130 }}
               value={source}
@@ -369,14 +470,16 @@ function VersionsTab({ owner }: { owner: string }) {
   )
 }
 
-/* ---------- 共享设置 / 协作者 ---------- */
+/* ---------- 共享设置：访问范围/链接仍演示；协作者接真实接口 ---------- */
 
-function ShareTab({ owner }: { owner: string }) {
+function ShareTab({ owner, documentId }: { owner: string; documentId?: string }) {
   const [data, setData] = useState<ShareData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [members, setMembers] = useState<CollaboratorView[]>([])
+  const [memberLoading, setMemberLoading] = useState(false)
   const [modal, setModal] = useState(false)
-  const [pick, setPick] = useState(COLLAB_CANDIDATES[0]?.name ?? '')
-  const [perm, setPerm] = useState<CollabPerm>('可编辑')
+  const [account, setAccount] = useState('')
+  const [perm, setPerm] = useState<CollabPermission>('COMMENT')
   const [inviteNote, setInviteNote] = useState('请协助完成系统设计章节')
 
   const reload = () => getShare().then((d) => {
@@ -387,71 +490,60 @@ function ShareTab({ owner }: { owner: string }) {
     reload()
   }, [])
 
-  const candidates = useMemo(
-    () => COLLAB_CANDIDATES.filter((c) => !data?.collaborators.some((x) => x.name === c.name)),
-    [data],
-  )
+  const loadMembers = () => {
+    if (!documentId) {
+      setMembers([])
+      return
+    }
+    setMemberLoading(true)
+    listCollaborators(documentId)
+      .then(setMembers)
+      .catch((e) => message.error(getErrorMessage(e)))
+      .finally(() => setMemberLoading(false))
+  }
+  useEffect(loadMembers, [documentId])
 
-  const memberColumns: ColumnsType<Collaborator> = [
+  const memberColumns: ColumnsType<CollaboratorView> = [
     {
       title: '成员',
-      dataIndex: 'name',
+      dataIndex: 'displayName',
       render: (v: string, row) => (
         <Space size={6}>
-          <Avatar size="small" style={{ background: '#2563eb' }}>
-            {v.slice(0, 1)}
-          </Avatar>
+          <Avatar size="small" style={{ background: '#2563eb' }}>{v?.slice(0, 1)}</Avatar>
           <span>{v}</span>
-          <Typography.Text type="secondary">{row.account}</Typography.Text>
+          <Typography.Text type="secondary">{row.username}</Typography.Text>
         </Space>
       ),
     },
-    { title: '角色', dataIndex: 'memberRole', width: 80, render: (v: string) => <Tag>{v}</Tag> },
     {
       title: '权限',
-      dataIndex: 'perm',
-      width: 130,
-      render: (v: Collaborator['perm'], row) =>
-        row.owner ? (
-          <Tag color="gold">所有者</Tag>
-        ) : (
-          <Select
-            size="small"
-            style={{ width: 100 }}
-            value={v as CollabPerm}
-            options={collabPermOptions.map((p) => ({ value: p, label: p }))}
-            onChange={async (p) => {
-              await setCollabPerm(row.id, p, owner)
-              await reload()
-              message.success(`已将 ${row.name} 的权限调整为「${p}」`)
-            }}
-          />
-        ),
+      dataIndex: 'permission',
+      width: 100,
+      render: (v: CollabPermission) => <Tag>{PERM_LABEL[v] ?? v}</Tag>,
     },
-    { title: '加入时间', dataIndex: 'time', width: 150 },
+    { title: '加入时间', dataIndex: 'joinedAt', width: 170, render: fmt },
     {
       title: '操作',
       width: 80,
-      render: (_, row) =>
-        row.owner ? (
-          <Typography.Text type="secondary">—</Typography.Text>
-        ) : (
-          <Popconfirm
-            title={`移除协作者 ${row.name}？`}
-            description="移除后对方立即失去文档访问权限，变更写入权限记录。"
-            okText="移除"
-            cancelText="取消"
-            onConfirm={async () => {
-              await removeCollaborator(row.id, owner)
-              await reload()
-              message.success(`已移除协作者 ${row.name}`)
-            }}
-          >
-            <AppButton type="link" size="small" danger>
-              移除
-            </AppButton>
-          </Popconfirm>
-        ),
+      render: (_, row) => (
+        <Popconfirm
+          title={`移除协作者 ${row.displayName}？`}
+          description="移除后对方立即失去文档读取与批注权限。"
+          okText="移除"
+          cancelText="取消"
+          onConfirm={async () => {
+            try {
+              await removeCollaborator(documentId!, row.userId)
+              message.success(`已移除协作者 ${row.displayName}`)
+              loadMembers()
+            } catch (e) {
+              message.error(getErrorMessage(e))
+            }
+          }}
+        >
+          <AppButton type="link" size="small" danger>移除</AppButton>
+        </Popconfirm>
+      ),
     },
   ]
 
@@ -465,14 +557,16 @@ function ShareTab({ owner }: { owner: string }) {
     <Spin spinning={loading}>
       {data && (
         <>
-          <DemoCard title="访问范围">
+          <DemoCard title="访问范围" extra={<Tag color="orange">演示数据</Tag>}>
+            <Alert type="info" showIcon style={{ marginBottom: 12 }}
+              message="访问范围与链接有效期仍为演示数据；真实共享链接请在文档列表「共享」中生成。" />
             <Radio.Group
               value={data.scope}
               onChange={async (e) => {
                 const scope = e.target.value as ShareScope
                 await setShareScope(scope, owner)
                 await reload()
-                message.success('共享范围已保存，变更已写入权限记录')
+                message.success('共享范围已保存（演示）')
               }}
             >
               <Space direction="vertical">
@@ -499,31 +593,22 @@ function ShareTab({ owner }: { owner: string }) {
                     onChange={async (v) => {
                       await setLinkExpiry(v, owner)
                       await reload()
-                      message.success(`链接有效期已调整为「${v}」，到期后自动失效`)
+                      message.success(`链接有效期已调整为「${v}」（演示）`)
                     }}
                   />
-                  <AppButton
-                    size="small"
-                    type="default"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(data.link).catch(() => undefined)
-                      message.success('链接已复制，仅校内账号登录后可访问')
-                    }}
-                  >
-                    复制链接
-                  </AppButton>
                 </Space>
               </div>
             )}
           </DemoCard>
           <DemoCard
-            title={`协作者（${data.collaborators.length} 人）`}
+            title={`协作者（${members.length} 人）`}
             extra={
               <AppButton
                 size="small"
-                disabled={candidates.length === 0}
+                disabled={!documentId}
                 onClick={() => {
-                  setPick(candidates[0]?.name ?? '')
+                  setAccount('')
+                  setPerm('COMMENT')
                   setModal(true)
                 }}
               >
@@ -531,15 +616,20 @@ function ShareTab({ owner }: { owner: string }) {
               </AppButton>
             }
           >
-            <AppTable<Collaborator>
-              rowKey="id"
+            <AppTable<CollaboratorView>
+              rowKey="userId"
               size="middle"
+              loading={memberLoading}
               pagination={false}
               columns={memberColumns}
-              dataSource={data.collaborators}
+              dataSource={members}
+              locale={{ emptyText: documentId ? '尚无协作者' : '请先选择协作文档' }}
             />
+            <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+              协作者拥有文档读取与批注权限；公开共享链接不支持批注。
+            </Typography.Text>
           </DemoCard>
-          <DemoCard title="权限变更记录">
+          <DemoCard title="权限变更记录" extra={<Tag color="orange">演示数据</Tag>}>
             <AppTable<PermLog>
               rowKey="id"
               size="small"
@@ -553,45 +643,40 @@ function ShareTab({ owner }: { owner: string }) {
       <AppModal
         open={modal}
         title="添加协作者"
-        okText="发送邀请"
+        okText="添加"
         cancelText="取消"
         onCancel={() => setModal(false)}
         onOk={async () => {
-          await addCollaborator(pick, perm, owner)
-          setModal(false)
-          await reload()
-          message.success(`已邀请 ${pick} 加入协作（${perm}）`)
+          if (!documentId || !account.trim()) {
+            message.warning('请填写协作者账号')
+            return
+          }
+          try {
+            await addCollaborator(documentId, { username: account.trim(), permission: perm })
+            setModal(false)
+            loadMembers()
+            message.success(`已添加协作者 ${account.trim()}（${PERM_LABEL[perm]}）`)
+          } catch (e) {
+            message.error(getErrorMessage(e))
+          }
         }}
       >
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           <div>
-            <Typography.Text type="secondary">选择成员（仅课程组成员可被邀请）</Typography.Text>
-            <Select
-              style={{ width: '100%', marginTop: 4 }}
-              value={pick || undefined}
-              placeholder="搜索姓名、学号或校园邮箱"
-              showSearch
-              options={candidates.map((c) => ({
-                value: c.name,
-                label: `${c.name}（${c.account}） · ${c.memberRole}`,
-              }))}
-              onChange={setPick}
-            />
+            <Typography.Text type="secondary">协作者账号（登录名 / 学号）</Typography.Text>
+            <Input style={{ marginTop: 4 }} value={account} placeholder="如 student 或 2023001"
+              onChange={(e) => setAccount(e.target.value)} />
           </div>
           <div>
             <Typography.Text type="secondary">协作权限</Typography.Text>
-            <Select
-              style={{ width: '100%', marginTop: 4 }}
-              value={perm}
-              options={collabPermOptions.map((p) => ({ value: p, label: p }))}
-              onChange={setPerm}
-            />
+            <Select style={{ width: '100%', marginTop: 4 }} value={perm} options={PERM_OPTIONS}
+              onChange={setPerm} />
           </div>
           <div>
             <Typography.Text type="secondary">邀请说明</Typography.Text>
             <Input style={{ marginTop: 4 }} value={inviteNote} onChange={(e) => setInviteNote(e.target.value)} />
           </div>
-          <Alert type="info" showIcon message="邀请会发送到消息中心；演示环境直接写入协作者列表与权限变更记录。" />
+          <Alert type="info" showIcon message="邀请说明仅用于演示；协作者添加后立即拥有读取与批注权限。" />
         </Space>
       </AppModal>
     </Spin>

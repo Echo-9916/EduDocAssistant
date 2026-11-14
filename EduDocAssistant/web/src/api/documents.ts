@@ -23,6 +23,10 @@ export interface DocumentSummary {
   versionNo: number | null
   createTime: string
   updateTime: string
+  /** 列表接口返回：文档所有者显示名（详情接口可能为空） */
+  ownerName?: string | null
+  /** 列表接口返回：OWNER=本人文档，COLLAB=当前用户是被协作方 */
+  relation?: 'OWNER' | 'COLLAB'
 }
 
 export interface DocumentDetail extends DocumentSummary {

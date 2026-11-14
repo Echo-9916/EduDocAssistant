@@ -24,7 +24,7 @@ public interface DocumentQueryService {
 
     record Summary(String id, String title, String docType, String status, String courseId,
                    String courseName, Long sizeBytes, String mimeType, Integer versionNo,
-                   String createTime, String updateTime) {
+                   String createTime, String updateTime, String ownerName, String relation) {
     }
 
     record VersionView(String versionId, int versionNo, String versionType, String createTime,

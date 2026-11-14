@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -47,8 +48,10 @@ class DocumentQueryServiceTest {
             mock(com.cidas.edudoc.document.infrastructure.OssObjectRepository.class);
     private final com.cidas.edudoc.infrastructure.oss.OssStorageAdapter ossStorageAdapter =
             mock(com.cidas.edudoc.infrastructure.oss.OssStorageAdapter.class);
+    private final com.cidas.edudoc.document.application.CollaborationService collaborationService =
+            mock(com.cidas.edudoc.document.application.CollaborationService.class);
     private final DocumentQueryServiceImpl service = new DocumentQueryServiceImpl(
-            repository, versionRepository, ossObjectRepository, ossStorageAdapter);
+            repository, versionRepository, ossObjectRepository, ossStorageAdapter, collaborationService);
 
     @BeforeEach
     void setUp() {
@@ -72,8 +75,8 @@ class DocumentQueryServiceTest {
 
     @Test
     void listIsScopedToOwnerWithDefaults() {
-        when(repository.count(eq("U1"), isNull(), isNull(), isNull(), isNull())).thenReturn(1L);
-        when(repository.page(eq("U1"), isNull(), isNull(), isNull(), isNull(), eq(0L), eq(20)))
+        when(repository.count(eq("U1"), isNull(), isNull(), isNull(), isNull(), eq(true))).thenReturn(1L);
+        when(repository.page(eq("U1"), isNull(), isNull(), isNull(), isNull(), eq(true), eq(0L), eq(20)))
                 .thenReturn(List.of(row("READY")));
 
         PageResult<Summary> result = service.list(new ListQuery(null, null, null, null, null, null));
@@ -85,14 +88,14 @@ class DocumentQueryServiceTest {
 
     @Test
     void pageSizeClampedAndOffsetComputed() {
-        when(repository.count(any(), any(), any(), any(), any())).thenReturn(30L);
-        when(repository.page(any(), any(), any(), any(), any(), anyLong(), anyInt())).thenReturn(List.of());
+        when(repository.count(any(), any(), any(), any(), any(), anyBoolean())).thenReturn(30L);
+        when(repository.page(any(), any(), any(), any(), any(), anyBoolean(), anyLong(), anyInt())).thenReturn(List.of());
 
         service.list(new ListQuery(null, null, null, null, 3, 500));
 
         ArgumentCaptor<Long> offset = ArgumentCaptor.forClass(Long.class);
         ArgumentCaptor<Integer> limit = ArgumentCaptor.forClass(Integer.class);
-        verify(repository).page(eq("U1"), isNull(), isNull(), isNull(), isNull(),
+        verify(repository).page(eq("U1"), isNull(), isNull(), isNull(), isNull(), eq(true),
                 offset.capture(), limit.capture());
         assertEquals(200L, offset.getValue());
         assertEquals(100, limit.getValue());
@@ -101,13 +104,13 @@ class DocumentQueryServiceTest {
     @Test
     void hugePageDoesNotOverflowToFirstPage() {
         // 1103 审查 S3：int 溢出曾使 page=MAX_VALUE 静默返回首页数据
-        when(repository.count(any(), any(), any(), any(), any())).thenReturn(30L);
-        when(repository.page(any(), any(), any(), any(), any(), anyLong(), anyInt())).thenReturn(List.of());
+        when(repository.count(any(), any(), any(), any(), any(), anyBoolean())).thenReturn(30L);
+        when(repository.page(any(), any(), any(), any(), any(), anyBoolean(), anyLong(), anyInt())).thenReturn(List.of());
 
         PageResult<Summary> result = service.list(new ListQuery(null, null, null, null, Integer.MAX_VALUE, 2));
 
         ArgumentCaptor<Long> offset = ArgumentCaptor.forClass(Long.class);
-        verify(repository).page(any(), any(), any(), any(), any(), offset.capture(), anyInt());
+        verify(repository).page(any(), any(), any(), any(), any(), anyBoolean(), offset.capture(), anyInt());
         assertEquals(4294967292L, offset.getValue());
         assertTrue(result.items().isEmpty());
     }
@@ -118,26 +121,26 @@ class DocumentQueryServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> service.list(new ListQuery("y", null, null, null, 1, 20)));
         assertEquals(ErrorCode.BAD_REQUEST, e.errorCode());
-        verify(repository, never()).count(any(), any(), any(), any(), any());
+        verify(repository, never()).count(any(), any(), any(), any(), any(), anyBoolean());
     }
 
     @Test
     void keywordSpecialCharsEscaped() {
-        when(repository.count(any(), any(), any(), any(), any())).thenReturn(0L);
+        when(repository.count(any(), any(), any(), any(), any(), anyBoolean())).thenReturn(0L);
 
         service.list(new ListQuery(null, null, null, "50%_x", 1, 20));
 
-        verify(repository).count(eq("U1"), isNull(), isNull(), isNull(), eq("50\\%\\_x"));
-        verify(repository, never()).page(any(), any(), any(), any(), any(), anyLong(), anyInt());
+        verify(repository).count(eq("U1"), isNull(), isNull(), isNull(), eq("50\\%\\_x"), eq(true));
+        verify(repository, never()).page(any(), any(), any(), any(), any(), anyBoolean(), anyLong(), anyInt());
     }
 
     @Test
     void explicitTrashStatusPassesThrough() {
-        when(repository.count(any(), any(), any(), any(), any())).thenReturn(0L);
+        when(repository.count(any(), any(), any(), any(), any(), anyBoolean())).thenReturn(0L);
 
         service.list(new ListQuery(null, null, "DELETED", null, 1, 20));
 
-        verify(repository).count(eq("U1"), isNull(), isNull(), eq("DELETED"), isNull());
+        verify(repository).count(eq("U1"), isNull(), isNull(), eq("DELETED"), isNull(), eq(false));
     }
 
     @Test

@@ -2,7 +2,7 @@
 // 「操作日志」已接 /ops/audit-events 真实接口（06 切片 1）；其余三段仍走 mock/domain/security.ts，
 // 写操作就地改内存数组，刷新回到种子状态。
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Card, Col, Descriptions, Drawer, Input, Row, Select, Space, Statistic, Switch, Tabs, Tag, Timeline, Typography, message } from 'antd'
+import { Alert, Card, Col, Descriptions, Drawer, Input, Row, Select, Space, Statistic, Switch, Tabs, Tag, Timeline, Tooltip, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { AppButton, AppModal, AppTable } from '../../components'
 import DemoPage, { DemoCard } from '../DemoPage'
@@ -387,9 +387,13 @@ function SecurityTab() {
           <AppButton type="link" size="small" onClick={() => setDetailId(row.id)}>
             详情
           </AppButton>
-          <AppButton type="link" size="small" danger disabled={row.status === 'CLOSED'} onClick={() => openFreeze(row)}>
-            冻结账号
-          </AppButton>
+          <Tooltip title="安全事件为演示数据，请到「用户与权限」目录冻结真实账号">
+            <span>
+              <AppButton type="link" size="small" danger disabled>
+                冻结账号
+              </AppButton>
+            </span>
+          </Tooltip>
         </Space>
       ),
     },
@@ -521,9 +525,13 @@ function SecurityTab() {
               <AppButton type="default" disabled={detail.status === 'CLOSED'} onClick={() => act(detail.id, 'CLOSED', `事件 ${detail.id} 已关闭`)}>
                 关闭事件
               </AppButton>
-              <AppButton danger disabled={detail.status === 'CLOSED'} onClick={() => openFreeze(detail)}>
-                冻结账号
-              </AppButton>
+              <Tooltip title="安全事件为演示数据，请到「用户与权限」目录冻结真实账号">
+                <span>
+                  <AppButton danger disabled>
+                    冻结账号
+                  </AppButton>
+                </span>
+              </Tooltip>
             </Space>
           </Space>
         )}

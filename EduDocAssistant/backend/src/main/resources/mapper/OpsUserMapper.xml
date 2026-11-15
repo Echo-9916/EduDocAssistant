@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.access.infrastructure.OpsUserMapper">
+
+    <sql id="userColumns">
+        RAWTOHEX(u.id) AS id, u.username AS username, u.display_name AS displayName,
+        (SELECT LISTAGG(r.role_code, ',') WITHIN GROUP (ORDER BY r.role_code)
+           FROM edudoc_user_role ur JOIN edudoc_role r ON r.id = ur.role_id
+          WHERE ur.user_id = u.id) AS role,
+        u.account_status AS accountStatus, u.department AS department,
+        CASE WHEN u.last_login_time IS NULL THEN NULL ELSE
+             TO_CHAR(SYS_EXTRACT_UTC(u.last_login_time), 'YYYY-MM-DD"T"HH24:MI:SS') || 'Z' END AS lastLoginTime
+    </sql>
+
+    <sql id="userWhere">
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+            AND (UPPER(u.username) LIKE '%' || UPPER(#{keyword}) || '%' ESCAPE '\'
+                 OR UPPER(u.display_name) LIKE '%' || UPPER(#{keyword}) || '%' ESCAPE '\')
+        </if>
+        <if test="role != null and role != ''">
+            AND EXISTS (SELECT 1 FROM edudoc_user_role ur2 JOIN edudoc_role r2 ON r2.id = ur2.role_id
+                        WHERE ur2.user_id = u.id AND r2.role_code = #{role})
+        </if>
+        <if test="status != null and status != ''">
+            AND u.account_status = #{status}
+        </if>
+    </sql>
+
+    <select id="selectPage" resultType="com.cidas.edudoc.access.infrastructure.OpsUserRow">
+        SELECT <include refid="userColumns"/>
+        FROM edudoc_user u
+        <include refid="userWhere"/>
+        ORDER BY u.username
+        OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM edudoc_user u
+        <include refid="userWhere"/>
+    </select>
+
+    <select id="selectById" resultType="com.cidas.edudoc.access.infrastructure.OpsUserRow">
+        SELECT <include refid="userColumns"/>
+        FROM edudoc_user u WHERE u.id = HEXTORAW(#{userIdHex})
+    </select>
+
+    <select id="countRole" resultType="int">
+        SELECT COUNT(*) FROM edudoc_user_role ur JOIN edudoc_role r ON r.id = ur.role_id
+        WHERE ur.user_id = HEXTORAW(#{userIdHex}) AND r.role_code = #{roleCode}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE edudoc_user SET account_status = #{newStatus}, update_time = SYSTIMESTAMP
+        WHERE id = HEXTORAW(#{userIdHex}) AND account_status = #{expected}
+    </update>
+
+</mapper>

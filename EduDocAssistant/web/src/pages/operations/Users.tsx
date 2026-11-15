@@ -1,17 +1,38 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Alert, Checkbox, Descriptions, Drawer, Form, Input, Select, Space, Tabs, Tag, Typography, message } from 'antd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Alert, Checkbox, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Tabs, Tag, Tooltip, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { AppButton, AppModal, AppTable, requiredRule } from '../../components'
 import DemoPage from '../DemoPage'
 import type { AccountStatusValue, PermissionCodeValue } from '../../api/types'
+import { useAuth } from '../../auth/AuthContext'
+import { getErrorMessage } from '../../api/http'
+import { freezeUser, listOpsUsers, unfreezeUser } from '../../api/opsUsers'
+import type { OpsUserView } from '../../api/opsUsers'
 import {
   ALL_PERMISSIONS, SCOPE_OPTIONS, accountStatusColor, accountStatusLabel, addRole, addUser, changeUserRole, conflictsOf,
-  listRoles, listUsers, permissionLabel, setRolePermission,
+  listRoles, permissionLabel, setRolePermission,
 } from '../../mock/domain/governance'
 import type { GovRole, GovUser, UserVisit } from '../../mock/domain/governance'
 
 const roleTagColor = (code: string) =>
   code === 'STUDENT' ? 'green' : code === 'TEACHER' ? 'blue' : code === 'OPS' ? 'purple' : 'gold'
+
+/** 真实用户行 → 现有详情/角色弹窗使用的 GovUser 形状（详情中的访问记录等仍为演示占位）。 */
+const toGovUser = (u: OpsUserView): GovUser => ({
+  id: u.id,
+  accountNo: u.username,
+  name: u.displayName,
+  roleCode: u.role?.split(',')[0] || 'STUDENT',
+  org: u.department ?? '未分配',
+  status: u.accountStatus,
+  identitySource: '统一身份认证',
+  courseScope: [],
+  lastLogin: u.lastLoginTime
+    ? new Date(u.lastLoginTime).toLocaleString('zh-CN', { hour12: false })
+    : '从未登录',
+  registeredAt: '-',
+  visits: [],
+})
 
 /** 用户与权限：用户目录 + 角色权限矩阵（对应原型：运维 07/08/09/10/11/12）。 */
 export default function OpsUsers() {
@@ -19,11 +40,15 @@ export default function OpsUsers() {
   const [roles, setRoles] = useState<GovRole[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('users')
-  // 07 屏筛选
+  // 07 屏筛选（用户列表走真实接口，服务端分页/筛选）
   const [roleFilter, setRoleFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState<'ALL' | AccountStatusValue>('ALL')
-  const [orgFilter, setOrgFilter] = useState('ALL')
   const [keyword, setKeyword] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
+  const [reloadKey, setReloadKey] = useState(0)
+  const { user: me } = useAuth()
   // 08/09/11/12 屏弹层
   const [detail, setDetail] = useState<GovUser | null>(null)
   const [roleTarget, setRoleTarget] = useState<GovUser | null>(null)
@@ -36,26 +61,42 @@ export default function OpsUsers() {
   const pickedPerms = (Form.useWatch('permissions', createRoleForm) as PermissionCodeValue[] | undefined) ?? []
 
   useEffect(() => {
-    Promise.all([listUsers(), listRoles()]).then(([u, r]) => {
-      setUsers(u)
-      setRoles(r)
-      setLoading(false)
-    })
+    listRoles().then(setRoles)
   }, [])
 
+  // 用户目录接真：keyword/role/status/page 全部交给后端
+  useEffect(() => {
+    setLoading(true)
+    listOpsUsers({
+      keyword: keyword.trim() || undefined,
+      role: roleFilter === 'ALL' ? undefined : roleFilter,
+      status: statusFilter === 'ALL' ? undefined : statusFilter,
+      page,
+      pageSize,
+    })
+      .then((r) => {
+        setUsers(r.items.map(toGovUser))
+        setTotal(r.total)
+      })
+      .catch((e) => message.error(getErrorMessage(e)))
+      .finally(() => setLoading(false))
+  }, [keyword, roleFilter, statusFilter, page, pageSize, reloadKey])
+
+  const reload = useCallback(() => setReloadKey((k) => k + 1), [])
   const roleName = (code: string) => roles.find((r) => r.code === code)?.name ?? code
   const permsOf = (code: string | undefined) => roles.find((r) => r.code === code)?.permissions ?? []
+  const data = users
 
-  const data = useMemo(
-    () =>
-      users
-        .filter((u) => roleFilter === 'ALL' || u.roleCode === roleFilter)
-        .filter((u) => statusFilter === 'ALL' || u.status === statusFilter)
-        .filter((u) => orgFilter === 'ALL' || u.org === orgFilter)
-        .filter((u) => !keyword || u.name.includes(keyword) || u.accountNo.includes(keyword)),
-    [users, roleFilter, statusFilter, orgFilter, keyword],
-  )
-  const orgs = useMemo(() => [...new Set(users.map((u) => u.org))], [users])
+  const changeStatus = async (row: GovUser, freeze: boolean) => {
+    try {
+      if (freeze) await freezeUser(row.id)
+      else await unfreezeUser(row.id)
+      message.success(freeze ? `已冻结账号 ${row.name}` : `已解冻账号 ${row.name}`)
+      reload()
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    }
+  }
   /** 10 屏：矩阵中命中互斥对的角色。 */
   const matrixConflicts = roles.flatMap((r) => conflictsOf(r.permissions).map((c) => ({ role: r, ...c })))
 
@@ -114,13 +155,39 @@ export default function OpsUsers() {
     { title: '课程范围', width: 90, render: (_, u) => `${u.courseScope.length} 门` },
     { title: '最近登录', dataIndex: 'lastLogin', width: 150 },
     {
-      title: '操作', width: 150,
-      render: (_, row) => (
-        <Space size={0}>
-          <AppButton type="link" size="small" onClick={() => setDetail(row)}>详情</AppButton>
-          <AppButton type="link" size="small" onClick={() => setRoleTarget(row)}>变更角色</AppButton>
-        </Space>
-      ),
+      title: '操作', width: 250,
+      render: (_, row) => {
+        const isOps = row.roleCode === 'OPS'
+        const isSelf = row.accountNo === me?.username
+        const blocked = isOps || isSelf
+        const locked = row.status === 'L'
+        const actionable = row.status === 'A' || row.status === 'L'
+        const tip = blocked
+          ? (isOps ? '不能冻结或解冻运维账号' : '不能操作当前登录账号')
+          : (!actionable ? '仅正常或已冻结账号可操作' : '')
+        return (
+          <Space size={0}>
+            <AppButton type="link" size="small" onClick={() => setDetail(row)}>详情</AppButton>
+            <AppButton type="link" size="small" onClick={() => setRoleTarget(row)}>变更角色</AppButton>
+            <Tooltip title={tip}>
+              <span>
+                <Popconfirm
+                  title={locked ? `解冻 ${row.name}？` : `冻结 ${row.name}？`}
+                  description={locked ? '解冻后账号恢复登录。' : '冻结后该账号立即无法登录，已签发令牌到期前仍有效。'}
+                  okText={locked ? '解冻' : '冻结'}
+                  cancelText="取消"
+                  disabled={blocked || !actionable}
+                  onConfirm={() => changeStatus(row, !locked)}
+                >
+                  <AppButton type="link" size="small" danger={!locked} disabled={blocked || !actionable}>
+                    {locked ? '解冻' : '冻结'}
+                  </AppButton>
+                </Popconfirm>
+              </span>
+            </Tooltip>
+          </Space>
+        )
+      },
     },
   ]
 
@@ -180,21 +247,31 @@ export default function OpsUsers() {
             ...(Object.keys(accountStatusLabel) as AccountStatusValue[]).map((s) => ({ value: s, label: accountStatusLabel[s] })),
           ]}
         />
-        <Select
-          style={{ width: 190 }}
-          value={orgFilter}
-          onChange={setOrgFilter}
-          options={[{ value: 'ALL', label: '全部组织' }, ...orgs.map((o) => ({ value: o, label: o }))]}
-        />
         <Input.Search
           style={{ width: 220 }}
           placeholder="搜索姓名 / 工号 / 学号"
           allowClear
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
+          onSearch={() => setPage(1)}
         />
       </Space>
-      <AppTable<GovUser> rowKey="id" size="middle" loading={loading} columns={userColumns} dataSource={data} />
+      <AppTable<GovUser>
+        rowKey="id"
+        size="middle"
+        loading={loading}
+        columns={userColumns}
+        dataSource={data}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          onChange: (p, ps) => {
+            setPage(p)
+            setPageSize(ps)
+          },
+        }}
+      />
     </>
   )
 
@@ -237,6 +314,8 @@ export default function OpsUsers() {
 
   return (
     <DemoPage
+      live
+      mixedNote="新增用户、变更角色与角色权限矩阵仍为演示数据"
       title="用户与权限"
       screens="对应原型：运维 07/08/09/10/11/12"
       desc="管理教师、学生、课程组和运维账号，区分身份、角色、课程范围与职责冲突。"
@@ -246,11 +325,11 @@ export default function OpsUsers() {
         onChange={setTab}
         items={[
           { key: 'users', label: '用户目录', children: usersPane },
-          { key: 'roles', label: '角色权限矩阵', children: rolesPane },
+          { key: 'roles', label: '角色权限矩阵（演示）', children: rolesPane },
         ]}
         tabBarExtraContent={
           tab === 'users' ? (
-            <AppButton onClick={() => setAddOpen(true)}>添加用户</AppButton>
+            <Space><Tag color="orange">演示</Tag><AppButton onClick={() => setAddOpen(true)}>添加用户</AppButton></Space>
           ) : (
             <AppButton onClick={() => setCreateRoleOpen(true)}>新增角色</AppButton>
           )
@@ -258,7 +337,7 @@ export default function OpsUsers() {
       />
 
       {/* 08 屏：用户权限详情抽屉 */}
-      <Drawer open={!!detail} onClose={() => setDetail(null)} width={620} title={detail ? `用户权限详情 · ${detail.name}` : ''}>
+      <Drawer open={!!detail} onClose={() => setDetail(null)} width={620} title={detail ? `用户权限详情 · ${detail.name}（访问记录为演示）` : ''}>
         {detail && (
           <>
             <Descriptions column={2} size="small" bordered>
@@ -285,7 +364,7 @@ export default function OpsUsers() {
       {/* 12 屏：变更用户角色 */}
       <AppModal
         open={!!roleTarget}
-        title="变更用户角色"
+        title="变更用户角色（演示）"
         okText="确认变更"
         width={560}
         onOk={onChangeRole}
@@ -326,7 +405,7 @@ export default function OpsUsers() {
       </AppModal>
 
       {/* 09 屏：添加用户 */}
-      <AppModal open={addOpen} title="添加用户" okText="创建并发送邀请" width={560} onOk={onAddUser} onCancel={() => setAddOpen(false)}>
+      <AppModal open={addOpen} title="添加用户（演示）" okText="创建并发送邀请" width={560} onOk={onAddUser} onCancel={() => setAddOpen(false)}>
         <Typography.Paragraph type="secondary">账号将通过校内身份服务完成绑定；新账号首次登录前不会获得任何课程或文档访问权限。</Typography.Paragraph>
         <Form form={addForm} layout="vertical">
           <Space.Compact block>

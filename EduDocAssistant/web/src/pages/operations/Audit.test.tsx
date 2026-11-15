@@ -96,20 +96,14 @@ describe('运维审计与安全（13/14/15/16/17/18/19/20 屏门面）', () => {
     expect(screen.getByText('策略引擎拒绝访问')).toBeTruthy()
   })
 
-  it('安全事件中心：冻结账号确认后事件关闭并提示已冻结（屏 18/19/20）', async () => {
+  it('安全事件中心的冻结入口已禁用（真实冻结在用户与权限）', async () => {
     render(<OpsAudit />)
     fireEvent.click(await screen.findByText('安全事件'))
-    // 屏 18：实时汇总卡 + 事件表
     expect(await screen.findByText('陈同学 · 2024017')).toBeTruthy()
     expect(screen.getByText('登录风险（实时）')).toBeTruthy()
-    expect(screen.getAllByText('待处置').length).toBeGreaterThan(0)
-
-    // 屏 20：冻结确认（影响范围 + 会话数 + 恢复方式）
-    fireEvent.click(screen.getAllByText('冻结账号')[0])
-    expect(await screen.findByText(/立即退出全部 2 个活动会话/)).toBeTruthy()
-    expect(screen.getByText('恢复方式')).toBeTruthy()
-    fireEvent.click(screen.getByText('确认冻结'))
-    await waitFor(() => expect(screen.getAllByText(/已冻结/).length).toBeGreaterThan(0))
+    const freezeButtons = screen.getAllByRole('button', { name: '冻结账号' })
+    expect(freezeButtons.length).toBeGreaterThan(0)
+    expect(freezeButtons.every((b) => (b as HTMLButtonElement).disabled)).toBeTruthy()
   })
 
   it('异常复核提交处置结论、权限冲突记录处理结论（屏 17/14）', async () => {

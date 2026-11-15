@@ -66,3 +66,16 @@ EduDocAssistant（CIDAS，校园智能文档辅助系统）的实现工作区。
 - `<area>` 取 `backend` / `web` / `ai` / `infra` / `fullstack`（跨端联调）。
 - 一个分支只做一件可验收的事；同一时刻只开与当前任务相关的分支。
 - 三个服务并行且 `main` 频繁无法通过验证时，再加 `develop` 集成分支；当前不设。
+
+## 踩坑清单
+
+- mapper XML 注释里不能出现 --，否则 mvn test 全绿但应用启动即崩。
+- 所有写接口都要带 Idempotency-Key：缺失返回 40001，重放返回 40902。curl 示例必须带 key。
+- 已认证请求里的参数校验错误用 40001，不要用 401 系，否则前端会清令牌硬跳登录页。
+- resultType=map 会丢弃值为 null 的列，前端要按缺省值处理。
+- 时间列统一 SYS_EXTRACT_UTC(...) || 'Z'，前端用本地化解析。
+- 主键用应用侧 Ids.hex16()，XML 里 HEXTORAW(#{id})；新表必须补 trg*<表>\_bu 触发器和 ix* 索引，加索引前先查 user_indexes 避免重复。
+- Controller 只做校验与封装，SQL 只写在 mapper XML，Service 先接口后 \*Impl，构造器注入。
+- 越权按「非本人资源返回 40401」处理，权限点不足返回 40301。
+- mvn clean 会被 8080 实例锁住，改用 rm -rf target/classes target/test-classes。
+- 完成后用 rm/SQL 清掉调试产生的垃圾数据行，不要把测试数据留在演示库里。

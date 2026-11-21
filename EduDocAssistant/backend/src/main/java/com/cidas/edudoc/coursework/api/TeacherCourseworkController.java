@@ -2,13 +2,18 @@ package com.cidas.edudoc.coursework.api;
 
 import com.cidas.edudoc.access.domain.PermissionCode;
 import com.cidas.edudoc.common.api.ApiResponse;
+import com.cidas.edudoc.common.api.CidasBusinessException;
+import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
 import com.cidas.edudoc.common.security.RequirePermission;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.AssignmentCreateCommand;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.AssignmentView;
+import com.cidas.edudoc.coursework.application.TeacherCourseworkService.AttachmentUpload;
+import com.cidas.edudoc.coursework.application.TeacherCourseworkService.AttachmentView;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.CourseCreateCommand;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.CourseQuery;
+import com.cidas.edudoc.coursework.application.TeacherCourseworkService.CourseStudentView;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.CourseView;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.CreatedAssignment;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.GradeCommand;
@@ -16,12 +21,14 @@ import com.cidas.edudoc.coursework.application.TeacherCourseworkService.GradeInp
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.GradeResult;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.ImportResult;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.MemberImportRow;
+import com.cidas.edudoc.coursework.application.TeacherCourseworkService.RemindResult;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.RubricInput;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.SubmissionView;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.UnsubmittedResult;
 import com.cidas.edudoc.coursework.application.TeacherCourseworkService.WorkbenchSummary;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,7 +38,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -76,6 +85,13 @@ public class TeacherCourseworkController {
         return ApiResponse.ok(teacherCourseworkService.importMembers(courseId, rows));
     }
 
+    /** 课程管理行展开：该课程全部活跃学生。 */
+    @GetMapping("/courses/{courseId}/students")
+    @RequirePermission(PermissionCode.ASSIGNMENT_MANAGE)
+    public ApiResponse<List<CourseStudentView>> courseStudents(@PathVariable("courseId") String courseId) {
+        return ApiResponse.ok(teacherCourseworkService.listCourseStudents(courseId));
+    }
+
     @GetMapping("/assignments")
     @RequirePermission(PermissionCode.ASSIGNMENT_MANAGE)
     public ApiResponse<PageResult<AssignmentView>> assignments(
@@ -97,7 +113,21 @@ public class TeacherCourseworkController {
         return ApiResponse.ok(teacherCourseworkService.createAssignment(new AssignmentCreateCommand(
                 request.courseId(), request.title(), request.requirement(), request.dueTime(),
                 request.allowLate(), request.submissionFormat(), request.requireFormatCheck(),
-                request.draft(), rubric)));
+                request.templateVersionId(), request.draft(), rubric, request.attachmentIds())));
+    }
+
+    /** 发布作业携带附件：先上传拿到 attachmentIds，发布确认时随 @PostMapping("/assignments") 绑定。 */
+    @PostMapping(value = "/assignment-attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission(PermissionCode.ASSIGNMENT_MANAGE)
+    public ApiResponse<AttachmentView> uploadAttachment(@RequestParam("file") MultipartFile file) {
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件读取失败");
+        }
+        return ApiResponse.ok(teacherCourseworkService.uploadAttachment(
+                new AttachmentUpload(file.getOriginalFilename(), file.getContentType(), file.getSize(), bytes)));
     }
 
     @GetMapping("/assignments/{assignmentId}/unsubmitted")
@@ -109,11 +139,21 @@ public class TeacherCourseworkController {
     @GetMapping("/submissions")
     @RequirePermission(PermissionCode.SUBMISSION_READ)
     public ApiResponse<PageResult<SubmissionView>> submissions(
+            @RequestParam(name = "courseId", required = false) String courseId,
             @RequestParam(name = "assignmentId", required = false) String assignmentId,
             @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "keyword", required = false) String keyword,
             @RequestParam(name = "page", required = false) Integer page,
             @RequestParam(name = "pageSize", required = false) Integer pageSize) {
-        return ApiResponse.ok(teacherCourseworkService.listSubmissions(assignmentId, status, page, pageSize));
+        return ApiResponse.ok(teacherCourseworkService.listSubmissions(
+                courseId, assignmentId, status, keyword, page, pageSize));
+    }
+
+    /** 向未提交学生发布提醒：写通知 outbox + 审计，同一天同一作业按学生去重。 */
+    @PostMapping("/assignments/{assignmentId}/reminders")
+    @RequirePermission(PermissionCode.ASSIGNMENT_MANAGE)
+    public ApiResponse<RemindResult> remind(@PathVariable("assignmentId") String assignmentId) {
+        return ApiResponse.ok(teacherCourseworkService.remindUnsubmitted(assignmentId));
     }
 
     @PutMapping("/submissions/{submissionId}/grade")
@@ -150,7 +190,8 @@ public class TeacherCourseworkController {
     /** 新建作业请求体：draft=true 存草稿，否则直接发布；dueTime 为 ISO-8601 带时区偏移串。 */
     public record AssignmentCreateRequest(String courseId, String title, String requirement, String dueTime,
                                           String allowLate, String submissionFormat, String requireFormatCheck,
-                                          Boolean draft, List<RubricInputRequest> rubric) {
+                                          String templateVersionId, Boolean draft, List<RubricInputRequest> rubric,
+                                          List<String> attachmentIds) {
     }
 
     public record RubricInputRequest(String name, Integer maxScore) {

@@ -75,7 +75,8 @@ public class DocumentQueryServiceImpl implements DocumentQueryService {
                 row.getCourseId(), row.getCourseName(), row.getSizeBytes(), row.getMimeType(),
                 row.getVersionNo(), row.getCurrentVersionId(), row.getContentHash(),
                 row.getChunkCount(), row.getCreateTime(), row.getUpdateTime(),
-                row.getDeletedAt(), row.getPurgeAt());
+                row.getDeletedAt(), row.getPurgeAt(),
+                ownerId.equalsIgnoreCase(row.getOwnerId()) ? "OWNER" : "COLLAB");
     }
 
     @Override

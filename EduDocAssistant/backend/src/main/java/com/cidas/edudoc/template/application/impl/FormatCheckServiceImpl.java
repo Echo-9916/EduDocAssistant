@@ -6,6 +6,7 @@ import com.cidas.edudoc.common.api.PageResult;
 import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.outbox.OutboxEventRepository;
+import com.cidas.edudoc.document.application.CollaborationService;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentVersion;
@@ -25,8 +26,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 格式校验编排（D-04）：模板选择口径（P4：文档绑定版本优先，否则课程当前已发布版本，J1：非 docx 落 ERROR）
- * → QUEUED + Outbox；查询复用文档可见性（非 owner 40401，同 02 口径）。
+ * 格式校验编排（D-04）：模板选择口径（P4：文档绑定版本优先，否则课程当前已发布版本）
+ * → QUEUED + Outbox；非 DOCX 版本由 worker 按结构临时生成 DOCX。查询复用文档可见性（非 owner 40401）。
  */
 @Service
 @RequiredArgsConstructor
@@ -39,6 +40,7 @@ public class FormatCheckServiceImpl implements FormatCheckService {
 
     private final DocumentRepository documentRepository;
     private final DocumentVersionRepository versionRepository;
+    private final CollaborationService collaborationService;
     private final OssObjectRepository ossObjectRepository;
     private final FormatCheckRepository checkRepository;
     private final FormatIssueRepository issueRepository;
@@ -50,7 +52,7 @@ public class FormatCheckServiceImpl implements FormatCheckService {
         if (!Ids.isHex16(documentId)) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文档 ID 格式不合法");
         }
-        Document document = loadOwnedDocument(documentId);
+        Document document = loadReadableDocument(documentId);
         if (!"READY".equals(document.getStatus())) {
             throw new CidasBusinessException(ErrorCode.CONFLICT, "文档尚未解析就绪");
         }
@@ -58,29 +60,18 @@ public class FormatCheckServiceImpl implements FormatCheckService {
         DocumentVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.CONFLICT, "文档当前版本不存在"));
 
+        String templateVersionId = resolveTemplate(document);
         OssObject object = version.getSourceObjectId() == null ? null
                 : ossObjectRepository.findById(version.getSourceObjectId()).orElse(null);
         boolean docx = object != null && DOCX_MIME.equals(object.getMimeType());
-
-        // 终审 Minor：非 docx 且无模板时提示两个事实，不只报模板误导 J1 语义
-        String templateVersionId;
-        try {
-            templateVersionId = resolveTemplate(document);
-        } catch (CidasBusinessException e) {
-            if (!docx) {
-                throw new CidasBusinessException(ErrorCode.CONFLICT,
-                        "文档不是 Word(.docx) 格式，且课程尚未发布模板，无法发起格式校验");
-            }
-            throw e;
-        }
-        if (!docx) {
-            // J1 拍板：非 docx 任务直接落 ERROR（模板版本必填，原因写摘要），不投事件
+        boolean textVersion = object != null && "text/plain".equals(object.getMimeType());
+        if (!docx && !textVersion) {
+            // PDF 等仍按 J1 立即落 ERROR；文本块编辑版本继续排队，由 worker 按结构生成 DOCX。
             String summary = "当前版本不是 Word(.docx) 文档，暂不支持排版格式校验（PDF 请提交原件并按模板自查）";
             FormatCheck error = queued(document, versionId, templateVersionId, "ERROR", summary);
             error.setId(checkRepository.insertError(error));
             return toView(error);
         }
-
         String requestedBy = AuthContext.require().userId();
         // 1106 审查 P3-1：文档行锁使「查活跃+插入」原子（并发双幂等键不再产两任务），锁随本事务释放
         documentRepository.lockForUpdate(document.getId());
@@ -107,8 +98,32 @@ public class FormatCheckServiceImpl implements FormatCheckService {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "校验任务 ID 格式不合法");
         }
         FormatCheck check = requireCheck(checkId);
-        loadOwnedDocument(check.getDocumentId());
+        loadReadableDocument(check.getDocumentId());
         return toView(check);
+    }
+
+    @Override
+    public String resolveTemplateVersionId(String documentId) {
+        if (!Ids.isHex16(documentId)) {
+            return null;
+        }
+        return documentRepository.findById(documentId)
+                .map(doc -> {
+                    try {
+                        return resolveTemplate(doc);
+                    } catch (CidasBusinessException e) {
+                        return null;
+                    }
+                })
+                .orElse(null);
+    }
+
+    @Override
+    public String latestCompletedCheckId(String documentVersionId) {
+        if (!Ids.isHex16(documentVersionId)) {
+            return null;
+        }
+        return checkRepository.latestCompletedByVersion(documentVersionId);
     }
 
     @Override
@@ -142,10 +157,15 @@ public class FormatCheckServiceImpl implements FormatCheckService {
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "校验任务不存在"));
     }
 
-    private Document loadOwnedDocument(String documentId) {
+    private Document loadReadableDocument(String documentId) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在"));
-        if (!AuthContext.require().userId().equalsIgnoreCase(document.getOwnerId())) {
+        if ("DELETED".equals(document.getStatus())) {
+            throw new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在");
+        }
+        String userId = AuthContext.require().userId();
+        if (!userId.equalsIgnoreCase(document.getOwnerId())
+                && !collaborationService.isCollaborator(documentId, userId)) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在");
         }
         return document;

@@ -52,9 +52,29 @@
     <select id="selectById" resultType="com.cidas.edudoc.document.infrastructure.DocumentVersion">
         SELECT RAWTOHEX(v.id) AS id, RAWTOHEX(v.document_id) AS documentId, v.version_no AS versionNo,
                v.version_type AS versionType, RAWTOHEX(v.source_object_id) AS sourceObjectId,
-               RAWTOHEX(v.editor_id) AS editorId, v.content_hash AS contentHash, v.version_status AS versionStatus
+               RAWTOHEX(v.editor_id) AS editorId, v.content_hash AS contentHash, v.version_status AS versionStatus,
+               v.structure_json AS structureJson
         FROM edudoc_document_version v
         WHERE v.id = HEXTORAW(#{idHex})
     </select>
+
+    <!-- 文本编辑版（润色/块编辑派生的 .txt）没有版式事实：格式校验回退到最近一个 .docx 源对象 -->
+    <select id="selectNearestDocxSourceObject" resultType="java.lang.String">
+        SELECT RAWTOHEX(v.source_object_id)
+        FROM edudoc_document_version v
+        JOIN edudoc_oss_object o ON o.id = v.source_object_id
+        WHERE v.document_id = (SELECT cur.document_id FROM edudoc_document_version cur
+                               WHERE cur.id = HEXTORAW(#{versionIdHex}))
+          AND v.version_no &lt;= (SELECT cur.version_no FROM edudoc_document_version cur
+                                WHERE cur.id = HEXTORAW(#{versionIdHex}))
+          AND o.mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ORDER BY v.version_no DESC
+        FETCH FIRST 1 ROWS ONLY
+    </select>
+
+    <update id="updateStructureJson">
+        UPDATE edudoc_document_version SET structure_json = #{json}
+        WHERE id = HEXTORAW(#{versionIdHex})
+    </update>
 
 </mapper>

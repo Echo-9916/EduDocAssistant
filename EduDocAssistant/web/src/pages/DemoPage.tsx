@@ -1,33 +1,21 @@
 import type { ReactNode } from 'react'
-import { Card, Space, Tag, Typography } from 'antd'
+import { Card, Space, Typography } from 'antd'
 
 type Props = {
   title: string
-  /** 对应原型屏号说明，如「覆盖学生端 16/17/18/19/20/21 屏」，让演示可逐屏对照原型。 */
-  screens?: string
   desc?: string
   extra?: ReactNode
-  /** 已接真实接口的页面：不挂「演示数据」标记。 */
-  live?: boolean
-  /** 页面内仍有未接后端的分区时，用这条替代笼统标记，写清哪几块是假的。 */
-  mixedNote?: string
   children: ReactNode
 }
 
-/**
- * 演示页外框：标题 + 覆盖屏号 + 「演示数据」标记。
- * 标记是刻意保留的——门面页在未接后端前要如实说明数据来源，评审时可逐屏对照 docs/prototype/screens。
- */
-export default function DemoPage({ title, screens, desc, extra, live, mixedNote, children }: Props) {
+/** 页面外框：标题 + 可选说明 + 扩展区。 */
+export default function DemoPage({ title, desc, extra, children }: Props) {
   return (
     <div>
       <Space align="baseline" wrap style={{ marginBottom: 8 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
           {title}
         </Typography.Title>
-        {!live && <Tag color="orange">演示数据 · 后端未接入</Tag>}
-        {live && mixedNote && <Tag color="orange">{mixedNote}</Tag>}
-        {screens && <Typography.Text type="secondary">{screens}</Typography.Text>}
       </Space>
       {desc && (
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
@@ -41,7 +29,7 @@ export default function DemoPage({ title, screens, desc, extra, live, mixedNote,
 }
 
 /** 分区卡片：统一间距与标题样式。 */
-export function DemoCard({ title, extra, children }: Omit<Props, 'screens' | 'desc'>) {
+export function DemoCard({ title, extra, children }: { title: string; extra?: ReactNode; children: ReactNode }) {
   return (
     <Card title={title} extra={extra} style={{ marginBottom: 16 }}>
       {children}

@@ -4,7 +4,8 @@ import { Alert, Input, List, Select, Space, Tag, Typography, message } from 'ant
 import { AppButton } from '../../components'
 import { getErrorMessage } from '../../api/http'
 import { askQa, createQaSession, listQaMessages, listQaSessions } from '../../api/ai'
-import type { PreviewBlock, QaCitation, QaMessageView, QaSessionView } from '../../api/ai'
+import type { PreviewBlock, QaCitation, QaMessageView, QaSessionView, StructureNode } from '../../api/ai'
+import { blockRefAt, fullText } from './structure'
 import type { HighlightFn } from './types'
 
 const MAX_QUESTION = 1000
@@ -12,19 +13,20 @@ const MAX_QUESTION = 1000
 interface Props {
   documentId: string
   blocks: PreviewBlock[]
+  structure?: StructureNode[]
   onHighlight: HighlightFn
   allowed: boolean
   indexing?: boolean
 }
 
-/** 引用 chip 文案：页码+片段前 40 字。 */
-export function citationLabel(c: QaCitation, index: number): string {
-  const page = c.pageNo != null ? `第${c.pageNo}页 ` : ''
+/** 引用 chip 文案：不再显示页码，定位落到结构化块。 */
+export function citationLabel(c: QaCitation, index: number, blockLabel?: string): string {
   const quote = (c.quoteText ?? '').replace(/\s+/g, ' ').slice(0, 40)
-  return `[${index + 1}] ${page}${quote}`
+  const place = blockLabel ? `${blockLabel.slice(0, 20)} ` : ''
+  return `[${index + 1}] ${place}${quote}`
 }
 
-export default function QaPanel({ documentId, blocks, onHighlight, allowed, indexing = false }: Props) {
+export default function QaPanel({ documentId, blocks, structure = [], onHighlight, allowed, indexing = false }: Props) {
   const [sessions, setSessions] = useState<QaSessionView[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<QaMessageView[]>([])
@@ -33,6 +35,13 @@ export default function QaPanel({ documentId, blocks, onHighlight, allowed, inde
   const listRef = useRef<HTMLDivElement>(null)
 
   const byChunk = useMemo(() => new Map(blocks.map((b) => [b.chunkId, b])), [blocks])
+  const full = useMemo(() => fullText(blocks), [blocks])
+  const refOfCitation = (c: QaCitation) => {
+    const block = byChunk.get(c.chunkId)
+    if (!block) return null
+    return blockRefAt(structure, full, c.charStart ?? block.charStart,
+      c.charEnd ?? block.charEnd, block)
+  }
 
   const loadMessages = useCallback((sid: string) => {
     listQaMessages(sid).then(setMessages).catch((e) => message.error(getErrorMessage(e)))
@@ -143,16 +152,18 @@ export default function QaPanel({ documentId, blocks, onHighlight, allowed, inde
                 {m.status === 'FAILED' && <Tag color="error">失败</Tag>}
                 {m.citations?.length > 0 && (
                   <div style={{ marginTop: 4 }}>
-                    {m.citations.map((c, i) => (
-                      <a key={i} style={{ marginRight: 8, fontSize: 12 }}
-                        onClick={() => {
-                          const block = byChunk.get(c.chunkId)
-                          if (!block) return message.warning('引用块不在当前版本')
-                          onHighlight(c.charStart ?? block.charStart, c.charEnd ?? block.charEnd)
-                        }}>
-                        {citationLabel(c, i)}
-                      </a>
-                    ))}
+                    {m.citations.map((c, i) => {
+                      const ref = refOfCitation(c)
+                      return (
+                        <a key={i} style={{ marginRight: 8, fontSize: 12 }} title={ref?.label}
+                          onClick={() => {
+                            if (!ref) return message.warning('引用块不在当前版本')
+                            onHighlight(ref.start, ref.end)
+                          }}>
+                          {citationLabel(c, i, ref?.node ? ref.label : undefined)}
+                        </a>
+                      )
+                    })}
                   </div>
                 )}
               </div>

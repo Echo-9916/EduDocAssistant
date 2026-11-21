@@ -12,6 +12,7 @@ import {
     RULE_TYPE_LABEL,
     SELECTOR_LABEL,
     changeTemplateStatus,
+    createManualVersion,
     createTemplate,
     createVersion,
     deleteTemplate,
@@ -275,6 +276,8 @@ export default function Templates() {
 
     const openEditor = useCallback(async (tpl: TemplateView) => {
         setEditing(tpl)
+        setVersions([])
+        setActiveVersionId(null)
         setRuleErrors([])
         setPending(null)
         setForkDraft(null)
@@ -305,7 +308,8 @@ export default function Templates() {
         [versions, activeVersionId],
     )
     const editable = !!activeVersion && !activeVersion.publishedAt
-    const inDraftMode = editable || !!pending || !!forkDraft
+    // 新模板还没有任何版本时也允许直接「添加规则」：保存时创建一个手工规则版本。
+    const inDraftMode = !activeVersion || editable || !!pending || !!forkDraft
 
     const enterFork = () => {
         if (!activeVersion) return
@@ -357,7 +361,11 @@ export default function Templates() {
     }
 
     const saveRules = async () => {
-        if (!editing || !activeVersionId || !editable) return
+        if (!editing || !inDraftMode) return
+        if (rules.length === 0) {
+            message.warning('请先添加至少一条规则')
+            return
+        }
         const errors = validateRules(rules)
         setRuleErrors(errors)
         if (errors.length) {
@@ -365,7 +373,17 @@ export default function Templates() {
             return
         }
         try {
-            await replaceRules(editing.id, activeVersionId, rules.map(({ id, ...rest }) => rest))
+            const payload = rules.map(({ id, ...rest }) => rest)
+            if (!activeVersionId) {
+                // 新模板无版本：手工规则直接生成首版，后续发布流程与上传版一致
+                const created = await createManualVersion(editing.id, payload)
+                message.success(`已创建手工规则版本 v${created.versionNo}，发布前学生端不可见`)
+                setVersions(await listVersions(editing.id))
+                setActiveVersionId(created.id)
+                reload()
+                return
+            }
+            await replaceRules(editing.id, activeVersionId, payload)
             message.success('规则已保存，发布前学生端不可见')
             setVersions(await listVersions(editing.id))
         } catch (e) {
@@ -425,11 +443,12 @@ export default function Templates() {
             return
         }
         try {
-            await createTemplate({ courseId: draft.courseId, templateName: draft.templateName.trim(), description: draft.description || undefined })
-            message.success('草稿已创建，请上传 .docx 模板文件解析规则')
+            const created = await createTemplate({ courseId: draft.courseId, templateName: draft.templateName.trim(), description: draft.description || undefined })
+            message.success('草稿已创建，可直接添加规则或上传 .docx 解析')
             setCreateOpen(false)
             setDraft({ courseId: '', templateName: '', description: '' })
             reload()
+            await openEditor(created)
         } catch (e) {
             message.error(getErrorMessage(e))
         }
@@ -556,7 +575,7 @@ export default function Templates() {
                         onClick={() => setPublishOpen(true)}>
                         发布确认
                     </AppButton>,
-                    <AppButton key="save" type="primary" disabled={!editable} onClick={() => void saveRules()}>保存规则</AppButton>,
+                    <AppButton key="save" type="primary" disabled={!inDraftMode} onClick={() => void saveRules()}>保存规则</AppButton>,
                     // 验收反馈：已发布版本不改原件——基于它编辑另存新版本
                     ...(activeVersion?.publishedAt
                         ? [<AppButton key="fork" onClick={enterFork}>基于此版本编辑另存新版本</AppButton>]
@@ -602,6 +621,10 @@ export default function Templates() {
                             />
                         </Space>
 
+                        {!activeVersion && !pending && (
+                            <Alert type="info" showIcon
+                                message="该模板还没有版本：可以点「添加规则」手工设定，保存时自动生成首个规则版本；也可上传 .docx 解析。" />
+                        )}
                         {pending && (
                             <Alert type="info" showIcon
                                 message={`预览草稿（未保存）：${pending.drafts.length} 条规则——可直接编辑，点「确认保存为新版本」才落版本；此期间不会修改任何已存在版本`}
@@ -705,7 +728,7 @@ export default function Templates() {
                         <p>适用范围：课程「{editing.courseName ?? '-'}」的全部学生</p>
                         <p>变更说明：{activeVersion.changeSummary ?? '（上传版本时未填写）'}</p>
                         <Alert type="warning" showIcon
-                            message="发布后将同步到关联课程学生端；历史已发布版本不受影响，文档绑定保持原版本（UT-13）。" />
+                            message="发布后将同步到关联课程学生端。" />
                     </Space>
                 )}
             </AppModal>

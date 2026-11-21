@@ -70,7 +70,7 @@ class ChunkingServiceTest {
                 block("b".repeat(60), "H1 / H2", 1),
                 block("c".repeat(30), "H1 / H2", 2));
 
-        List<Chunk> chunks = new ChunkingService(100).chunk(blocks);
+        List<Chunk> chunks = new ChunkingService(100).chunk(blocks).chunks();
 
         assertEquals(2, chunks.size());
         assertEquals("a".repeat(60), chunks.get(0).text());
@@ -92,7 +92,7 @@ class ChunkingServiceTest {
     void offsetsAreContinuousOverJoinedText() {
         List<TextBlock> blocks = List.of(block("hello", null, 0), block("world", null, 0));
 
-        List<Chunk> chunks = new ChunkingService(11).chunk(blocks);
+        List<Chunk> chunks = new ChunkingService(11).chunk(blocks).chunks();
 
         assertEquals(1, chunks.size());
         assertEquals(0, chunks.get(0).charStart());
@@ -108,7 +108,7 @@ class ChunkingServiceTest {
         String text = "x".repeat(250);
         List<TextBlock> blocks = List.of(block(text, "H", 1));
 
-        List<Chunk> chunks = new ChunkingService(100).chunk(blocks);
+        List<Chunk> chunks = new ChunkingService(100).chunk(blocks).chunks();
 
         assertEquals(3, chunks.size());
         assertEquals(100, chunks.get(0).text().length());
@@ -127,7 +127,7 @@ class ChunkingServiceTest {
         String text = "😀".repeat(80) + "𠮷".repeat(40);
         List<TextBlock> blocks = List.of(block(text, null, 1));
 
-        List<Chunk> chunks = new ChunkingService(100).chunk(blocks);
+        List<Chunk> chunks = new ChunkingService(100).chunk(blocks).chunks();
 
         assertEquals(2, chunks.size());
         chunks.forEach(ChunkingServiceTest::assertNoLoneSurrogates);
@@ -141,7 +141,7 @@ class ChunkingServiceTest {
         String text = "a".repeat(199) + "😀𠮷" + "b".repeat(100);
         List<TextBlock> blocks = List.of(block(text, "H", 2));
 
-        List<Chunk> chunks = new ChunkingService(100).chunk(blocks);
+        List<Chunk> chunks = new ChunkingService(100).chunk(blocks).chunks();
 
         chunks.forEach(ChunkingServiceTest::assertNoLoneSurrogates);
         assertTilingInvariants(blocks, chunks, 100);
@@ -151,7 +151,7 @@ class ChunkingServiceTest {
     void blankBlocksAreSkippedAndHashIsSha256Hex() {
         List<TextBlock> blocks = List.of(block("   ", "H", 1), block("real", "H", 1));
 
-        List<Chunk> chunks = new ChunkingService(100).chunk(blocks);
+        List<Chunk> chunks = new ChunkingService(100).chunk(blocks).chunks();
 
         assertEquals(1, chunks.size());
         assertEquals("real", chunks.get(0).text());
@@ -164,6 +164,63 @@ class ChunkingServiceTest {
 
     @Test
     void emptyInputYieldsNoChunks() {
-        assertTrue(new ChunkingService(100).chunk(List.of()).isEmpty());
+        assertTrue(new ChunkingService(100).chunk(List.of()).chunks().isEmpty());
+    }
+
+    // ---------- 结构层（与 chunk 同坐标系） ----------
+
+    @Test
+    void structureNodesMirrorBlocksAndAddHeadingMarkers() {
+        List<TextBlock> blocks = List.of(
+                new TextBlock("一、项目概述", null, 0, TextBlock.HEADING, 1, null, null, null, null),
+                block("正文第一段", "一、项目概述", 0),
+                block("正文第二段", "一、项目概述 / 1.1 背景", 0));
+
+        ChunkingResult result = new ChunkingService(100).chunk(blocks);
+
+        String full = joinedText(blocks);
+        List<StructureNode> ranged = result.nodes().stream().filter(n -> n.start() != null).toList();
+        assertEquals(3, ranged.size());
+        assertEquals(full.substring(ranged.get(0).start(), ranged.get(0).end() + 1), "一、项目概述");
+        assertEquals(full.substring(ranged.get(1).start(), ranged.get(1).end() + 1), "正文第一段");
+        assertEquals(full.substring(ranged.get(2).start(), ranged.get(2).end() + 1), "正文第二段");
+
+        List<StructureNode> markers = result.nodes().stream().filter(n -> n.start() == null).toList();
+        assertEquals(2, markers.size(), "两处 headingPath 变化各补一个标记节点");
+        assertEquals("一、项目概述", markers.get(0).text());
+        assertEquals(1, markers.get(0).level());
+        assertEquals(ranged.get(1).start(), markers.get(0).anchor());
+        assertEquals("1.1 背景", markers.get(1).text());
+        assertEquals(2, markers.get(1).level());
+        assertEquals(ranged.get(2).start(), markers.get(1).anchor());
+    }
+
+    @Test
+    void structureNodeSpansHardSplitChunks() {
+        String longText = "a".repeat(250);
+        List<TextBlock> blocks = List.of(block(longText, null, 0));
+
+        ChunkingResult result = new ChunkingService(100).chunk(blocks);
+
+        assertEquals(3, result.chunks().size(), "长段落按 100 字符硬切成 3 块");
+        StructureNode node = result.nodes().stream().filter(n -> n.start() != null).findFirst().orElseThrow();
+        assertEquals(0, node.start());
+        assertEquals(longText.length() - 1, node.end());
+        assertEquals(longText, joinedText(blocks).substring(node.start(), node.end() + 1));
+    }
+
+    @Test
+    void structureRangesLeaveOnlyJoinerBetweenBlocks() {
+        List<TextBlock> blocks = List.of(block("aaa", null, 0), block("bbb", null, 0));
+
+        ChunkingResult result = new ChunkingService(100).chunk(blocks);
+        String full = joinedText(blocks);
+        List<StructureNode> ranged = result.nodes().stream().filter(n -> n.start() != null).toList();
+
+        assertEquals(0, ranged.get(0).start());
+        assertEquals(2, ranged.get(0).end());
+        assertEquals(4, ranged.get(1).start(), "块间连接符归后一块但不属于任何节点");
+        assertEquals(6, ranged.get(1).end());
+        assertEquals("\n", full.substring(3, 4));
     }
 }

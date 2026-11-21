@@ -5,11 +5,18 @@ import com.cidas.edudoc.common.api.ApiResponse;
 import com.cidas.edudoc.common.api.PageResult;
 import com.cidas.edudoc.common.security.RequirePermission;
 import com.cidas.edudoc.coursework.application.StudentCourseworkService;
+import com.cidas.edudoc.coursework.application.StudentCourseworkService.AttachmentFile;
+import com.cidas.edudoc.coursework.application.StudentCourseworkService.AttachmentView;
+import com.cidas.edudoc.coursework.application.StudentCourseworkService.CreatedDocumentView;
 import com.cidas.edudoc.coursework.application.StudentCourseworkService.ListQuery;
 import com.cidas.edudoc.coursework.application.StudentCourseworkService.StudentAssignmentView;
 import com.cidas.edudoc.coursework.application.StudentCourseworkService.SubmissionResult;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,6 +25,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /** 学生侧作业端点（06 切片 1，Task 1-4 / 1-5）：我的作业列表与提交。 */
 @RestController
@@ -48,5 +58,35 @@ public class StudentCourseworkController {
     }
 
     public record SubmitRequest(String documentId) {
+    }
+
+    /** 作业附件列表：学生查看/下载教师随作业下发的附件。 */
+    @GetMapping("/assignments/{assignmentId}/attachments")
+    @RequirePermission(PermissionCode.SUBMISSION_SELF_READ)
+    public ApiResponse<List<AttachmentView>> attachments(@PathVariable("assignmentId") String assignmentId) {
+        return ApiResponse.ok(studentCourseworkService.listAttachments(assignmentId));
+    }
+
+    @GetMapping("/assignments/{assignmentId}/attachments/{attachmentId}/download")
+    @RequirePermission(PermissionCode.DOCUMENT_DOWNLOAD)
+    public ResponseEntity<byte[]> downloadAttachment(@PathVariable("assignmentId") String assignmentId,
+                                                     @PathVariable("attachmentId") String attachmentId) {
+        AttachmentFile file = studentCourseworkService.downloadAttachment(assignmentId, attachmentId);
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(file.fileName(), StandardCharsets.UTF_8).build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(file.bytes());
+    }
+
+    /** 在附件基础上编辑：复制附件为本人文档（绑定作业模板），随后可在预览页编辑并提交。 */
+    @PostMapping("/assignments/{assignmentId}/attachments/{attachmentId}/documents")
+    @ResponseStatus(HttpStatus.CREATED)
+    @RequirePermission(PermissionCode.DOCUMENT_CREATE)
+    public ApiResponse<CreatedDocumentView> createFromAttachment(
+            @PathVariable("assignmentId") String assignmentId,
+            @PathVariable("attachmentId") String attachmentId) {
+        return ApiResponse.ok(studentCourseworkService.createDocumentFromAttachment(assignmentId, attachmentId));
     }
 }

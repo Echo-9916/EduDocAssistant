@@ -9,8 +9,11 @@ import com.cidas.edudoc.ai.infrastructure.AiTaskRepository;
 import com.cidas.edudoc.ai.infrastructure.PolishResult;
 import com.cidas.edudoc.ai.infrastructure.PolishResultRepository;
 import com.cidas.edudoc.document.application.DocumentParseTxService;
+import com.cidas.edudoc.document.application.StructureJson;
 import com.cidas.edudoc.document.domain.Chunk;
+import com.cidas.edudoc.document.domain.ChunkingResult;
 import com.cidas.edudoc.document.domain.ChunkingService;
+import com.cidas.edudoc.document.domain.StructureNode;
 import com.cidas.edudoc.document.domain.TextBlock;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
@@ -23,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -72,7 +77,7 @@ public class PolishTxWriter {
     @Transactional
     public AppliedView applyVersion(OssObject derivedObject, Document doc, String editorId,
                                     String newText, String polishId, String decision, String acceptedText,
-                                    String replacedVersionId) {
+                                    String replacedVersionId, int editStart, int oldLength, int newLength) {
         int versionNo = versionRepository.maxVersionNo(doc.getId()) + 1;
         String versionId = Ids.hex16();
         ossObjectRepository.insert(derivedObject);
@@ -88,18 +93,65 @@ public class PolishTxWriter {
         if (!polishRepository.updateDecisionApplied(polishId, decision, acceptedText, replacedVersionId)) {
             throw new CidasBusinessException(ErrorCode.CONFLICT, "该润色结果已被处理");
         }
-        // 简化解析：段落即结构（按行成块），跳过 Tika；成功后同事务补发向量化事件
-        List<TextBlock> blocks = newText.lines()
-                .map(String::strip)
-                .filter(line -> !line.isEmpty())
-                .map(line -> new TextBlock(line, null, 0))
-                .toList();
-        List<Chunk> chunks = new ChunkingService(parseProperties.chunkSize()).chunk(blocks);
+        // 保留上一版结构层：仅替换文本，按编辑区间平移节点；标题/代码块/列表/表格不会退化为正文。
+        List<TextBlock> blocks = structurePreservingBlocks(replacedVersionId, newText,
+                editStart, oldLength, newLength);
+        ChunkingResult result = new ChunkingService(parseProperties.chunkSize()).chunk(blocks);
         // 审查修复 P2-4：同事务写 Success 即 READY，响应回真实状态而非硬编码 PARSING
-        boolean parsed = parseTxService.writeSuccess(doc.getId(), versionId, chunks);
+        boolean parsed = parseTxService.writeSuccess(doc.getId(), versionId, result.chunks(), result.nodes());
         auditService.record("POLISH_APPLIED", "DOCUMENT", doc.getId(), doc.getId(), "200",
                 java.util.Map.of("polishId", polishId, "decision", decision,
                         "versionId", versionId, "versionNo", versionNo));
         return new AppliedView(polishId, doc.getId(), versionId, versionNo, parsed ? "READY" : "PARSING");
+    }
+
+    /**
+     * 以被替换版本的结构层为骨架，把节点区间按 [editStart, editStart+oldLength) 的替换平移，
+     * 再从新全文切出块文本。没有结构层（老版本）才回退“一行一段”。
+     */
+    private List<TextBlock> structurePreservingBlocks(String versionId, String text,
+                                                      int editStart, int oldLength, int newLength) {
+        List<StructureNode> nodes = versionRepository.findById(versionId)
+                .map(v -> StructureJson.read(v.getStructureJson()))
+                .orElse(List.of());
+        if (nodes.stream().noneMatch(n -> n.start() != null && n.end() != null)) {
+            return text.lines().map(String::strip).filter(line -> !line.isEmpty())
+                    .map(line -> new TextBlock(line, null, 0)).toList();
+        }
+        int delta = newLength - oldLength;
+        int editEnd = editStart + oldLength - 1;
+        List<TextBlock> blocks = new ArrayList<>();
+        nodes.stream()
+                .filter(n -> n.start() != null && n.end() != null)
+                .sorted(Comparator.comparingInt(StructureNode::start).thenComparingInt(StructureNode::no))
+                .forEach(node -> {
+                    int start = node.start();
+                    int end = node.end();
+                    int newStart;
+                    int newEnd;
+                    if (end < editStart) {
+                        newStart = start;
+                        newEnd = end;
+                    } else if (start > editEnd) {
+                        newStart = start + delta;
+                        newEnd = end + delta;
+                    } else {
+                        newStart = Math.min(start, editStart);
+                        newEnd = end >= editEnd ? end + delta : editStart + newLength - 1;
+                    }
+                    newStart = Math.max(0, Math.min(newStart, text.length()));
+                    newEnd = Math.max(newStart - 1, Math.min(newEnd, text.length() - 1));
+                    String blockText = newEnd < newStart ? "" : text.substring(newStart, newEnd + 1);
+                    if (blockText.isBlank()) {
+                        return;
+                    }
+                    blocks.add(new TextBlock(blockText, node.headingPath(),
+                            node.pageNo() == null ? 0 : node.pageNo(), node.kind(), node.level(),
+                            node.ordinal(), node.tableNo(), node.row(), node.col(), node.lang()));
+                });
+        return blocks.isEmpty()
+                ? text.lines().map(String::strip).filter(line -> !line.isEmpty())
+                .map(line -> new TextBlock(line, null, 0)).toList()
+                : blocks;
     }
 }

@@ -11,17 +11,28 @@ import com.cidas.edudoc.common.security.UserPrincipal;
 import com.cidas.edudoc.coursework.application.StudentCourseworkService;
 import com.cidas.edudoc.coursework.domain.CourseworkRules;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRepository;
+import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.AssignmentAttachment;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.AssignmentStats;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.MemberAccount;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.OwnedDocument;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.StudentAssignment;
+import com.cidas.edudoc.document.application.DocumentProvisioningService.CreatedDocument;
+import com.cidas.edudoc.document.domain.DocumentType;
+import com.cidas.edudoc.document.domain.UploadSession;
+import com.cidas.edudoc.infrastructure.oss.OssProperties;
+import com.cidas.edudoc.infrastructure.oss.OssStorageAdapter;
 import com.cidas.edudoc.message.application.NotificationEvents;
+import com.cidas.edudoc.template.application.FormatCheckService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.MessageDigest;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -31,10 +42,17 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final String DOCX_MIME =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private static final long MAX_ATTACHMENT_BYTES = 20L * 1024 * 1024;
 
     private final CourseworkRepository courseworkRepository;
     private final AuditService auditService;
     private final OutboxEventRepository outboxEventRepository;
+    private final FormatCheckService formatCheckService;
+    private final OssStorageAdapter ossStorageAdapter;
+    private final OssProperties ossProperties;
+    private final CourseworkAttachmentTxWriter attachmentTxWriter;
 
     @Override
     public PageResult<StudentAssignmentView> listAssignments(ListQuery query) {
@@ -91,10 +109,11 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
                 assignment.getStatus(), assignment.getDueTime(),
                 "Y".equals(assignment.getAllowLate()), OffsetDateTime.now());
         long attemptNo = courseworkRepository.nextAttempt(assignmentId, studentId);
-        // format_check_id 传 null：提交前强制校验的同步阻断随校验结果回调/消息切片实现
-        //（06 计划：种子作业 require_format_check 为 N，演示不依赖）
+        // 方案 A：复用该文档版本最近一次已完成的格式校验（学生需在预览页先跑过校验）；
+        // 没有就跑不到结果，提交照常成功，教师侧显示「未校验」。
+        String formatCheckId = formatCheckService.latestCompletedCheckId(document.getVersionId());
         String submissionId = courseworkRepository.createSubmission(assignmentId, studentId, documentId,
-                document.getVersionId(), null, attemptNo, outcome.name());
+                document.getVersionId(), formatCheckId, attemptNo, outcome.name());
         auditService.record("SUBMIT_ASSIGNMENT", "SUBMISSION", submissionId, documentId, "200",
                 Map.of("assignmentId", assignmentId, "attemptNo", attemptNo, "status", outcome.name()));
         // 2-5 生产者①（设计 §4.1）：提交 → 该课 TEACHER 成员收 SUBMISSION 消息，
@@ -113,6 +132,105 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
         return new SubmissionResult(submissionId, attemptNo, outcome.name());
     }
 
+    // ---------- 作业附件 ----------
+
+    @Override
+    public List<AttachmentView> listAttachments(String assignmentId) {
+        AssignmentStats assignment = requireVisibleAssignment(assignmentId);
+        return courseworkRepository.listAttachments(assignment.getId()).stream()
+                .map(row -> new AttachmentView(row.getId(), row.getFileName(), row.getMimeType(),
+                        row.getSizeBytes()))
+                .toList();
+    }
+
+    @Override
+    public AttachmentFile downloadAttachment(String assignmentId, String attachmentId) {
+        requireVisibleAssignment(assignmentId);
+        if (!Ids.isHex16(attachmentId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件 ID 格式不合法");
+        }
+        AssignmentAttachment attachment = courseworkRepository.findAttachment(assignmentId, attachmentId);
+        if (attachment == null) {
+            throw new CidasBusinessException(ErrorCode.NOT_FOUND, "附件不存在");
+        }
+        byte[] bytes = ossStorageAdapter.readBytes(attachment.getObjectKey(), MAX_ATTACHMENT_BYTES);
+        return new AttachmentFile(attachment.getFileName(), attachment.getMimeType(), bytes);
+    }
+
+    /**
+     * 基于附件新建学生自己的文档：复制附件字节为新的 OSS 对象，走上传建档链路并绑定作业模板，
+     * 学生随后可在预览页编辑、按模板校验并作为提交文档。
+     */
+    @Override
+    @Transactional
+    public CreatedDocumentView createDocumentFromAttachment(String assignmentId, String attachmentId) {
+        UserPrincipal principal = AuthContext.require();
+        AssignmentStats assignment = requireVisibleAssignment(assignmentId);
+        if (!Ids.isHex16(attachmentId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件 ID 格式不合法");
+        }
+        AssignmentAttachment attachment = courseworkRepository.findAttachment(assignmentId, attachmentId);
+        if (attachment == null) {
+            throw new CidasBusinessException(ErrorCode.NOT_FOUND, "附件不存在");
+        }
+        if (!DOCX_MIME.equals(attachment.getMimeType())) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件不是 Word 文档，无法直接编辑");
+        }
+        byte[] bytes = ossStorageAdapter.readBytes(attachment.getObjectKey(), MAX_ATTACHMENT_BYTES);
+        if (bytes.length < 2 || bytes[0] != 'P' || bytes[1] != 'K') {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件不是有效的 .docx");
+        }
+        String title = attachment.getFileName().replaceFirst("\\.[^.]+$", "").trim();
+        if (title.isEmpty()) {
+            title = assignment.getTitle();
+        }
+        if (title.length() > 200) {
+            title = title.substring(0, 200);
+        }
+        String sessionId = Ids.hex16();
+        String objectKey = ossProperties.objectKeyPrefix() + "/generated/from-attachment/"
+                + principal.userId() + "/" + sessionId + ".docx";
+        var info = ossStorageAdapter.putBytes(objectKey, bytes, DOCX_MIME);
+        UploadSession session = new UploadSession(sessionId, principal.userId(), assignment.getCourseId(),
+                title, DocumentType.HOMEWORK, title + ".docx", bytes.length, DOCX_MIME, objectKey,
+                UploadSession.Status.COMPLETING, null, null, Instant.now());
+        CreatedDocument created;
+        try {
+            created = attachmentTxWriter.provision(session, info, sha256(bytes),
+                    blankToNull(assignment.getTemplateVersionId()));
+        } catch (DuplicateKeyException e) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT,
+                    "同课程下已存在同名文档，请先重命名或删除旧文档后再试");
+        }
+        auditService.record("DOCUMENT_CREATED_FROM_ATTACHMENT", "ASSIGNMENT", assignmentId,
+                created.documentId(), "200", Map.of("attachmentId", attachmentId));
+        return new CreatedDocumentView(created.documentId(), created.versionId());
+    }
+
+    /** 学生可读作业：作业存在 + 本人是该课程成员（鉴权第 4 步课程范围）。 */
+    private AssignmentStats requireVisibleAssignment(String assignmentId) {
+        if (!Ids.isHex16(assignmentId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "assignmentId 格式不合法");
+        }
+        String studentId = AuthContext.require().userId();
+        AssignmentStats assignment = courseworkRepository.findAssignment(assignmentId);
+        if (assignment == null) {
+            throw new CidasBusinessException(ErrorCode.NOT_FOUND, "作业不存在");
+        }
+        if (!courseworkRepository.isCourseMember(assignment.getCourseId(), studentId)) {
+            throw new CidasBusinessException(ErrorCode.FORBIDDEN, "未选修该课程，不能查看附件");
+        }
+        return assignment;
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (Exception e) {
+            throw new IllegalStateException("SHA-256 不可用", e);
+        }
+    }
+
     private static StudentAssignmentView toView(StudentAssignment row, OffsetDateTime now) {
         String status = CourseworkRules.studentStatus(row.getSubmissionStatus(), row.getDueTime(), now);
         return new StudentAssignmentView(
@@ -121,7 +239,8 @@ public class StudentCourseworkServiceImpl implements StudentCourseworkService {
                 formatView(row.getBlockingCount(), row.getWarningCount()),
                 row.getScore(), row.getFeedback(), row.getAttemptNo(), row.getDocumentTitle(),
                 iso(row.getSubmittedAt()), row.getDocumentId(), row.getDocumentVersionId(),
-                row.getVersionNo(), row.getSubmissionFormat(), row.getRequireFormatCheck());
+                row.getVersionNo(), row.getSubmissionFormat(), row.getRequireFormatCheck(),
+                row.getTemplateVersionId(), row.getTemplateName(), row.getTemplateVersionNo());
     }
 
     /** 格式结论派生：-1 表示未跑校验（NONE），阻塞优先于提醒。 */

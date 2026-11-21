@@ -56,8 +56,9 @@ class TeacherCourseworkServiceTest {
     private final CourseworkRepository repository = mock(CourseworkRepository.class);
     private final AuditService auditService = mock(AuditService.class);
     private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
-    private final TeacherCourseworkService service =
-            new TeacherCourseworkServiceImpl(repository, auditService, outboxEventRepository);
+    private final TeacherCourseworkService service = new TeacherCourseworkServiceImpl(repository, auditService,
+            outboxEventRepository, mock(com.cidas.edudoc.infrastructure.oss.OssStorageAdapter.class),
+            mock(com.cidas.edudoc.infrastructure.oss.OssProperties.class));
 
     @AfterEach
     void tearDown() {
@@ -72,7 +73,7 @@ class TeacherCourseworkServiceTest {
 
     private static AssignmentCreateCommand publishCommand(String courseId, List<RubricInput> rubric) {
         return new AssignmentCreateCommand(courseId, "课程设计报告", "要求见文档",
-                "2026-11-20T23:59:00+08:00", "Y", "DOCX", "N", false, rubric);
+                "2026-11-20T23:59:00+08:00", "Y", "DOCX", "N", null, false, rubric, List.of());
     }
 
     private static AssignmentStats assignmentRow() {
@@ -123,8 +124,8 @@ class TeacherCourseworkServiceTest {
         when(repository.createAssignment(any())).thenReturn(HEX_ASSIGNMENT);
 
         service.createAssignment(new AssignmentCreateCommand(HEX_COURSE, "课程设计报告", "要求见文档",
-                "2026-11-20T23:59:00+08:00", null, "DOCX", null, false,
-                List.of(new RubricInput("内容", 60))));
+                "2026-11-20T23:59:00+08:00", null, "DOCX", null, null, false,
+                List.of(new RubricInput("内容", 60)), List.of()));
 
         ArgumentCaptor<AssignmentCreate> captor = ArgumentCaptor.forClass(AssignmentCreate.class);
         verify(repository).createAssignment(captor.capture());
@@ -171,10 +172,25 @@ class TeacherCourseworkServiceTest {
     }
 
     @Test
+    void gradeRejectsAlreadyGradedSubmission() {
+        teacher(HEX_COURSE);
+        Submission row = submissionRow();
+        row.setStatus("GRADED");
+        when(repository.findSubmissionById(HEX_SUBMISSION)).thenReturn(row);
+
+        var e = assertThrows(CidasBusinessException.class, () -> service.gradeSubmission(HEX_SUBMISSION,
+                new GradeCommand(List.of(new GradeInput("内容", 50), new GradeInput("格式", 30)), "再改一次")));
+
+        assertEquals(40901, e.errorCode().code());
+        verify(repository, never()).gradeSubmission(anyString(), any(), any(), any(), any());
+    }
+
+    @Test
     void gradeWritesNormalizedJsonAndServerSideTotal() {
         teacher(HEX_COURSE);
         when(repository.findSubmissionById(HEX_SUBMISSION)).thenReturn(submissionRow());
         when(repository.findAssignment(HEX_ASSIGNMENT)).thenReturn(assignmentRow());
+        when(repository.gradeSubmission(anyString(), any(), any(), any(), any())).thenReturn(1);
 
         // 入参故意乱序且不带 maxScore：归一化与总分必须由服务端按评分标准计算
         GradeResult result = service.gradeSubmission(HEX_SUBMISSION, new GradeCommand(
@@ -201,6 +217,7 @@ class TeacherCourseworkServiceTest {
         teacher(HEX_COURSE);
         when(repository.findSubmissionById(HEX_SUBMISSION)).thenReturn(submissionRow());
         when(repository.findAssignment(HEX_ASSIGNMENT)).thenReturn(assignmentRow());
+        when(repository.gradeSubmission(anyString(), any(), any(), any(), any())).thenReturn(1);
 
         GradeResult result = service.gradeSubmission(HEX_SUBMISSION, new GradeCommand(
                 List.of(new GradeInput("格式", 30), new GradeInput("内容", 50)), "做得不错"));

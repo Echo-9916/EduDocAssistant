@@ -387,7 +387,7 @@ function SecurityTab() {
           <AppButton type="link" size="small" onClick={() => setDetailId(row.id)}>
             详情
           </AppButton>
-          <Tooltip title="安全事件为演示数据，请到「用户与权限」目录冻结真实账号">
+          <Tooltip title="请到「用户与权限」目录冻结真实账号">
             <span>
               <AppButton type="link" size="small" danger disabled>
                 冻结账号
@@ -525,7 +525,7 @@ function SecurityTab() {
               <AppButton type="default" disabled={detail.status === 'CLOSED'} onClick={() => act(detail.id, 'CLOSED', `事件 ${detail.id} 已关闭`)}>
                 关闭事件
               </AppButton>
-              <Tooltip title="安全事件为演示数据，请到「用户与权限」目录冻结真实账号">
+              <Tooltip title="请到「用户与权限」目录冻结真实账号">
                 <span>
                   <AppButton danger disabled>
                     冻结账号
@@ -904,10 +904,7 @@ export default function OpsAudit() {
   return (
     <DemoPage
       title="审计与安全"
-      screens="对应原型：运维 13/14/15/16/17/18/19/20"
       desc="检索账号、课程、文档、权限与系统级操作，处置登录风险、越权尝试与异常导出事件，并维护访问策略。"
-      live
-      mixedNote="部分演示数据：安全事件 / 异常与冲突复核 / 访问策略"
     >
       <Tabs
         defaultActiveKey="log"

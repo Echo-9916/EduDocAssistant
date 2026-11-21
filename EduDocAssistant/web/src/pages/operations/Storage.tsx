@@ -407,7 +407,6 @@ export default function OpsStorage() {
   return (
     <DemoPage
       title="存储与资源"
-      screens="对应原型：运维 21/22/23/24"
       desc="查看团队存储、过期对象与回收站容量，安排安全清理与恢复，同时监控服务健康与配置变更。"
     >
       <Tabs

@@ -69,7 +69,7 @@ class DocumentParseWorkerTest {
 
         verify(txService).writeSuccess(eq("D1"), eq("V1"),
                 org.mockito.ArgumentMatchers.argThat(chunks -> chunks.size() == 1
-                        && chunks.get(0).text().contains("hello world text")));
+                        && chunks.get(0).text().contains("hello world text")), any());
     }
 
     private static MapRecord<String, Object, Object> recordTextMode(String documentId, String versionId) {
@@ -96,7 +96,7 @@ class DocumentParseWorkerTest {
         // 两个短段在 chunk-size=1500 内合并为单块（分块语义），文本以 \n 连接
         verify(txService).writeSuccess(eq("D1"), eq("V1"),
                 org.mockito.ArgumentMatchers.argThat(chunks -> chunks.size() == 1
-                        && chunks.get(0).text().equals("第一段\n第二段")));
+                        && chunks.get(0).text().equals("第一段\n第二段")), any());
     }
 
     @Test
@@ -105,7 +105,7 @@ class DocumentParseWorkerTest {
 
         worker.handle(null, CONSUMER, record("D1", "V1"));
 
-        verify(txService, never()).writeSuccess(any(), any(), any());
+        verify(txService, never()).writeSuccess(any(), any(), any(), any());
         verify(txService, never()).writeFailure(any(), any(), any());
     }
 
@@ -115,7 +115,7 @@ class DocumentParseWorkerTest {
 
         worker.handle(null, CONSUMER, record("D1", "V1"));
 
-        verify(txService, never()).writeSuccess(any(), any(), any());
+        verify(txService, never()).writeSuccess(any(), any(), any(), any());
     }
 
     @Test

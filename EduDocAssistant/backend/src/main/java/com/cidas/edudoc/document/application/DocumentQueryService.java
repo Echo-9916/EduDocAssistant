@@ -34,6 +34,7 @@ public interface DocumentQueryService {
     record Detail(String id, String title, String docType, String status, String courseId,
                   String courseName, Long sizeBytes, String mimeType, Integer versionNo,
                   String currentVersionId, String contentHash, Integer chunkCount,
-                  String createTime, String updateTime, String deletedAt, String purgeAt) {
+                  String createTime, String updateTime, String deletedAt, String purgeAt,
+                  String relation) {
     }
 }

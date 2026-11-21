@@ -67,7 +67,8 @@
 
     <insert id="insertCourseMember">
         INSERT INTO edudoc_course_member (course_id, user_id, member_role, group_name, status)
-        VALUES (HEXTORAW(#{courseIdHex}), HEXTORAW(#{userIdHex}), #{memberRole}, #{groupName}, 'A')
+        VALUES (HEXTORAW(#{courseIdHex}), HEXTORAW(#{userIdHex}), #{memberRole},
+                #{groupName, jdbcType=VARCHAR}, 'A')
     </insert>
 
     <!-- 名单里无账号的学生：建未激活账号（account_status='I'，密码为空，走统一身份认证首登） -->
@@ -83,6 +84,10 @@
         a.title AS title, a.description AS description, a.due_time AS dueTime,
         a.allow_late AS allowLate, a.submission_format AS submissionFormat,
         a.require_format_check AS requireFormatCheck, a.rubric_json AS rubricJson, a.status AS status,
+        RAWTOHEX(a.template_version_id) AS templateVersionId,
+        (SELECT t.template_name FROM edudoc_template_version tv JOIN edudoc_template t ON t.id = tv.template_id
+          WHERE tv.id = a.template_version_id) AS templateName,
+        (SELECT tv.version_no FROM edudoc_template_version tv WHERE tv.id = a.template_version_id) AS templateVersionNo,
         (SELECT COUNT(*) FROM edudoc_course_member m
           WHERE m.course_id = a.course_id AND m.member_role = 'STUDENT' AND m.status = 'A') AS expected,
         (SELECT COUNT(DISTINCT s.student_id) FROM edudoc_submission s
@@ -116,11 +121,25 @@
          的 TooManyResultsException 风险（该表无 (course_id,title) 唯一约束，重名是合法的）。 -->
     <insert id="insertAssignment">
         INSERT INTO edudoc_assignment (id, course_id, title, description, published_by, publish_time, due_time,
-                                       allow_late, submission_format, require_format_check, rubric_json, status)
+                                       allow_late, submission_format, require_format_check, template_version_id,
+                                       rubric_json, status)
         VALUES (HEXTORAW(#{idHex}), HEXTORAW(#{courseIdHex}), #{title}, #{description}, HEXTORAW(#{publishedByHex}),
                 SYSTIMESTAMP, #{dueTime}, #{allowLate}, #{submissionFormat}, #{requireFormatCheck},
+                <choose><when test="templateVersionIdHex != null and templateVersionIdHex != ''">
+                    HEXTORAW(#{templateVersionIdHex})
+                </when><otherwise>NULL</otherwise></choose>,
                 #{rubricJson}, #{status})
     </insert>
+
+    <select id="selectCourseStudents" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$CourseStudent">
+        SELECT RAWTOHEX(u.id) AS userId, u.username AS accountNo, u.display_name AS name,
+               m.group_name AS groupName
+        FROM edudoc_course_member m
+        JOIN edudoc_user u ON u.id = m.user_id
+        WHERE m.course_id = HEXTORAW(#{courseIdHex})
+          AND m.member_role = 'STUDENT' AND m.status = 'A'
+        ORDER BY m.group_name NULLS LAST, u.username
+    </select>
 
     <select id="selectUnsubmittedMembers" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$MemberAccount">
         SELECT RAWTOHEX(u.id) AS userId, u.username AS accountNo, u.display_name AS name
@@ -199,6 +218,10 @@
                a.description AS description, a.due_time AS dueTime, a.allow_late AS allowLate,
                a.submission_format AS submissionFormat, a.require_format_check AS requireFormatCheck,
                a.status AS assignmentStatus,
+               RAWTOHEX(a.template_version_id) AS templateVersionId,
+               (SELECT t.template_name FROM edudoc_template_version tv JOIN edudoc_template t ON t.id = tv.template_id
+                 WHERE tv.id = a.template_version_id) AS templateName,
+               (SELECT tv.version_no FROM edudoc_template_version tv WHERE tv.id = a.template_version_id) AS templateVersionNo,
                RAWTOHEX(s.id) AS submissionId, s.status AS submissionStatus, s.attempt_no AS attemptNo,
                s.submitted_at AS submittedAt, s.score AS score, s.feedback AS feedback,
                s.score_json AS scoreJson,
@@ -278,23 +301,64 @@
         <if test="assignmentIdHex != null and assignmentIdHex != ''">
             AND s.assignment_id = HEXTORAW(#{assignmentIdHex})
         </if>
+        <if test="courseIdHex != null and courseIdHex != ''">
+            AND a.course_id = HEXTORAW(#{courseIdHex})
+        </if>
         <if test="status != null and status != ''">AND s.status = #{status}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (UPPER(stu.username) LIKE '%' || UPPER(#{keyword}) || '%' ESCAPE '\'
+                 OR UPPER(stu.display_name) LIKE '%' || UPPER(#{keyword}) || '%' ESCAPE '\')
+        </if>
         ORDER BY s.submitted_at DESC
     </select>
 
     <update id="updateSubmissionGrade">
         UPDATE edudoc_submission
-        SET score = #{score}, feedback = #{feedback}, score_json = #{scoreJson}, status = #{status}
-        WHERE id = HEXTORAW(#{submissionIdHex})
+        SET score = #{score}, feedback = #{feedback,jdbcType=VARCHAR}, score_json = #{scoreJson}, status = #{status}
+        WHERE id = HEXTORAW(#{submissionIdHex}) AND status &lt;&gt; 'GRADED'
     </update>
 
     <!-- 批改入口按主键取单条提交（只取归属列，studentId 供批改反馈消息收件人，2-5 生产者②）；
          课程范围校验在应用服务层，越权 40301 -->
     <select id="selectSubmissionById" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$Submission">
         SELECT RAWTOHEX(s.id) AS id, RAWTOHEX(s.assignment_id) AS assignmentId,
-               RAWTOHEX(s.student_id) AS studentId
+               RAWTOHEX(s.student_id) AS studentId, s.status AS status
         FROM edudoc_submission s
         WHERE s.id = HEXTORAW(#{submissionIdHex})
+    </select>
+
+<!-- ===== 作业附件（edudoc_assignment_attachment） ===== -->
+
+    <insert id="insertAssignmentAttachment">
+        INSERT INTO edudoc_assignment_attachment (id, file_name, mime_type, size_bytes, object_key, uploader_id)
+        VALUES (HEXTORAW(#{idHex}), #{fileName}, #{mimeType}, #{sizeBytes}, #{objectKey},
+                HEXTORAW(#{uploaderIdHex}))
+    </insert>
+
+    <update id="bindAssignmentAttachment">
+        UPDATE edudoc_assignment_attachment
+        SET assignment_id = HEXTORAW(#{assignmentIdHex})
+        WHERE id = HEXTORAW(#{attachmentIdHex})
+          AND assignment_id IS NULL
+          AND uploader_id = HEXTORAW(#{uploaderIdHex})
+    </update>
+
+    <select id="selectAssignmentAttachments" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$AssignmentAttachment">
+        SELECT RAWTOHEX(id) AS id, RAWTOHEX(assignment_id) AS assignmentId,
+               file_name AS fileName, mime_type AS mimeType, size_bytes AS sizeBytes,
+               object_key AS objectKey, RAWTOHEX(uploader_id) AS uploaderId
+        FROM edudoc_assignment_attachment
+        WHERE assignment_id = HEXTORAW(#{assignmentIdHex})
+        ORDER BY create_time
+    </select>
+
+    <select id="selectAssignmentAttachment" resultType="com.cidas.edudoc.coursework.infrastructure.CourseworkRow$AssignmentAttachment">
+        SELECT RAWTOHEX(id) AS id, RAWTOHEX(assignment_id) AS assignmentId,
+               file_name AS fileName, mime_type AS mimeType, size_bytes AS sizeBytes,
+               object_key AS objectKey, RAWTOHEX(uploader_id) AS uploaderId
+        FROM edudoc_assignment_attachment
+        WHERE assignment_id = HEXTORAW(#{assignmentIdHex})
+          AND id = HEXTORAW(#{attachmentIdHex})
     </select>
 
 </mapper>

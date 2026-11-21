@@ -1,5 +1,7 @@
 package com.cidas.edudoc.document.application;
 
+import com.cidas.edudoc.document.domain.StructureNode;
+
 import java.util.List;
 
 /**
@@ -13,8 +15,12 @@ public interface DocumentPreviewService {
                  int charStart, int charEnd, String text) {
     }
 
-    /** vectorReady：当前版本分块是否全部完成向量化索引（R3「新版索引中」前端判据，1106 P2-1）。 */
-    record Preview(String documentId, String versionId, int versionNo, List<Block> blocks, boolean vectorReady) {
+    /**
+     * structure：阅读结构层（与 blocks 同坐标系）；老版本无 structure_json 时为空数组。
+     * vectorReady：当前版本分块是否全部完成向量化索引（R3「新版索引中」前端判据，1106 P2-1）。
+     */
+    record Preview(String documentId, String versionId, int versionNo, List<Block> blocks,
+                   List<StructureNode> structure, boolean vectorReady) {
     }
 
     Preview preview(String documentId, String versionId);

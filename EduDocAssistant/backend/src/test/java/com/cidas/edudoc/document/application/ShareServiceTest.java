@@ -41,11 +41,13 @@ class ShareServiceTest {
     private static final String SHARE_ID = "BB0000000000000000000000000000B1";
 
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
+    private final com.cidas.edudoc.document.infrastructure.DocumentVersionRepository versionRepository =
+            mock(com.cidas.edudoc.document.infrastructure.DocumentVersionRepository.class);
     private final DocumentChunkRepository chunkRepository = mock(DocumentChunkRepository.class);
     private final DocumentShareRepository shareRepository = mock(DocumentShareRepository.class);
     private final AuditService auditService = mock(AuditService.class);
-    private final ShareService service = new ShareServiceImpl(documentRepository, chunkRepository,
-            shareRepository, auditService);
+    private final ShareService service = new ShareServiceImpl(documentRepository, versionRepository,
+            chunkRepository, shareRepository, auditService);
 
     @BeforeEach
     void setUp() {

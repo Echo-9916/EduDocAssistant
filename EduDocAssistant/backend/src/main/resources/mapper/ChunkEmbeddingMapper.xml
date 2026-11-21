@@ -46,6 +46,11 @@
         ORDER BY c.chunk_no
     </select>
 
+    <select id="selectStructureJson" resultType="string">
+        SELECT v.structure_json FROM edudoc_document_version v
+        WHERE v.id = HEXTORAW(#{versionIdHex})
+    </select>
+
     <select id="countNotReady" resultType="int">
         SELECT COUNT(*) FROM edudoc_document_chunk
         WHERE document_version_id = HEXTORAW(#{versionIdHex}) AND index_status != 'READY'

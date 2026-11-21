@@ -1,5 +1,6 @@
 package com.cidas.edudoc.template.application;
 
+import com.cidas.edudoc.document.application.DocumentWordExportService;
 import com.cidas.edudoc.document.infrastructure.OssObject;
 import com.cidas.edudoc.document.infrastructure.OssObjectRepository;
 import com.cidas.edudoc.infrastructure.oss.OssStorageAdapter;
@@ -49,10 +50,12 @@ public class FormatCheckWorker {
     private final StringRedisTemplate redis;
     private final OssObjectRepository ossObjectRepository;
     private final OssStorageAdapter ossStorageAdapter;
+    private final com.cidas.edudoc.document.infrastructure.DocumentVersionRepository versionRepository;
     private final DocxStyleExtractor styleExtractor;
     private final FormatRuleRepository ruleRepository;
     private final FormatRuleMatcher ruleMatcher;
     private final DocumentStructureService structureService;
+    private final DocumentWordExportService wordExportService;
     private final FormatCheckRepository checkRepository;
     private final FormatCheckTxService txService;
     private final FormatCheckProperties properties;
@@ -170,7 +173,24 @@ public class FormatCheckWorker {
         }
         try {
             byte[] bytes = download(sourceObjectId);
-            structureService.parseAndPersist(bytes, versionId);
+            boolean parseStructure = true;
+            // 块编辑/润色派生的 EDIT 版本源对象是 .txt，本身不带版式。
+            // 校验必须落在最近一个 .docx 原件上，否则按文本重新排版生成 DOCX 会把格式问题「洗掉」，
+            // 让不合规模板要求的文档也显示通过（演示问题示例即此坑）。
+            // ponytail: 文本编辑改变段落后，问题定位仍按原件段序号报告；需要精确到编辑后段落时再做
+            // 文本↔原件段落对齐。
+            if (!isDocx(bytes)) {
+                var ancestorDocx = versionRepository.findNearestDocxSourceObject(versionId);
+                if (ancestorDocx.isPresent()) {
+                    bytes = download(ancestorDocx.get());
+                    parseStructure = false; // 原件结构不覆盖文本版自身的结构树
+                } else {
+                    bytes = wordExportService.exportVersionDocx(documentId, versionId);
+                }
+            }
+            if (parseStructure) {
+                structureService.parseAndPersist(bytes, versionId);
+            }
             StyleSnapshot snapshot = styleExtractor.extract(bytes);
             List<FormatRule> rules = ruleRepository.findByVersion(templateVersionId);
             List<IssueDraft> issues = ruleMatcher.match(rules, snapshot);
@@ -181,6 +201,10 @@ public class FormatCheckWorker {
             log.error("格式校验失败 checkId={}", checkId, e);
             txService.writeError(checkId, String.valueOf(e.getMessage()), documentId, versionId);
         }
+    }
+
+    private static boolean isDocx(byte[] bytes) {
+        return bytes.length >= 2 && bytes[0] == 'P' && bytes[1] == 'K';
     }
 
     private byte[] download(String sourceObjectId) {

@@ -7,8 +7,19 @@ vi.mock('../api/shares', () => ({
   listShares: vi.fn(),
   revokeShare: vi.fn(),
 }))
+vi.mock('../api/collaboration', () => ({
+  listCollaborators: vi.fn(),
+  listCollaboratorCandidates: vi.fn(),
+  addCollaborator: vi.fn(),
+  removeCollaborator: vi.fn(),
+}))
 
 import { createShare, listShares } from '../api/shares'
+import {
+  addCollaborator,
+  listCollaboratorCandidates,
+  listCollaborators,
+} from '../api/collaboration'
 import ShareModal from './ShareModal'
 
 const row = {
@@ -19,6 +30,12 @@ const row = {
 describe('共享弹窗', () => {
   beforeEach(() => {
     vi.mocked(listShares).mockResolvedValue([row])
+    vi.mocked(listCollaborators).mockResolvedValue([])
+    vi.mocked(listCollaboratorCandidates).mockResolvedValue([])
+    vi.mocked(addCollaborator).mockResolvedValue({
+      id: 'M1', userId: 'U2', username: '2023001', displayName: '陈同学',
+      permission: 'COMMENT', joinedAt: null,
+    })
   })
   afterEach(() => vi.clearAllMocks())
 
@@ -32,12 +49,32 @@ describe('共享弹窗', () => {
     expect(await screen.findByText('有效')).toBeTruthy()
     expect(listShares).toHaveBeenCalledWith('D1')
 
-    fireEvent.click(screen.getByText('生成共享链接'))
+    fireEvent.click(screen.getByText('生成只读链接'))
 
     await waitFor(() => expect(createShare).toHaveBeenCalledWith('D1', { expiresInDays: 7, permission: 'VIEW' }))
     expect(await screen.findByText('链接已生成')).toBeTruthy()
     expect((screen.getByDisplayValue(/\/s\/tok-new/) as HTMLInputElement).value)
       .toBe(`${window.location.origin}/s/tok-new`)
+  })
+
+  it('未关联课程时禁用课程成员邀请并说明原因', async () => {
+    render(<ShareModal open documentId="D1" onClose={() => undefined} />)
+    expect((await screen.findAllByText(/未关联课程/)).length).toBeGreaterThan(0)
+    expect(listCollaboratorCandidates).not.toHaveBeenCalled()
+  })
+
+  it('关联课程时加载教师/学生候选并展示现有协作者', async () => {
+    vi.mocked(listCollaboratorCandidates).mockResolvedValue([{
+      userId: 'U2', username: '2023001', displayName: '陈同学', role: 'STUDENT', groupName: '课程组 3',
+    }])
+    vi.mocked(listCollaborators).mockResolvedValue([{
+      id: 'M1', userId: 'U3', username: 'teacher', displayName: '王老师',
+      permission: 'COMMENT', joinedAt: null,
+    }])
+    render(<ShareModal open documentId="D1" courseId="C1" onClose={() => undefined} />)
+    await waitFor(() => expect(listCollaboratorCandidates).toHaveBeenCalledWith('D1'))
+    expect(await screen.findByText('王老师')).toBeTruthy()
+    expect(screen.getByText('邀请协作者（可批注）')).toBeTruthy()
   })
 
   it('展示撤销后的状态', async () => {

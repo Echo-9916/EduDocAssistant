@@ -5,10 +5,13 @@ import com.cidas.edudoc.ai.application.EmbeddingCleanupService;
 import com.cidas.edudoc.common.outbox.OutboxEventRepository;
 import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.document.application.DocumentParseTxService;
+import com.cidas.edudoc.document.application.StructureJson;
 import com.cidas.edudoc.document.domain.Chunk;
+import com.cidas.edudoc.document.domain.StructureNode;
 import com.cidas.edudoc.document.infrastructure.DocumentChunk;
 import com.cidas.edudoc.document.infrastructure.DocumentChunkRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
+import com.cidas.edudoc.document.infrastructure.DocumentVersionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,13 +27,15 @@ public class DocumentParseTxServiceImpl implements DocumentParseTxService {
 
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository chunkRepository;
+    private final DocumentVersionRepository versionRepository;
     private final AuditService auditService;
     private final OutboxEventRepository outboxEventRepository;
     private final EmbeddingCleanupService embeddingCleanupService;
 
     @Override
     @Transactional
-    public boolean writeSuccess(String documentId, String versionId, List<Chunk> chunks) {
+    public boolean writeSuccess(String documentId, String versionId, List<Chunk> chunks,
+                                List<StructureNode> nodes) {
         // 1103 审查 P5：状态守卫先行——文档不在 PARSING 即整笔跳过，不动分块不留假审计
         if (documentRepository.markStatusIfParsing(documentId, "READY") == 0) {
             return false;
@@ -43,6 +48,8 @@ public class DocumentParseTxServiceImpl implements DocumentParseTxService {
                         chunk.headingPath(), chunk.pageNo(), chunk.charStart(), chunk.charEnd(),
                         chunk.text(), chunk.tokenCount(), chunk.contentHash(), "PENDING"))
                 .toList());
+        // 结构层与 chunk 同事务落库；空结构写 NULL，预览时降级为空数组
+        versionRepository.updateStructureJson(versionId, StructureJson.write(nodes));
         outboxEventRepository.publish("DOCUMENT_VERSION", versionId, "DOCUMENT_EMBED_REQUESTED",
                 Map.of("schemaVersion", 1, "documentId", documentId, "versionId", versionId));
         auditService.record("PARSE_SUCCEEDED", "DOCUMENT", documentId, documentId, "200",

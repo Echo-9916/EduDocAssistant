@@ -20,6 +20,8 @@ import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.AssignmentStats;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.MemberAccount;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.Submission;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow.TeacherCourse;
+import com.cidas.edudoc.infrastructure.oss.OssProperties;
+import com.cidas.edudoc.infrastructure.oss.OssStorageAdapter;
 import com.cidas.edudoc.message.application.NotificationEvents;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,12 +30,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -51,6 +56,9 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
     private static final int MAX_PAGE_SIZE = 100;
     private static final int PRIORITY_LIMIT = 5;
     private static final Set<String> SUBMISSION_FORMATS = Set.of("DOCX", "PDF", "BOTH");
+    private static final String DOCX_MIME =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private static final long MAX_ATTACHMENT_BYTES = 20L * 1024 * 1024;
 
     /** 仅用于 rubric_json / score_json 的本地序列化（CourseworkJson 冻结、未提供这两个方向的读写）。 */
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -58,6 +66,8 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
     private final CourseworkRepository repository;
     private final AuditService auditService;
     private final OutboxEventRepository outboxEventRepository;
+    private final OssStorageAdapter ossStorageAdapter;
+    private final OssProperties ossProperties;
 
     // ---------- 课程 ----------
 
@@ -93,6 +103,16 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
         auditService.record("COURSE_CREATED", "COURSE", courseId, null, "200",
                 Map.of("courseCode", code, "termCode", term));
         return new CourseView(courseId, code, name, term, principal.displayName(), 0, 0, null, "A", 0);
+    }
+
+    @Override
+    public List<CourseStudentView> listCourseStudents(String courseId) {
+        UserPrincipal principal = AuthContext.require();
+        requireScope(principal, courseId);
+        return repository.listCourseStudents(courseId).stream()
+                .map(row -> new CourseStudentView(row.getUserId(), row.getAccountNo(), row.getName(),
+                        row.getGroupName()))
+                .toList();
     }
 
     @Override
@@ -173,20 +193,60 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
         requireYesNo(requireFormatCheck, "格式强校验仅支持 Y/N");
         String title = command.title().trim();
         String status = Boolean.TRUE.equals(command.draft()) ? "DRAFT" : "PUBLISHED";
+        String templateVersionId = blankToNull(command.templateVersionId());
+        if (templateVersionId != null && !Ids.isHex16(templateVersionId)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "templateVersionId 格式不合法");
+        }
         String assignmentId = repository.createAssignment(new AssignmentCreate(command.courseId(), title,
                 command.requirement(), principal.userId(), dueTime, allowLate,
-                command.submissionFormat(), requireFormatCheck, writeRubric(rubric), status));
+                command.submissionFormat(), requireFormatCheck, templateVersionId,
+                writeRubric(rubric), status));
+        List<String> attachmentIds = command.attachmentIds() == null ? List.of() : command.attachmentIds();
+        for (String attachmentId : attachmentIds) {
+            if (!Ids.isHex16(attachmentId)
+                    || repository.bindAttachment(assignmentId, attachmentId, principal.userId()) == 0) {
+                throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件不存在或已被其他作业绑定，请重新上传");
+            }
+        }
         auditService.record("ASSIGNMENT_CREATED", "ASSIGNMENT", assignmentId, null, "200",
-                Map.of("courseId", command.courseId(), "title", title, "status", status));
+                Map.of("courseId", command.courseId(), "title", title, "status", status,
+                        "attachments", attachmentIds.size()));
         return new CreatedAssignment(assignmentId, status);
+    }
+
+    /** 发布前上传附件：格式须与课程模板一致（模板均为 .docx），发布确认时再绑定到作业。 */
+    @Override
+    @Transactional
+    public AttachmentView uploadAttachment(AttachmentUpload upload) {
+        UserPrincipal principal = AuthContext.require();
+        if (upload == null || upload.bytes() == null || upload.bytes().length == 0) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件不能为空");
+        }
+        String fileName = upload.fileName() == null ? "" : upload.fileName().trim();
+        if (!fileName.toLowerCase(Locale.ROOT).endsWith(".docx")) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件格式须与课程模板一致，仅支持 .docx");
+        }
+        byte[] bytes = upload.bytes();
+        if (bytes.length > MAX_ATTACHMENT_BYTES) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "附件不能超过 20MB");
+        }
+        if (bytes.length < 2 || bytes[0] != 'P' || bytes[1] != 'K') {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文件不是有效的 .docx");
+        }
+        String id = Ids.hex16();
+        String objectKey = ossProperties.objectKeyPrefix() + "/assignments/" + id + ".docx";
+        ossStorageAdapter.putBytes(objectKey, bytes, DOCX_MIME);
+        String attachmentId = repository.createAttachment(fileName, DOCX_MIME, bytes.length, objectKey,
+                principal.userId());
+        auditService.record("ASSIGNMENT_ATTACHMENT_UPLOADED", "ASSIGNMENT_ATTACHMENT", attachmentId, null,
+                "200", Map.of("fileName", fileName, "sizeBytes", bytes.length));
+        return new AttachmentView(attachmentId, fileName, DOCX_MIME, bytes.length);
     }
 
     @Override
     public UnsubmittedResult listUnsubmitted(String assignmentId) {
         UserPrincipal principal = AuthContext.require();
-        // 越权检查保留（非本人课程 → 40301），但 GET 不再写审计：
-        // 审查指出每次读名单都落一条 REMIND_UNSUBMITTED，预取或重放会刷审计。
-        // 提醒动作与投递随切片 2 的消息生产者落地（届时改为显式 POST 动作端点）。
+        // GET 只读、不写审计；真正的投递走 remindUnsubmitted 的显式 POST。
         loadScopedAssignment(principal, assignmentId);
         List<UnsubmittedStudent> items = repository.listUnsubmitted(assignmentId).stream()
                 .map(row -> new UnsubmittedStudent(row.getAccountNo(), row.getName()))
@@ -194,19 +254,46 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
         return new UnsubmittedResult(items);
     }
 
+    @Override
+    @Transactional
+    public RemindResult remindUnsubmitted(String assignmentId) {
+        UserPrincipal principal = AuthContext.require();
+        AssignmentStats assignment = loadScopedAssignment(principal, assignmentId);
+        List<MemberAccount> students = repository.listUnsubmitted(assignmentId);
+        if (students.isEmpty()) {
+            return new RemindResult(0);
+        }
+        // 同一学生 + 同一作业 + 同一天只提醒一次：dedupDate 进入 NotificationWorker 的去重键
+        String dedupDate = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        String body = "《" + assignment.getTitle() + "》尚未提交，请尽快完成。";
+        outboxEventRepository.publish("SUBMISSION", assignmentId, NotificationEvents.EVENT_TYPE,
+                NotificationEvents.payload(NotificationEvents.TYPE_SUBMISSION, assignmentId, dedupDate,
+                        "ASSIGNMENT", assignmentId, principal.userId(),
+                        students.stream().map(MemberAccount::getUserId).toList(),
+                        "作业提交提醒", body));
+        auditService.record("REMIND_UNSUBMITTED", "ASSIGNMENT", assignmentId, null, "200",
+                Map.of("count", students.size()));
+        return new RemindResult(students.size());
+    }
+
     // ---------- 提交与批改 ----------
 
     @Override
-    public PageResult<SubmissionView> listSubmissions(String assignmentId, String status,
-                                                      Integer page, Integer pageSize) {
+    public PageResult<SubmissionView> listSubmissions(String courseId, String assignmentId, String status,
+                                                      String keyword, Integer page, Integer pageSize) {
         UserPrincipal principal = AuthContext.require();
+        String courseFilter = blankToNull(courseId);
+        if (courseFilter != null && !Ids.isHex16(courseFilter)) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "courseId 格式不合法");
+        }
         String assignmentFilter = blankToNull(assignmentId);
         if (assignmentFilter != null && !Ids.isHex16(assignmentFilter)) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "assignmentId 格式不合法");
         }
         // 课程范围由 SQL teacherCourseScope 按当前教师过滤，越权查询自然得空集
         List<SubmissionView> all = repository
-                .listSubmissions(principal.userId(), assignmentFilter, blankToNull(status)).stream()
+                .listSubmissions(principal.userId(), courseFilter, assignmentFilter,
+                        blankToNull(status), escapeLike(keyword)).stream()
                 .map(TeacherCourseworkServiceImpl::toView)
                 .toList();
         return paginate(all, page, pageSize);
@@ -223,6 +310,9 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
         if (submission == null) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "提交不存在");
         }
+        if (CourseworkRules.GRADED.equals(submission.getStatus())) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT, "该提交已批改，不能重复修改");
+        }
         AssignmentStats assignment = loadScopedAssignment(principal, submission.getAssignmentId());
         List<CourseworkJson.ScoreWire> wires = command.items() == null ? List.of()
                 : command.items().stream()
@@ -231,8 +321,11 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
         // 分项校验与总分都在领域规则内完成：总分服务端计算，不信任入参
         Grade grade = CourseworkRules.grade(CourseworkJson.readRubric(assignment.getRubricJson()),
                 CourseworkJson.toScoreItems(wires));
-        repository.gradeSubmission(submissionId, BigDecimal.valueOf(grade.total()), command.feedback(),
+        int updated = repository.gradeSubmission(submissionId, BigDecimal.valueOf(grade.total()), command.feedback(),
                 CourseworkJson.writeScores(grade.items()), CourseworkRules.GRADED);
+        if (updated == 0) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT, "该提交已批改或状态已变化，请刷新后重试");
+        }
         auditService.record("SUBMISSION_GRADED", "SUBMISSION", submissionId, null, "200",
                 Map.of("assignmentId", assignment.getId(), "score", grade.total()));
         // 2-5 生产者②（设计 §4.1）：批改完成 → 提交学生收 FEEDBACK 消息，与业务写、审计同事务。
@@ -404,6 +497,16 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
         return value == null || value.isBlank() ? null : value;
     }
 
+    private static String escapeLike(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim()
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+    }
+
     private static CourseView toView(TeacherCourse row) {
         return new CourseView(row.getId(), row.getCourseCode(), row.getCourseName(), row.getTermCode(),
                 row.getOwnerName(), row.getGroups(), row.getStudents(), row.getTemplateName(),
@@ -413,7 +516,9 @@ public class TeacherCourseworkServiceImpl implements TeacherCourseworkService {
     private static AssignmentView toView(AssignmentStats row) {
         return new AssignmentView(row.getId(), row.getCourseId(), row.getCourseName(), row.getTitle(),
                 row.getDescription(), row.getDueTime(), row.getAllowLate(), row.getSubmissionFormat(),
-                row.getRequireFormatCheck(), row.getStatus(), row.getExpected(), row.getSubmitted(),
+                row.getRequireFormatCheck(), row.getStatus(), row.getTemplateVersionId(),
+                row.getTemplateName(), row.getTemplateVersionNo(),
+                row.getExpected(), row.getSubmitted(),
                 // 成员变动可能让 submitted 短暂超过 expected，负数无意义，钳到 0
                 Math.max(0, row.getExpected() - row.getSubmitted()),
                 row.getOverdue(), row.getGraded(), row.getFormatIssues(),

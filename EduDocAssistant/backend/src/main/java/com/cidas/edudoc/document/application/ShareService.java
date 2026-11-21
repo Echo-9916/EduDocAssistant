@@ -1,5 +1,7 @@
 package com.cidas.edudoc.document.application;
 
+import com.cidas.edudoc.document.domain.StructureNode;
+
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -15,7 +17,7 @@ public interface ShareService {
     /** 撤销链接（仅 owner；重复撤销幂等）。 */
     void revoke(String shareId);
 
-    /** 免登录只读：只返回当前版本文本与标题，不暴露文件对象。 */
+    /** 免登录只读：返回当前版本标题、文本分块与结构层，不暴露文件对象。 */
     PublicShare publicView(String token);
 
     record CreateCommand(Integer expiresInDays, String permission) {
@@ -29,6 +31,7 @@ public interface ShareService {
                      OffsetDateTime expiresAt, OffsetDateTime createTime) {
     }
 
-    record PublicShare(String title, Integer versionNo, String permission, String text) {
+    record PublicShare(String title, Integer versionNo, String permission, String text,
+                       List<DocumentPreviewService.Block> blocks, List<StructureNode> structure) {
     }
 }

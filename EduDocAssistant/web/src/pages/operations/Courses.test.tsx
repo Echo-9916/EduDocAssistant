@@ -8,7 +8,7 @@ vi.mock('../../auth/AuthContext', () => ({
 
 import OpsCourses from './Courses'
 
-describe('课程治理（对应原型：运维 02–06）', () => {
+describe('课程治理', () => {
   it('列表渲染世界观课程与运行指标', async () => {
     render(<OpsCourses />)
     expect(await screen.findByText('Web开发技术')).toBeTruthy()

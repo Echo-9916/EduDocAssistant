@@ -134,10 +134,7 @@ export default function Messages() {
   return (
     <DemoPage
       title={isOps ? '消息与告警' : '消息中心'}
-      screens="对应原型：学生 26 / 教师 26 / 运维 25"
-      desc={isOps ? '集中处理系统告警、权限变更、课程治理与审批通知。' : '集中查看课程更新、提交与反馈、格式异常和系统通知。'}
-      live
-      mixedNote="告警与审批类消息随切片 4 产生"
+      desc={isOps ? '集中处理系统告警、权限变更、课程治理与审批通知。告警与审批类消息随切片 4 产生。' : '集中查看课程更新、提交与反馈、格式异常和系统通知。'}
       extra={
         <Space wrap>
           <Segmented

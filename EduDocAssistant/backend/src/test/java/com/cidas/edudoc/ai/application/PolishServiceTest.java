@@ -15,6 +15,9 @@ import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import com.cidas.edudoc.document.application.DocumentParseTxService;
+import com.cidas.edudoc.document.application.StructureJson;
+import com.cidas.edudoc.document.domain.StructureNode;
+import com.cidas.edudoc.document.domain.TextBlock;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentVersion;
@@ -159,7 +162,7 @@ class PolishServiceTest {
         givenVersionText("前置。", "旧段落", "后置。");
         when(ossAdapter.putText(anyString(), anyString())).thenReturn(
                 new OssStorageAdapter.ObjectInfo(10, "etag", null, "SSE-OSS"));
-        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt(), anyInt()))
                 .thenReturn(new PolishService.AppliedView(POLISH_ID, DOC_ID, "V2", 2, "PARSING"));
 
         PolishService.AppliedView view = service.apply(POLISH_ID, "ACCEPT", null, null);
@@ -170,7 +173,7 @@ class PolishServiceTest {
         assertEquals("前置。新段落后置。", newText.getValue());
         ArgumentCaptor<OssObject> object = ArgumentCaptor.forClass(OssObject.class);
         verify(txWriter).applyVersion(object.capture(), any(), eq("U1"), eq("前置。新段落后置。"),
-                eq(POLISH_ID), eq("ACCEPT"), eq("新段落"), eq(VERSION));
+                eq(POLISH_ID), eq("ACCEPT"), eq("新段落"), eq(VERSION), eq(3), eq(3), eq(3));
         assertEquals("PARSED", object.getValue().getObjectRole());
         assertEquals("text/plain", object.getValue().getMimeType());
         // POLISH_APPLIED 审计在 PolishTxWriter 事务内（见 writer 用例），服务层不再单独写
@@ -185,7 +188,7 @@ class PolishServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> service.apply(POLISH_ID, "ACCEPT", null, null));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
-        verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt());
     }
 
     @Test
@@ -208,7 +211,7 @@ class PolishServiceTest {
         givenVersionText("重复段", "中间", "重复段");
         when(ossAdapter.putText(anyString(), anyString())).thenReturn(
                 new OssStorageAdapter.ObjectInfo(10, "etag", null, "SSE-OSS"));
-        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(txWriter.applyVersion(any(), any(), anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt(), anyInt()))
                 .thenReturn(new PolishService.AppliedView(POLISH_ID, DOC_ID, "V2", 2, "READY"));
 
         // 全文=「重复段中间重复段」，charStart=5 → 替换第二处
@@ -274,7 +277,7 @@ class PolishServiceTest {
         service.reject(POLISH_ID);
 
         verify(ossAdapter, never()).putText(anyString(), anyString());
-        verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(txWriter, never()).applyVersion(any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyInt());
         // 审查发现 1：审计第四参必须是 documentId（fk_audit_log_2），不能传 polishId
         verify(auditService).record(eq("POLISH_REJECTED"), eq("POLISH_RESULT"), eq(POLISH_ID),
                 eq(DOC_ID), eq("200"), any());
@@ -393,10 +396,10 @@ class PolishServiceTest {
         when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(1);
         when(polishRepository.updateDecisionApplied(eq(POLISH_ID), eq("ACCEPT"), any(), eq("V_REPLACED")))
                 .thenReturn(true);
-        when(parseTx.writeSuccess(eq(DOC_ID), anyString(), anyList())).thenReturn(true);
+        when(parseTx.writeSuccess(eq(DOC_ID), anyString(), anyList(), anyList())).thenReturn(true);
 
         PolishService.AppliedView view = writer.applyVersion(derived, doc, "U1",
-                "第一段\n第二段", POLISH_ID, "ACCEPT", "第二段", "V_REPLACED");
+                "第一段\n第二段", POLISH_ID, "ACCEPT", "第二段", "V_REPLACED", 4, 3, 3);
 
         assertEquals(2, view.versionNo());
         verify(ossObjectRepository).insert(derived);
@@ -408,7 +411,7 @@ class PolishServiceTest {
         verify(documentRepository).updateStatus(DOC_ID, "PARSING");
         // 简化解析：段落成块 + 同事务补发向量化（writeSuccess 内部完成）
         ArgumentCaptor<List<com.cidas.edudoc.document.domain.Chunk>> chunks = ArgumentCaptor.forClass(List.class);
-        verify(parseTx).writeSuccess(eq(DOC_ID), anyString(), chunks.capture());
+        verify(parseTx).writeSuccess(eq(DOC_ID), anyString(), chunks.capture(), any());
         assertEquals(1, chunks.getValue().size());
         assertNotNull(view.versionId());
         // 1105 P2-4：同事务 writeSuccess 成功后响应回真实状态 READY（不再硬编码 PARSING）
@@ -416,6 +419,36 @@ class PolishServiceTest {
         // 1105 P1-2：POLISH_APPLIED 审计在成版同一事务内
         verify(auditService).record(eq("POLISH_APPLIED"), eq("DOCUMENT"), eq(DOC_ID), eq(DOC_ID),
                 eq("200"), any());
+    }
+
+    /** 回归 #5：润色采纳只替换文本，不清空上一版 structure_json——标题/代码块不会退化为正文。 */
+    @Test
+    void applyVersionPreservesHeadingAndCodeStructure() {
+        DocumentParseTxService parseTx = mock(DocumentParseTxService.class);
+        PolishTxWriter writer = new PolishTxWriter(mock(AiTaskRepository.class), polishRepository,
+                mock(OssObjectRepository.class), versionRepository, documentRepository, parseTx,
+                new ParseProperties(true, 1, "s", "g", 1500), auditService);
+        Document doc = new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION);
+        DocumentVersion previous = new DocumentVersion("V_REPLACED", DOC_ID, 1, "EDIT", "O1", "U1", "h", "A");
+        previous.setStructureJson(StructureJson.write(List.of(
+                StructureNode.ranged(1, TextBlock.HEADING, 0, 1, null, 1, 1, null, null, null, null),
+                StructureNode.ranged(2, TextBlock.PARAGRAPH, 3, 4, null, 1, null, null, null, null, null),
+                StructureNode.ranged(3, TextBlock.CODE, 6, 9, null, 1, null, null, null, null, null, "python"))));
+        when(versionRepository.findById("V_REPLACED")).thenReturn(Optional.of(previous));
+        when(versionRepository.maxVersionNo(DOC_ID)).thenReturn(2);
+        when(polishRepository.updateDecisionApplied(eq(POLISH_ID), eq("ACCEPT"), any(), eq("V_REPLACED")))
+                .thenReturn(true);
+        when(parseTx.writeSuccess(eq(DOC_ID), anyString(), anyList(), anyList())).thenReturn(true);
+
+        writer.applyVersion(new OssObject("O2", "b", "r", "k", null, "etag", "hash", 5,
+                        "text/plain", "SSE-OSS", "DERIVED"), doc, "U1",
+                "标题\n新段落\ncode", POLISH_ID, "ACCEPT", "新段落", "V_REPLACED", 3, 2, 3);
+
+        ArgumentCaptor<List<StructureNode>> nodes = ArgumentCaptor.forClass(List.class);
+        verify(parseTx).writeSuccess(eq(DOC_ID), anyString(), anyList(), nodes.capture());
+        assertEquals(List.of("HEADING", "PARAGRAPH", "CODE"),
+                nodes.getValue().stream().map(StructureNode::kind).toList());
+        assertEquals("python", nodes.getValue().get(2).lang());
     }
 
     @Test
@@ -445,7 +478,7 @@ class PolishServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class, () -> writer.applyVersion(
                 new OssObject("O2", "b", "r", "k", null, "e", "h", 1, "text/plain", "N", "DERIVED"),
                 new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION),
-                "U1", "文本", POLISH_ID, "ACCEPT", "文本", VERSION));
+                "U1", "文本", POLISH_ID, "ACCEPT", "文本", VERSION, 0, 2, 2));
         assertEquals(ErrorCode.CONFLICT, e.errorCode());
     }
 
@@ -461,6 +494,6 @@ class PolishServiceTest {
 
         assertThrows(CidasBusinessException.class, () -> writer.applyVersion(
                 new OssObject("O2", "b", "r", "k", null, "e", "h", 1, "text/plain", "N", "DERIVED"),
-                doc, "U1", "文本", POLISH_ID, "ACCEPT", "文本", VERSION));
+                doc, "U1", "文本", POLISH_ID, "ACCEPT", "文本", VERSION, 0, 2, 2));
     }
 }

@@ -388,6 +388,7 @@ CREATE TABLE edudoc_document_version (
     editor_id RAW(16) NOT NULL,
     change_summary VARCHAR2(1000),
     content_hash VARCHAR2(128) NOT NULL,
+    structure_json CLOB,
     version_status CHAR(1) DEFAULT 'A' NOT NULL,
     CONSTRAINT pk_document_version PRIMARY KEY (id),
     CONSTRAINT uk_document_version_1 UNIQUE (document_id, version_no),
@@ -411,6 +412,7 @@ COMMENT ON COLUMN edudoc_document_version.source_object_id IS '该版本主文�
 COMMENT ON COLUMN edudoc_document_version.editor_id IS '生成版本的操作用户 ID';
 COMMENT ON COLUMN edudoc_document_version.change_summary IS '版本变更说明';
 COMMENT ON COLUMN edudoc_document_version.content_hash IS '版本内容摘要';
+COMMENT ON COLUMN edudoc_document_version.structure_json IS '解析结构层 JSON：版本内阅读节点区间与类型（revision=1），与分块同坐标系；不是版本内容';
 COMMENT ON COLUMN edudoc_document_version.version_status IS '状态：A 有效、F 归档';
 
 -- 派生文件表: 将解析、预览、转换和导出产物与文档版本关联。
@@ -1388,3 +1390,30 @@ COMMENT ON COLUMN edudoc_access_policy.policy_key IS '策略键，如 session.co
 COMMENT ON COLUMN edudoc_access_policy.policy_json IS '策略值 JSON';
 COMMENT ON COLUMN edudoc_access_policy.description IS '策略说明';
 COMMENT ON COLUMN edudoc_access_policy.updated_by IS '最后修改人用户 ID';
+
+-- 作业附件表: 教师发布作业时随作业下发的参考文件，学生可下载或基于附件新建可编文档。
+CREATE TABLE edudoc_assignment_attachment (
+    id RAW(16) DEFAULT SYS_GUID() NOT NULL,
+    create_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    update_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    assignment_id RAW(16),
+    file_name VARCHAR2(255) NOT NULL,
+    mime_type VARCHAR2(120) NOT NULL,
+    size_bytes NUMBER(12) NOT NULL,
+    object_key VARCHAR2(500) NOT NULL,
+    uploader_id RAW(16) NOT NULL,
+    CONSTRAINT pk_assignment_attachment PRIMARY KEY (id),
+    CONSTRAINT fk_assignment_attachment_1 FOREIGN KEY (assignment_id) REFERENCES edudoc_assignment (id),
+    CONSTRAINT fk_assignment_attachment_2 FOREIGN KEY (uploader_id) REFERENCES edudoc_user (id)
+);
+
+COMMENT ON TABLE edudoc_assignment_attachment IS '教师发布作业时携带的附件文件。';
+COMMENT ON COLUMN edudoc_assignment_attachment.id IS '主键，数据库自动生成 GUID';
+COMMENT ON COLUMN edudoc_assignment_attachment.create_time IS '创建时间，默认数据库当前时间';
+COMMENT ON COLUMN edudoc_assignment_attachment.update_time IS '最后更新时间，由触发器维护';
+COMMENT ON COLUMN edudoc_assignment_attachment.assignment_id IS '所属作业 ID；发布前上传时为空，发布确认时绑定';
+COMMENT ON COLUMN edudoc_assignment_attachment.file_name IS '原始文件名';
+COMMENT ON COLUMN edudoc_assignment_attachment.mime_type IS 'MIME 类型，须与课程模板要求一致（docx）';
+COMMENT ON COLUMN edudoc_assignment_attachment.size_bytes IS '文件字节数';
+COMMENT ON COLUMN edudoc_assignment_attachment.object_key IS 'OSS 私有桶对象键';
+COMMENT ON COLUMN edudoc_assignment_attachment.uploader_id IS '上传教师用户 ID';

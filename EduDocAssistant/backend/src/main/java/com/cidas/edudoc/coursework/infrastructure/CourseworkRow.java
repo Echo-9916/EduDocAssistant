@@ -46,11 +46,26 @@ public final class CourseworkRow {
         private String requireFormatCheck;
         private String rubricJson;
         private String status;
+        private String templateVersionId;
+        private String templateName;
+        private Integer templateVersionNo;
         private long expected;
         private long submitted;
         private long overdue;
         private long graded;
         private long formatIssues;
+    }
+
+    /** 作业附件行（教师发布时上传，学生下载/基于附件新建）。 */
+    @Data
+    public static class AssignmentAttachment {
+        private String id;
+        private String assignmentId;
+        private String fileName;
+        private String mimeType;
+        private long sizeBytes;
+        private String objectKey;
+        private String uploaderId;
     }
 
     /** 未提交学生名单行（提醒入口，投递随消息切片）。 */
@@ -59,6 +74,15 @@ public final class CourseworkRow {
         private String userId;
         private String accountNo;
         private String name;
+    }
+
+    /** 课程内学生（课程管理行展开）。 */
+    @Data
+    public static class CourseStudent {
+        private String userId;
+        private String accountNo;
+        private String name;
+        private String groupName;
     }
 
     /** 学生作业列表行（作业 + 本人最新提交 + 文档与格式结论）。 */
@@ -73,6 +97,9 @@ public final class CourseworkRow {
         private String submissionFormat;
         private String requireFormatCheck;
         private String assignmentStatus;
+        private String templateVersionId;
+        private String templateName;
+        private Integer templateVersionNo;
         private String submissionId;
         private String submissionStatus;
         private Integer attemptNo;

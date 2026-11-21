@@ -2,6 +2,9 @@ package com.cidas.edudoc.access.infrastructure;
 
 import com.cidas.edudoc.ai.infrastructure.AiModelProperties;
 import com.cidas.edudoc.common.persistence.Ids;
+import com.cidas.edudoc.document.application.StructureJson;
+import com.cidas.edudoc.document.domain.StructureNode;
+import com.cidas.edudoc.document.domain.TextBlock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -317,6 +320,8 @@ public class SeedDataRunner implements ApplicationRunner {
                 "SELECT RAWTOHEX(d.id) FROM edudoc_document d JOIN edudoc_user u ON u.id = d.owner_id "
                         + "WHERE u.username = 'student' AND d.title = ?", String.class, title);
         if (!existing.isEmpty()) {
+            // 老库补结构层（从已落库的 chunk 重建），保证演示文档也能看到结构化阅读效果
+            backfillDemoStructure(existing.get(0));
             log.info("版本对比演示文档已存在，跳过：{}", existing.get(0));
             return;
         }
@@ -373,9 +378,16 @@ public class SeedDataRunner implements ApplicationRunner {
     /** 分块按闭区间密铺：块文本含分隔换行，相邻 char_end + 1 = 后块 char_start。 */
     private void insertDemoChunks(String versionIdHex, List<String> paragraphs) {
         int start = 0;
+        List<StructureNode> nodes = new ArrayList<>();
         for (int i = 0; i < paragraphs.size(); i++) {
             String text = paragraphs.get(i) + (i < paragraphs.size() - 1 ? "\n" : "");
             int end = start + text.length() - 1;
+            String paragraph = paragraphs.get(i);
+            // 演示文档的「一、项目概述」这类短行写成标题；含换行的段（标题+正文合段）保持普通段落
+            boolean heading = !paragraph.contains("\n") && paragraph.matches("^[一二三四五六七八九十]+、.*");
+            nodes.add(StructureNode.ranged(nodes.size() + 1,
+                    heading ? TextBlock.HEADING : TextBlock.PARAGRAPH,
+                    start, end, null, null, heading ? 1 : null, null, null, null, null));
             jdbcTemplate.update(
                     "INSERT INTO edudoc_document_chunk (id, document_version_id, chunk_no, heading_path, page_no, "
                             + "char_start, char_end, content_text, token_count, content_hash, index_status) "
@@ -383,6 +395,37 @@ public class SeedDataRunner implements ApplicationRunner {
                     Ids.hex16(), versionIdHex, i + 1, start, end, text,
                     Math.max(1, text.length() / 2), "demo-" + versionIdHex + "-" + (i + 1));
             start = end + 1;
+        }
+        jdbcTemplate.update("UPDATE edudoc_document_version SET structure_json = ? WHERE id = HEXTORAW(?)",
+                StructureJson.write(nodes), versionIdHex);
+    }
+
+    /** 老库演示文档补结构层：读已落库的 chunk（按 chunk_no），重建区间节点；三角函数幂等。 */
+    private void backfillDemoStructure(String documentIdHex) {
+        List<String> versionIds = jdbcTemplate.queryForList(
+                "SELECT RAWTOHEX(id) FROM edudoc_document_version WHERE document_id = HEXTORAW(?)",
+                String.class, documentIdHex);
+        for (String versionId : versionIds) {
+            List<String[]> rows = jdbcTemplate.query(
+                    "SELECT content_text, char_start, char_end FROM edudoc_document_chunk "
+                            + "WHERE document_version_id = HEXTORAW(?) ORDER BY chunk_no",
+                    (rs, rowNum) -> new String[]{rs.getString(1), rs.getString(2), rs.getString(3)},
+                    versionId);
+            if (rows.isEmpty()) {
+                continue;
+            }
+            List<StructureNode> nodes = new ArrayList<>();
+            for (String[] row : rows) {
+                String text = row[0] == null ? "" : row[0].strip();
+                int start = Integer.parseInt(row[1]);
+                int end = Integer.parseInt(row[2]);
+                boolean heading = !text.contains("\n") && text.matches("^[一二三四五六七八九十]+、.*");
+                nodes.add(StructureNode.ranged(nodes.size() + 1,
+                        heading ? TextBlock.HEADING : TextBlock.PARAGRAPH,
+                        start, end, null, null, heading ? 1 : null, null, null, null, null));
+            }
+            jdbcTemplate.update("UPDATE edudoc_document_version SET structure_json = ? WHERE id = HEXTORAW(?)",
+                    StructureJson.write(nodes), versionId);
         }
     }
 

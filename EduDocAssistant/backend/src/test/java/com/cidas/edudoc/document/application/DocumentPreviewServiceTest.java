@@ -77,6 +77,25 @@ class DocumentPreviewServiceTest {
         }
         assertEquals(full.length() - 1, prevEnd);
         assertTrue(preview.vectorReady(), "全 READY 块 → vectorReady=true");
+        assertTrue(preview.structure().isEmpty(), "老版本无 structure_json → 空结构");
+    }
+
+    @Test
+    void parsesStructureJsonFromVersion() {
+        DocumentVersion version = new DocumentVersion(VERSION, DOC_ID, 1, "UPLOAD", "O1", "U1", "h", "A");
+        version.setStructureJson("{\"revision\":1,\"nodes\":["
+                + "{\"no\":1,\"kind\":\"HEADING\",\"level\":1,\"text\":\"第一章\",\"anchor\":0},"
+                + "{\"no\":2,\"kind\":\"PARAGRAPH\",\"start\":0,\"end\":4}]}");
+        when(versionRepository.findById(VERSION)).thenReturn(Optional.of(version));
+        when(chunkRepository.selectAllByVersion(VERSION)).thenReturn(List.of(
+                new DocumentChunk("C1", VERSION, 1, null, 1, 0, 4, "hello", 4, "h", "READY")));
+
+        DocumentPreviewService.Preview preview = service.preview(DOC_ID, null);
+
+        assertEquals(2, preview.structure().size());
+        assertEquals("HEADING", preview.structure().get(0).kind());
+        assertEquals("第一章", preview.structure().get(0).text());
+        assertEquals(0, preview.structure().get(1).start());
     }
 
     @Test

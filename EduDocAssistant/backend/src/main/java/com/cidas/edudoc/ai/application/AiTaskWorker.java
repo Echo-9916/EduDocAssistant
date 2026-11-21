@@ -54,8 +54,8 @@ public class AiTaskWorker {
     private final AiTaskWorkerProperties properties;
     private final AiTaskRepository aiTaskRepository;
     private final ChunkEmbeddingRepository embeddingRepository;
+    private final SemanticBlockFactory semanticBlockFactory;
     private final AiGateway aiGateway;
-    private final CitationService citationService;
     private final AiResultTxService resultTxService;
     private final AuditService auditService;
 
@@ -196,10 +196,12 @@ public class AiTaskWorker {
 
     private void handleSummary(AiTask task, long beganAt) {
         List<VersionChunk> chunks = embeddingRepository.selectVersionChunks(task.getDocumentVersionId());
-        if (chunks.isEmpty()) {
+        List<SemanticBlock> blocks = semanticBlockFactory.from(
+                embeddingRepository.selectStructureJson(task.getDocumentVersionId()), chunks);
+        if (blocks.isEmpty()) {
             throw new CidasBusinessException(ErrorCode.MODEL_FAILED, "版本无分块，无法摘要");
         }
-        List<List<VersionChunk>> groups = groupChunks(chunks, properties.groupChars());
+        List<List<SemanticBlock>> groups = groupBlocks(blocks, properties.groupChars());
         List<SummarySegment> segments = new ArrayList<>();
         String model = null;
         String promptVersion = null;
@@ -208,7 +210,7 @@ public class AiTaskWorker {
         for (int i = 0; i < groups.size(); i++) {
             checkBudget(beganAt);
             SummarizeOutcome outcome = aiGateway.summarize(groups.get(i).stream()
-                    .map(c -> new SourceChunk(c.chunkId(), c.contentText())).toList());
+                    .map(b -> new SourceChunk(b.blockId(), b.text())).toList());
             segments.addAll(outcome.segments());
             if (outcome.model() != null) {
                 model = outcome.model();
@@ -254,22 +256,26 @@ public class AiTaskWorker {
             checkBudget(beganAt);
         }
 
-        Map<String, VersionChunk> validChunks = citationService.indexByVersion(chunks);
+        Map<String, SemanticBlock> validBlocks = blocks.stream()
+                .collect(java.util.stream.Collectors.toMap(SemanticBlock::blockId,
+                        java.util.function.Function.identity(), (a, b) -> a));
         List<AiCitation> citations = new ArrayList<>();
         List<Map<String, Object>> segmentViews = new ArrayList<>();
         int rank = 1;
         for (SummarySegment segment : segments) {
-            for (String chunkId : segment.chunkIds()) {
-                VersionChunk chunk = chunkId == null ? null : validChunks.get(chunkId);
-                if (chunk == null) {
-                    continue; // 非法引用丢弃（chunkId 不在本版本分块表即非法，模型不可造块）
-                }
-                citations.add(new AiCitation(Ids.hex16(), "PENDING", chunk.chunkId(), chunk.pageNo(),
-                        chunk.charStart(), chunk.charEnd(),
-                        AiResultRepository.clipQuote(chunk.contentText()), rank++));
+            List<SemanticBlock> refs = segment.chunkIds().stream()
+                    .map(id -> id == null ? null : validBlocks.get(id))
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+            for (SemanticBlock block : refs) {
+                citations.add(new AiCitation(Ids.hex16(), "PENDING", block.chunkId(), block.pageNo(),
+                        block.start(), block.end(),
+                        AiResultRepository.clipQuote(block.text()), rank++));
             }
-            segmentViews.add(Map.of("text", segment.text(),
-                    "chunkIds", segment.chunkIds().stream().filter(validChunks::containsKey).toList()));
+            segmentViews.add(Map.of(
+                    "text", segment.text(),
+                    "blockIds", refs.stream().map(SemanticBlock::blockId).toList(),
+                    "chunkIds", refs.stream().map(SemanticBlock::chunkId).distinct().toList()));
         }
         String resultId = Ids.hex16();
         citations.forEach(c -> c.setResultId(resultId));
@@ -295,11 +301,15 @@ public class AiTaskWorker {
     /** C-05 要点：分组提取 → 非法 chunkId 丢弃 → 按引用块 char_start 重排为文档顺序 → <5 条标记 underMin。 */
     private void handleKeypoint(AiTask task, long beganAt) {
         List<VersionChunk> chunks = embeddingRepository.selectVersionChunks(task.getDocumentVersionId());
-        if (chunks.isEmpty()) {
+        List<SemanticBlock> blocks = semanticBlockFactory.from(
+                embeddingRepository.selectStructureJson(task.getDocumentVersionId()), chunks);
+        if (blocks.isEmpty()) {
             throw new CidasBusinessException(ErrorCode.MODEL_FAILED, "版本无分块，无法提取要点");
         }
-        Map<String, VersionChunk> validChunks = citationService.indexByVersion(chunks);
-        List<List<VersionChunk>> groups = groupChunks(chunks, properties.groupChars());
+        Map<String, SemanticBlock> validBlocks = blocks.stream()
+                .collect(java.util.stream.Collectors.toMap(SemanticBlock::blockId,
+                        java.util.function.Function.identity(), (a, b) -> a));
+        List<List<SemanticBlock>> groups = groupBlocks(blocks, properties.groupChars());
         List<AiGateway.Keypoint> raw = new ArrayList<>();
         String model = null;
         String promptVersion = null;
@@ -308,7 +318,7 @@ public class AiTaskWorker {
         for (int i = 0; i < groups.size(); i++) {
             checkBudget(beganAt);
             AiGateway.KeypointOutcome outcome = aiGateway.extractKeypoints(groups.get(i).stream()
-                    .map(c -> new SourceChunk(c.chunkId(), c.contentText())).toList());
+                    .map(b -> new SourceChunk(b.blockId(), b.text())).toList());
             raw.addAll(outcome.keypoints());
             if (outcome.model() != null) {
                 model = outcome.model();
@@ -328,15 +338,14 @@ public class AiTaskWorker {
         }
         checkBudget(beganAt);
 
-        record OrderedKeypoint(VersionChunk chunk, AiGateway.Keypoint keypoint) {
+        record OrderedKeypoint(SemanticBlock block, AiGateway.Keypoint keypoint) {
         }
         List<OrderedKeypoint> kept = raw.stream()
-                .filter(k -> k.chunkId() != null && validChunks.containsKey(k.chunkId()))
-                .map(k -> new OrderedKeypoint(validChunks.get(k.chunkId()), k))
+                .filter(k -> k.chunkId() != null && validBlocks.containsKey(k.chunkId()))
+                .map(k -> new OrderedKeypoint(validBlocks.get(k.chunkId()), k))
                 .sorted(java.util.Comparator
-                        .comparingInt((OrderedKeypoint o) -> o.chunk().charStart() == null
-                                ? Integer.MAX_VALUE : o.chunk().charStart())
-                        .thenComparingInt(o -> o.chunk().chunkNo()))
+                        .comparingInt((OrderedKeypoint o) -> o.block().start())
+                        .thenComparingInt(o -> o.block().order()))
                 .toList();
         boolean underMin = kept.size() < 5; // 不判失败，UI 提示（REQ-11 口径）
         List<AiCitation> citations = new ArrayList<>();
@@ -345,13 +354,17 @@ public class AiTaskWorker {
         int rank = 1;
         StringBuilder content = new StringBuilder();
         for (OrderedKeypoint o : kept) {
-            VersionChunk chunk = o.chunk();
-            citations.add(new AiCitation(Ids.hex16(), resultId, chunk.chunkId(), chunk.pageNo(),
-                    chunk.charStart(), chunk.charEnd(),
-                    AiResultRepository.clipQuote(chunk.contentText()), rank));
+            SemanticBlock block = o.block();
+            citations.add(new AiCitation(Ids.hex16(), resultId, block.chunkId(), block.pageNo(),
+                    block.start(), block.end(),
+                    AiResultRepository.clipQuote(block.text()), rank));
             content.append(rank).append(". ").append(o.keypoint().text()).append('\n');
-            views.add(Map.of("text", o.keypoint().text(), "chunkId", chunk.chunkId(),
-                    "charStart", chunk.charStart() == null ? -1 : chunk.charStart()));
+            views.add(Map.of(
+                    "text", o.keypoint().text(),
+                    "blockId", block.blockId(),
+                    "chunkId", block.chunkId(),
+                    "kind", block.kind(),
+                    "charStart", block.start()));
             rank++;
         }
         Map<String, Object> structuredMap = new java.util.LinkedHashMap<>();
@@ -386,6 +399,27 @@ public class AiTaskWorker {
                 size = 0;
             }
             current.add(chunk);
+            size += size == 0 ? len : len + 1;
+        }
+        if (!current.isEmpty()) {
+            groups.add(current);
+        }
+        return groups;
+    }
+
+    /** 语义块按文档顺序累计字符数 ≤groupChars 分组；单块超限自成一组。 */
+    static List<List<SemanticBlock>> groupBlocks(List<SemanticBlock> blocks, int groupChars) {
+        List<List<SemanticBlock>> groups = new ArrayList<>();
+        List<SemanticBlock> current = new ArrayList<>();
+        int size = 0;
+        for (SemanticBlock block : blocks) {
+            int len = block.text() == null ? 0 : block.text().length();
+            if (!current.isEmpty() && size + len + 1 > groupChars) {
+                groups.add(current);
+                current = new ArrayList<>();
+                size = 0;
+            }
+            current.add(block);
             size += size == 0 ? len : len + 1;
         }
         if (!current.isEmpty()) {

@@ -1,0 +1,58 @@
+/* 结构化阅读视图：只补语义样式，不改块容器与高亮 mark 的行为。 */
+.doc-structure h1,
+.doc-structure h2,
+.doc-structure h3,
+.doc-structure h4 {
+  margin: 12px 0 6px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.doc-structure h1 {
+  font-size: 20px;
+}
+
+.doc-structure h2 {
+  font-size: 17px;
+}
+
+.doc-structure h3 {
+  font-size: 15px;
+}
+
+.doc-structure h4 {
+  font-size: 14px;
+}
+
+.doc-structure p {
+  margin: 6px 0;
+  line-height: 1.75;
+}
+
+.doc-structure ul,
+.doc-structure ol {
+  margin: 4px 0;
+  padding-left: 2em;
+}
+
+.doc-structure li {
+  line-height: 1.75;
+}
+
+.doc-structure table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+}
+
+.doc-structure td {
+  border: 1px solid #e5e5e5;
+  padding: 4px 8px;
+  vertical-align: top;
+  line-height: 1.6;
+}
+
+.doc-structure mark {
+  padding: 0 1px;
+  background: #fff3b0;
+}

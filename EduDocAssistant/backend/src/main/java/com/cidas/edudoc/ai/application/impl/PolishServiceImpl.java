@@ -131,7 +131,8 @@ public class PolishServiceImpl implements PolishService {
                 "text/plain", info.encryption(), "PARSED");
         // 成版五写 + POLISH_APPLIED 审计同一事务（1105 审查 P1-2）；被替换版本随采纳回写（撤销目标）
         return txWriter.applyVersion(derived, doc, principal.userId(), newText,
-                row.getId(), decision, accepted, current.getId());
+                row.getId(), decision, accepted, current.getId(),
+                idx, row.getSourceText().length(), accepted.length());
     }
 
     @Override

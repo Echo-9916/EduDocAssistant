@@ -89,6 +89,10 @@ export const restoreDocument = (id: string) => post<void>(`/documents/${id}/rest
 export const reparseDocument = (id: string, versionId?: string) =>
   post<{ taskId: string }>(`/documents/${id}/parse`, versionId ? { versionId } : {})
 
+/** 只重发当前版本向量化事件，不重解析、不改变文档结构。 */
+export const reindexDocument = (id: string) =>
+  post<{ taskId: string }>(`/documents/${id}/reindex`)
+
 /** 验收决议④：文档版本历史行（版本号降序；current=文档当前版本；downloadUrl 900s 短期签名） */
 export interface DocumentVersionRow {
   versionId: string
@@ -111,3 +115,21 @@ export const restoreDocumentVersion = (id: string, versionId: string) =>
 /** 格式视图字节流：某版本源文件（PDF 原件内嵌显示用） */
 export const fetchVersionFile = (id: string, versionId: string) =>
   getBlob(`/documents/${id}/versions/${versionId}/file`)
+
+/** 代码块语言（与 Prism 语言名一致）。 */
+export type CodeLang = 'java' | 'cpp' | 'python' | 'sql'
+
+/** 块编辑：整篇块列表保存为新 EDIT 版本（baseVersionId 乐观锁）。 */
+export interface EditableBlock {
+  type: 'H1' | 'H2' | 'BODY' | 'CODE'
+  text: string
+  /** 仅 CODE 块使用；缺省 java */
+  lang?: CodeLang
+}
+
+export const saveDocumentBlocks = (id: string, body: { baseVersionId: string; blocks: EditableBlock[] }) =>
+  post<{ versionId: string; versionNo: number }>(`/documents/${id}/block-edits`, body)
+
+/** 当前版本导出 Word（模板样式优先；只还原语义结构）。 */
+export const exportDocumentDocx = (id: string) =>
+  getBlob(`/documents/${id}/exports/docx`)

@@ -46,6 +46,17 @@
         FETCH FIRST 1 ROWS ONLY
     </select>
 
+    <!-- 提交关联用：最近一次已完成校验（ERROR 不算，避免非 docx/worker 错误被当成 PASS） -->
+    <select id="selectLatestCompletedByVersion" resultType="string">
+        SELECT check_id FROM (
+            SELECT RAWTOHEX(id) AS check_id
+            FROM edudoc_format_check
+            WHERE document_version_id = HEXTORAW(#{documentVersionId})
+              AND status IN ('PASSED', 'FAILED')
+            ORDER BY finished_at DESC NULLS LAST, create_time DESC
+        ) WHERE ROWNUM = 1
+    </select>
+
     <update id="markRunning">
         UPDATE edudoc_format_check
         SET status = 'RUNNING', started_at = SYSTIMESTAMP

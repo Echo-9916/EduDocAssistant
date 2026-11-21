@@ -4,8 +4,11 @@ import com.cidas.edudoc.access.application.AuditService;
 import com.cidas.edudoc.ai.application.EmbeddingCleanupService;
 import com.cidas.edudoc.common.outbox.OutboxEventRepository;
 import com.cidas.edudoc.document.domain.Chunk;
+import com.cidas.edudoc.document.domain.StructureNode;
+import com.cidas.edudoc.document.domain.TextBlock;
 import com.cidas.edudoc.document.infrastructure.DocumentChunkRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
+import com.cidas.edudoc.document.infrastructure.DocumentVersionRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
@@ -29,11 +32,13 @@ class DocumentParseTxServiceImplTest {
 
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final DocumentChunkRepository chunkRepository = mock(DocumentChunkRepository.class);
+    private final DocumentVersionRepository versionRepository = mock(DocumentVersionRepository.class);
     private final AuditService auditService = mock(AuditService.class);
     private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
     private final EmbeddingCleanupService embeddingCleanupService = mock(EmbeddingCleanupService.class);
     private final DocumentParseTxServiceImpl service = new DocumentParseTxServiceImpl(
-            documentRepository, chunkRepository, auditService, outboxEventRepository, embeddingCleanupService);
+            documentRepository, chunkRepository, versionRepository, auditService, outboxEventRepository,
+            embeddingCleanupService);
 
     private static Chunk chunk() {
         return new Chunk(1, null, null, 0, 4, "text", 2, "hash");
@@ -43,7 +48,7 @@ class DocumentParseTxServiceImplTest {
     void writeSuccessReturnsFalseAndSkipsEverythingWhenNotParsing() {
         when(documentRepository.markStatusIfParsing("D1", "READY")).thenReturn(0);
 
-        assertFalse(service.writeSuccess("D1", "V1", List.of(chunk())));
+        assertFalse(service.writeSuccess("D1", "V1", List.of(chunk()), List.of()));
         verify(chunkRepository, never()).deleteByVersion(anyString());
         verify(chunkRepository, never()).insertAll(anyList());
         verify(auditService, never()).record(any(), any(), any(), any(), any(), any());
@@ -54,16 +59,29 @@ class DocumentParseTxServiceImplTest {
     void writeSuccessWritesChunksPublishesEmbedEventAndReturnsTrue() {
         when(documentRepository.markStatusIfParsing("D1", "READY")).thenReturn(1);
 
-        assertTrue(service.writeSuccess("D1", "V1", List.of(chunk())));
+        assertTrue(service.writeSuccess("D1", "V1", List.of(chunk()), List.of()));
         // FK 无级联：先删向量行再删块（C-03 裁决）
         InOrder order = inOrder(embeddingCleanupService, chunkRepository);
         order.verify(embeddingCleanupService).deleteByVersion("V1");
         order.verify(chunkRepository).deleteByVersion("V1");
         verify(chunkRepository).insertAll(anyList());
+        verify(versionRepository).updateStructureJson("V1", null);
         verify(outboxEventRepository).publish(eq("DOCUMENT_VERSION"), eq("V1"),
                 eq("DOCUMENT_EMBED_REQUESTED"), argThatPayload());
         verify(auditService).record(eq("PARSE_SUCCEEDED"), eq("DOCUMENT"), eq("D1"), eq("D1"),
                 eq("200"), any(Map.class));
+    }
+
+    @Test
+void writeSuccessPersistsStructureJson() {
+        when(documentRepository.markStatusIfParsing("D1", "READY")).thenReturn(1);
+        StructureNode node = StructureNode.ranged(1, TextBlock.PARAGRAPH, 0, 4, null, null,
+                null, null, null, null, null);
+
+        assertTrue(service.writeSuccess("D1", "V1", List.of(chunk()), List.of(node)));
+
+        verify(versionRepository).updateStructureJson(eq("V1"),
+                org.mockito.ArgumentMatchers.contains("\"kind\":\"PARAGRAPH\""));
     }
 
     private static Map<String, Object> argThatPayload() {

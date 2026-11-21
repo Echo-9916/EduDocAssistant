@@ -41,6 +41,11 @@ public class FormatCheckRepository {
         return mapper.markRunning(checkIdHex);
     }
 
+    /** 提交关联用：该版本最近一次 PASSED/FAILED 校验 ID，没有返回 null。 */
+    public String latestCompletedByVersion(String documentVersionIdHex) {
+        return mapper.selectLatestCompletedByVersion(documentVersionIdHex);
+    }
+
     public int updateResult(String checkIdHex, int totalIssueCount, int blockingIssueCount, String status,
                             String resultSummary) {
         return mapper.updateResult(checkIdHex, totalIssueCount, blockingIssueCount, status, resultSummary);

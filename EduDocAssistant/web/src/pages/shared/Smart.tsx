@@ -18,7 +18,7 @@ const fmt = (v: string) => {
 
 /**
  * 智能处理入口：列出当前用户已解析完成的文档，点击进入文档预览使用真实摘要/问答/润色。
- * 不再提供演示数据——结果统一在 /documents/:id/view 内产生。
+ * 不再提供前端 fixture，结果统一在 /documents/:id/view 内产生。
  */
 export default function Smart({ role }: { role: RoleCodeValue }) {
   const navigate = useNavigate()
@@ -56,9 +56,7 @@ export default function Smart({ role }: { role: RoleCodeValue }) {
 
   return (
     <DemoPage
-      live
       title="智能处理"
-      screens="对应原型：学生 06/07/08/09/10、教师 05/06/07/08"
       desc="选择一份已解析完成的文档，进入预览后使用摘要、要点提取、文档问答与文本润色；结果均可定位原文。"
     >
       {loading ? (

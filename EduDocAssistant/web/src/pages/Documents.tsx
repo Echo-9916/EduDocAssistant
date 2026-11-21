@@ -249,10 +249,9 @@ export default function Documents({ role }: Props) {
           {
             title: '归属', width: 130,
             render: (_, row) => row.relation === 'COLLAB'
-              ? <Space size={4}><Tag color="blue">协作</Tag><span>{row.ownerName ?? '-'}</span></Space>
+              ? <Space size={4}><Tag color="blue">协同</Tag><span>{row.ownerName ?? '-'}</span></Space>
               : <Typography.Text type="secondary">本人</Typography.Text>,
           },
-          { title: '类型', dataIndex: 'docType', width: 90, render: (v: string) => DOC_TYPE_LABEL[v] ?? v },
           {
             title: '状态',
             dataIndex: 'status',
@@ -277,7 +276,7 @@ export default function Documents({ role }: Props) {
               return (
               <Space>
                 {!isCollab && <a onClick={() => setDetailId(row.id)}>详情</a>}
-                <a onClick={() => setVersionsDoc(row)}>版本</a>
+                {!isCollab && <a onClick={() => setVersionsDoc(row)}>版本</a>}
                 {view === 'mine' && !isCollab && <a onClick={() => setShareDoc(row)}>共享</a>}
                 {row.status === 'READY' && (
                   // 1106 P1-1：当前路由已是 .../documents，相对段只补 `{id}/view`
@@ -318,7 +317,8 @@ export default function Documents({ role }: Props) {
       <VersionDrawer open={!!versionsDoc} documentId={versionsDoc?.id ?? null}
         documentTitle={versionsDoc?.title} onClose={() => setVersionsDoc(null)} onRestored={reload} />
       <ShareModal open={!!shareDoc} documentId={shareDoc?.id ?? null}
-        documentTitle={shareDoc?.title} onClose={() => setShareDoc(null)} />
+        documentTitle={shareDoc?.title} courseId={shareDoc?.courseId}
+        onClose={() => setShareDoc(null)} />
       <ConversionModal open={convertOpen}
         docs={data.items.filter((d) => selectedKeys.includes(d.id))}
         onClose={() => setConvertOpen(false)} />

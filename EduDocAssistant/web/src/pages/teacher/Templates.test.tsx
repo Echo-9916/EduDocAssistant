@@ -11,12 +11,13 @@ vi.mock('../../api/template', async (importOriginal) => {
     listTemplates: vi.fn(), createTemplate: vi.fn(), changeTemplateStatus: vi.fn(),
     deleteTemplate: vi.fn(), listVersions: vi.fn(), createVersion: vi.fn(),
     listRules: vi.fn(), replaceRules: vi.fn(), publishVersion: vi.fn(),
+    createManualVersion: vi.fn(),
     currentRules: vi.fn(), provisionFromTemplate: vi.fn(), previewTemplateRules: vi.fn(),
     forkTemplateVersion: vi.fn(),
   }
 })
 
-import { createTemplate, createVersion, forkTemplateVersion, listRules, listTemplates, listVersions, previewTemplateRules, publishVersion, replaceRules } from '../../api/template'
+import { createManualVersion, createTemplate, createVersion, forkTemplateVersion, listRules, listTemplates, listVersions, previewTemplateRules, publishVersion, replaceRules } from '../../api/template'
 import Templates, { validateRules } from './Templates'
 import type { RuleView, TemplateView } from '../../api/template'
 
@@ -116,6 +117,24 @@ describe('Templates 页（D-09）', () => {
     expect(await screen.findByText(/适用范围/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /确认发布/ }))
     await waitFor(() => expect(publishVersion).toHaveBeenCalledWith('T1', 'V1'))
+  })
+
+  /** 新模板没有版本时也允许直接添加规则，保存生成手工规则版本（不强制上传 .docx）。 */
+  it('无版本模板：添加规则并保存 → createManualVersion', async () => {
+    vi.mocked(listVersions).mockResolvedValue([])
+    vi.mocked(createManualVersion).mockResolvedValue({
+      id: 'V1', templateId: 'T1', versionNo: 1, validationStatus: 'VALID', publishedAt: null,
+      changeSummary: '手工添加规则', sourceObjectId: null, ruleCount: 1, failureReason: null,
+    })
+    render(<Templates />)
+    fireEvent.click(await screen.findByText('编辑'))
+    expect(await screen.findByText(/该模板还没有版本/)).toBeTruthy()
+    const addRule = screen.getByRole('button', { name: /添加规则/ })
+    fireEvent.mouseEnter(addRule)
+    fireEvent.click(await screen.findByText('字体'))
+    fireEvent.click(screen.getByRole('button', { name: '保存规则' }))
+    await waitFor(() => expect(createManualVersion).toHaveBeenCalledWith('T1',
+      [expect.objectContaining({ ruleType: 'FONT', targetSelector: 'HEADING_1' })]))
   })
 
   // ==================== 验收反馈 1：已发布版本编辑另存新版本（fork） ====================

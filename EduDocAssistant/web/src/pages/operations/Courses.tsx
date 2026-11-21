@@ -16,7 +16,7 @@ const FIELD_MAPPING = [
   { key: '4', from: '人员类别', to: '课程角色', note: '映射为 教师 / 学生 / 助教' },
 ]
 
-/** 课程治理：课程状态、成员规模、模板关联与教学运行指标（对应原型：运维 02/03/04/05/06）。 */
+/** 课程治理：课程状态、成员规模、模板关联与教学运行指标。 */
 export default function OpsCourses() {
   const [rows, setRows] = useState<GovCourse[]>([])
   const [loading, setLoading] = useState(true)
@@ -115,7 +115,6 @@ export default function OpsCourses() {
   return (
     <DemoPage
       title="课程治理"
-      screens="对应原型：运维 02/03/04/05/06"
       desc="统一维护课程状态、成员规模、模板关联和教学运行指标；运维保持只读边界，不替代教师评分。"
       extra={
         <Space wrap>

@@ -1,5 +1,6 @@
 // 文档共享链接 API（契约=后端 ShareController）：owner 创建/列出/撤销，公开 token 免登录只读。
 import { del, get, post } from './http'
+import type { PreviewBlock, StructureNode } from './ai'
 
 export type SharePermission = 'VIEW' | 'COMMENT'
 export type ShareStatus = 'A' | 'R' | 'E'
@@ -28,6 +29,8 @@ export interface PublicShare {
   versionNo: number | null
   permission: SharePermission
   text: string
+  blocks: PreviewBlock[]
+  structure: StructureNode[]
 }
 
 export const createShare = (documentId: string, body: { expiresInDays: number; permission: SharePermission }) =>

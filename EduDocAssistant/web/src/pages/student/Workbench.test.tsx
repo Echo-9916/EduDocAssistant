@@ -3,7 +3,25 @@ import { fireEvent, render, screen } from '@testing-library/react'
 
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigateMock }))
-vi.mock('../../api/messages', () => ({ unreadCount: vi.fn(() => Promise.resolve(3)) }))
+vi.mock('../../api/studentWorkbench', () => ({
+  studentWorkbenchSummary: vi.fn().mockResolvedValue({
+    documentTotal: 7,
+    pendingAssignmentTotal: 2,
+    unreadMessageTotal: 3,
+    activeCollaborationTotal: 1,
+    todos: [
+      {
+        assignmentId: 'A1', courseName: 'Web开发技术', title: '设计报告',
+        deadline: '2026-11-20T18:00:00+08:00', remainText: '剩余 5 天', status: 'PENDING',
+      },
+      {
+        assignmentId: 'A2', courseName: '数据库原理', title: '索引实验',
+        deadline: '2026-11-16T18:00:00+08:00', remainText: '已逾期 1 天', status: 'OVERDUE',
+      },
+    ],
+    recentDocuments: [],
+  }),
+}))
 let perms: string[] = ['DOCUMENT_READ', 'FORMAT_CHECK', 'TEMPLATE_READ']
 vi.mock('../../auth/AuthContext', () => ({
   useAuth: () => ({ user: { permissions: perms } as never, login: vi.fn(), logout: vi.fn(), reload: vi.fn() }),
@@ -11,7 +29,7 @@ vi.mock('../../auth/AuthContext', () => ({
 
 import StudentWorkbench from './Workbench'
 
-describe('学生工作台快捷入口（1107 P2-4）', () => {
+describe('学生工作台（1107 P2-4）', () => {
   beforeEach(() => {
     perms = ['DOCUMENT_READ', 'FORMAT_CHECK', 'TEMPLATE_READ']
   })
@@ -42,9 +60,15 @@ describe('学生工作台快捷入口（1107 P2-4）', () => {
     expect(navigateMock).toHaveBeenCalledWith('/student/documents')
   })
 
-  it('未读消息卡取 /messages/unread-count 真实未读数', async () => {
+  it('四个统计卡与待办栏取聚合接口真实数据', async () => {
     render(<StudentWorkbench />)
-    expect(await screen.findByText('未读消息')).toBeTruthy()
-    expect(await screen.findByText('3')).toBeTruthy()
+    expect(await screen.findByText('我的文档')).toBeTruthy()
+    expect(await screen.findByText('7')).toBeTruthy()
+    expect(screen.getByText('2')).toBeTruthy()
+    expect(screen.getByText('3')).toBeTruthy()
+    expect(screen.getByText('1')).toBeTruthy()
+    expect(await screen.findByText('设计报告 · Web开发技术')).toBeTruthy()
+    expect(screen.getByText('剩余 5 天')).toBeTruthy()
+    expect(screen.getByText('已逾期 1 天')).toBeTruthy()
   })
 })

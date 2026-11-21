@@ -18,12 +18,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Tika 文本提取：段落（p）为块，h1–h6 维护章节栈，页边界来自 div.page（PDFBox）或换页符。
  * 老式 .doc 结构识别较弱（POI HWPF），headingPath 允许为空（风险 R7）。
  * 1103 审查 S5：解析后按 Tika 真实探测的 Content-Type 复验（客户端自报值不可信）；
  * 提取文本设上限，防嵌套容器/内容爆炸（20MB 容器 ≠ 20MB 文本）。
+ *
+ * <p>结构识别（P0 实测：Tika 对 DOCX 的标题/列表样式也常输出普通 p，且无 class）：
+ * td 祖先 → TABLE_CELL（可靠）；文本形态 → HEADING/LIST_ITEM（启发式，只加元数据、不改文本流）。
+ * ponytail: 标题/列表靠正则，误判率换结构可读性；真要做准需换 POI outlineLvl/numPr 解析。
  */
 @Component
 public class TikaTextExtractor {
@@ -44,6 +50,20 @@ public class TikaTextExtractor {
             "text/xml",
             "application/xml");
     private static final int MAX_TEXT_CHARS = 8_000_000; // ponytail: 上限按 400 万字 ≈200 万 token，超过即视为内容爆炸
+
+    private static final int MAX_HEADING_CHARS = 80;
+    private static final Pattern HEADING_CN_CHAPTER =
+            Pattern.compile("^第[一二三四五六七八九十百零〇]+[章节部分篇]");
+    private static final Pattern HEADING_CN_NUM =
+            Pattern.compile("^[一二三四五六七八九十]+、");
+    private static final Pattern HEADING_NUMERIC =
+            Pattern.compile("^(\\d+(?:\\.\\d+){0,2})\\s+\\S");
+    private static final Pattern HEADING_KEYWORD =
+            Pattern.compile("^(摘要|目录|参考文献|致谢|附录)$");
+    private static final Pattern LIST_BULLET =
+            Pattern.compile("^[•·▪◦●\\-–—]\\s*\\S");
+    private static final Pattern LIST_NUM =
+            Pattern.compile("^(?:（(\\d+)）|\\((\\d+)\\)|(\\d+)[.、)])\\s*\\S");
 
     private final AutoDetectParser parser = new AutoDetectParser();
 
@@ -72,6 +92,13 @@ public class TikaTextExtractor {
         private String mode = null;
         private int page = 0;
 
+        // 表格结构：Tika DOCX 输出 <table><tr><td><p>，用祖先状态给 p 打 TABLE_CELL 标
+        // ponytail: 只记最内层表格，嵌套表格按外层坐标处理
+        private int tableNo = 0;
+        private int rowNo = 0;
+        private int colNo = 0;
+        private boolean inCell = false;
+
         List<TextBlock> blocks() {
             return blocks;
         }
@@ -84,6 +111,22 @@ public class TikaTextExtractor {
                 if (css != null && css.contains("page")) {
                     page++;
                 }
+                return;
+            }
+            if ("table".equals(name)) {
+                tableNo++;
+                rowNo = 0;
+                colNo = 0;
+                return;
+            }
+            if ("tr".equals(name)) {
+                rowNo++;
+                colNo = 0;
+                return;
+            }
+            if ("td".equals(name) || "th".equals(name)) {
+                colNo++;
+                inCell = true;
                 return;
             }
             if ("p".equals(name) || (name.length() == 2 && name.charAt(0) == 'h'
@@ -110,7 +153,11 @@ public class TikaTextExtractor {
 
         @Override
         public void endElement(String uri, String localName, String qName) {
-            if (mode == null || !qName.equalsIgnoreCase(mode)) {
+            String name = qName.toLowerCase();
+            if ("td".equals(name) || "th".equals(name)) {
+                inCell = false;
+            }
+            if (mode == null || !name.equals(mode)) {
                 return;
             }
             String text = current.toString().strip();
@@ -118,7 +165,7 @@ public class TikaTextExtractor {
                 String[] pages = text.split("\f", -1);
                 for (int i = 0; i < pages.length; i++) {
                     if (!pages[i].isBlank()) {
-                        blocks.add(new TextBlock(pages[i].strip(), headingPath(), page));
+                        blocks.add(blockOf(pages[i].strip()));
                     }
                     if (i < pages.length - 1) {
                         page++;
@@ -135,6 +182,66 @@ public class TikaTextExtractor {
             current.setLength(0);
         }
 
+        /** 只加结构元数据，文本与偏移与改造前完全一致。 */
+        private TextBlock blockOf(String text) {
+            if (inCell) {
+                return new TextBlock(text, headingPath(), page, TextBlock.TABLE_CELL, null,
+                        null, tableNo, rowNo, colNo);
+            }
+            Heading heading = headingOf(text);
+            if (heading != null) {
+                return new TextBlock(text, headingPath(), page, TextBlock.HEADING, heading.level,
+                        null, null, null, null);
+            }
+            Integer ordinal = listOrdinalOf(text);
+            if (ordinal != null) {
+                return new TextBlock(text, headingPath(), page, TextBlock.LIST_ITEM, null,
+                        ordinal, null, null, null);
+            }
+            return new TextBlock(text, headingPath(), page);
+        }
+
+        private static Heading headingOf(String text) {
+            if (text.length() > MAX_HEADING_CHARS) {
+                return null;
+            }
+            if (HEADING_KEYWORD.matcher(text).matches() || HEADING_CN_CHAPTER.matcher(text).find()
+                    || HEADING_CN_NUM.matcher(text).find()) {
+                return new Heading(1);
+            }
+            Matcher numeric = HEADING_NUMERIC.matcher(text);
+            if (numeric.find()) {
+                // 4 位数字开头更像年份（“2026 年…”），不当标题
+                if (numeric.group(1).split("\\.")[0].length() > 2) {
+                    return null;
+                }
+                int level = Math.min(3, numeric.group(1).split("\\.").length);
+                return new Heading(level);
+            }
+            return null;
+        }
+
+        /** 返回列表序号（无序列表返回 1），非列表返回 null。 */
+        private static Integer listOrdinalOf(String text) {
+            if (LIST_BULLET.matcher(text).find()) {
+                return 1;
+            }
+            Matcher m = LIST_NUM.matcher(text);
+            if (!m.find()) {
+                return null;
+            }
+            for (int i = 1; i <= m.groupCount(); i++) {
+                if (m.group(i) != null) {
+                    try {
+                        return Integer.parseInt(m.group(i));
+                    } catch (NumberFormatException ignored) {
+                        return 1;
+                    }
+                }
+            }
+            return 1;
+        }
+
         private String headingPath() {
             StringBuilder path = new StringBuilder();
             for (String level : headingLevels) {
@@ -146,6 +253,9 @@ public class TikaTextExtractor {
                 }
             }
             return path.toString();
+        }
+
+        private record Heading(int level) {
         }
     }
 }

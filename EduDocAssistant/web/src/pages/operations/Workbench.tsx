@@ -28,7 +28,7 @@ function storageNote(bytes: number, objects: number) {
   return `${used} / 2 TB · ${objects} 个对象`
 }
 
-/** 运维工作台：统一掌握课程运行、用户权限、审计安全与系统资源（对应原型：运维 01）。 */
+/** 运维工作台：统一掌握课程运行、用户权限、审计安全与系统资源。 */
 export default function OpsWorkbench() {
   const navigate = useNavigate()
   const [data, setData] = useState<WorkbenchData | null>(null)
@@ -54,7 +54,7 @@ export default function OpsWorkbench() {
 
   if (!data) {
     return (
-      <DemoPage title="运维工作台" screens="对应原型：运维 01" desc="统一掌握课程运行、用户权限、审计安全与系统资源状态，优先处理高风险事件。">
+      <DemoPage title="运维工作台" desc="统一掌握课程运行、用户权限、审计安全与系统资源状态，优先处理高风险事件。">
         <Card loading />
       </DemoPage>
     )
@@ -128,10 +128,7 @@ export default function OpsWorkbench() {
   return (
     <DemoPage
       title="运维工作台"
-      screens="对应原型：运维 01"
       desc="统一掌握课程运行、用户权限、审计安全与系统资源状态，优先处理高风险事件。"
-      live
-      mixedNote="真实数据：用户 / 文档 / 近 7 天高风险 / 存储；演示数据：风险事件明细 / 服务健康 / 待办审批"
       extra={
         <Space>
           <AppButton type="default" onClick={() => message.success('运维运行报告已生成')}>下载运行报告</AppButton>

@@ -44,6 +44,11 @@ public class ChunkEmbeddingRepository {
         return mapper.selectVersionChunks(versionIdHex);
     }
 
+    /** 版本结构层 JSON（智能处理按结构块生成/引用）；无结构返回 null。 */
+    public String selectStructureJson(String versionIdHex) {
+        return mapper.selectStructureJson(versionIdHex);
+    }
+
     /** 检索命中（向量距离升序）。 */
     public record SearchHit(String chunkId, String contentText, Integer pageNo,
                             Integer charStart, Integer charEnd, double distance) {

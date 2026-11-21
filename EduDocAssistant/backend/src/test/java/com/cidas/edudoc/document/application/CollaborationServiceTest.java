@@ -6,6 +6,7 @@ import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
 import com.cidas.edudoc.document.application.impl.CollaborationServiceImpl;
+import com.cidas.edudoc.document.infrastructure.CollaboratorCandidateRow;
 import com.cidas.edudoc.document.infrastructure.CollaboratorRow;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentCollaboratorRepository;
@@ -94,6 +95,44 @@ class CollaborationServiceTest {
                 () -> service.addCollaborator(DOC, new CollaborationService.AddCollaboratorCommand("stu3", "COMMENT")));
         assertEquals(ErrorCode.NOT_FOUND, e.errorCode());
         verify(collaboratorRepository, never()).ensureSession(any(), any(), any());
+    }
+
+    @Test
+    void ownerSearchesCourseTeacherAndStudentCandidates() {
+        login("U1");
+        String course = "EE0000000000000000000000000000E1";
+        when(documentRepository.findById(DOC)).thenReturn(Optional.of(
+                new Document(DOC, course, "U1", "报告", "REPORT", "READY", VER)));
+        CollaboratorCandidateRow teacher = new CollaboratorCandidateRow();
+        teacher.setUserId("T1");
+        teacher.setUsername("teacher");
+        teacher.setDisplayName("王老师");
+        teacher.setRole("TEACHER");
+        CollaboratorCandidateRow student = new CollaboratorCandidateRow();
+        student.setUserId(USER2);
+        student.setUsername("2023001");
+        student.setDisplayName("陈同学");
+        student.setRole("STUDENT");
+        student.setGroupName("课程组 3");
+        when(collaboratorRepository.findCandidates(course, DOC, "U1", "课程"))
+                .thenReturn(List.of(teacher, student));
+
+        List<CollaborationService.CollaboratorCandidate> found = service.listCandidates(DOC, "课程");
+
+        assertEquals(List.of("王老师", "陈同学"), found.stream()
+                .map(CollaborationService.CollaboratorCandidate::displayName).toList());
+        assertEquals("TEACHER", found.get(0).role());
+        assertEquals("课程组 3", found.get(1).groupName());
+    }
+
+    @Test
+    void nonOwnerCannotSearchCandidates() {
+        login("U2");
+        when(documentRepository.findById(DOC)).thenReturn(Optional.of(doc("U1")));
+        when(collaboratorRepository.isActiveMember(DOC, "U2")).thenReturn(false);
+
+        assertThrows(CidasBusinessException.class, () -> service.listCandidates(DOC, null));
+        verify(collaboratorRepository, never()).findCandidates(any(), any(), any(), any());
     }
 
     @Test

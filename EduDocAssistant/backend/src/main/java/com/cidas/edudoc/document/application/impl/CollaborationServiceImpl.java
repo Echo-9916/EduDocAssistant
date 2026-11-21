@@ -49,6 +49,19 @@ public class CollaborationServiceImpl implements CollaborationService {
     }
 
     @Override
+    public List<CollaboratorCandidate> listCandidates(String documentId, String keyword) {
+        Document doc = requireOwned(documentId);
+        if (doc.getCourseId() == null || doc.getCourseId().isBlank()) {
+            return List.of();
+        }
+        return collaboratorRepository.findCandidates(doc.getCourseId(), doc.getId(),
+                        doc.getOwnerId(), keyword).stream()
+                .map(row -> new CollaboratorCandidate(row.getUserId(), row.getUsername(),
+                        row.getDisplayName(), row.getRole(), row.getGroupName()))
+                .toList();
+    }
+
+    @Override
     @Transactional
     public CollaboratorView addCollaborator(String documentId, AddCollaboratorCommand command) {
         Document doc = requireOwned(documentId);
@@ -110,6 +123,11 @@ public class CollaborationServiceImpl implements CollaborationService {
         byDocument.put(principal.userId(), new Presence(principal.userId(), principal.displayName(),
                 principal.roles().isEmpty() ? null : principal.roles().iterator().next(), now));
         byDocument.entrySet().removeIf(e -> now - e.getValue().lastSeenMillis() > PRESENCE_TTL_MILLIS);
+    }
+
+    @Override
+    public long countActiveForUser() {
+        return collaboratorRepository.countActiveSessionsForUser(AuthContext.require().userId());
     }
 
     @Override

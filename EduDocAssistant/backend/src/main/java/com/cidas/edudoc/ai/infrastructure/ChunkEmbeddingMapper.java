@@ -22,6 +22,9 @@ public interface ChunkEmbeddingMapper {
     java.util.List<ChunkEmbeddingRepository.VersionChunk> selectVersionChunks(
             @Param("versionIdHex") String versionIdHex);
 
+    /** 版本结构层（structure_json）；老版本/未解析返回 null。 */
+    String selectStructureJson(@Param("versionIdHex") String versionIdHex);
+
     /** 未就绪（非 READY）分块数：编排入口的向量就绪判定。 */
     int countNotReady(@Param("versionIdHex") String versionIdHex);
 

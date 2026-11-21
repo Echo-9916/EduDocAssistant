@@ -6,6 +6,7 @@ import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.document.application.CollaborationService;
 import com.cidas.edudoc.document.application.DocumentPreviewService;
+import com.cidas.edudoc.document.application.StructureJson;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentChunkRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
@@ -53,6 +54,7 @@ public class DocumentPreviewServiceImpl implements DocumentPreviewService {
                         .map(c -> new Block(c.getId(), c.getChunkNo(), c.getHeadingPath(), c.getPageNo(),
                                 c.getCharStart(), c.getCharEnd(), c.getContentText()))
                         .toList(),
+                StructureJson.read(version.getStructureJson()),
                 vectorReady);
     }
 }

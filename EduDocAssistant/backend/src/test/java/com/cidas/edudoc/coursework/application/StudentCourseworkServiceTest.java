@@ -14,6 +14,7 @@ import com.cidas.edudoc.coursework.application.impl.StudentCourseworkServiceImpl
 import com.cidas.edudoc.coursework.infrastructure.CourseworkMapper;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRepository;
 import com.cidas.edudoc.coursework.infrastructure.CourseworkRow;
+import com.cidas.edudoc.template.application.FormatCheckService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,7 @@ class StudentCourseworkServiceTest {
     private static final String VERSION_ID = "AA0000000000000000000000000000C1";
     private static final String SUBMISSION_ID = "AA0000000000000000000000000000D1";
     private static final String COURSE_ID = "AA0000000000000000000000000000E1";
+    private static final String CHECK_ID = "AA0000000000000000000000000000A2";
 
     private static final String TEACHER_1 = "AA0000000000000000000000000000F2";
     private static final String TEACHER_2 = "AA0000000000000000000000000000F3";
@@ -58,8 +60,16 @@ class StudentCourseworkServiceTest {
     private final CourseworkMapper mapper = mock(CourseworkMapper.class);
     private final AuditService auditService = mock(AuditService.class);
     private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
+    private final FormatCheckService formatCheckService = mock(FormatCheckService.class);
+    private final com.cidas.edudoc.infrastructure.oss.OssStorageAdapter ossStorageAdapter =
+            mock(com.cidas.edudoc.infrastructure.oss.OssStorageAdapter.class);
+    private final com.cidas.edudoc.infrastructure.oss.OssProperties ossProperties =
+            mock(com.cidas.edudoc.infrastructure.oss.OssProperties.class);
+    private final com.cidas.edudoc.coursework.application.impl.CourseworkAttachmentTxWriter attachmentTxWriter =
+            mock(com.cidas.edudoc.coursework.application.impl.CourseworkAttachmentTxWriter.class);
     private final StudentCourseworkService service = new StudentCourseworkServiceImpl(
-            new CourseworkRepository(mapper), auditService, outboxEventRepository);
+            new CourseworkRepository(mapper), auditService, outboxEventRepository, formatCheckService,
+            ossStorageAdapter, ossProperties, attachmentTxWriter);
 
     @BeforeEach
     void login() {
@@ -106,6 +116,21 @@ class StudentCourseworkServiceTest {
         verify(mapper).insertSubmission(ASSIGNMENT_ID, STUDENT_ID, DOCUMENT_ID, VERSION_ID, null, 2L, "SUBMITTED");
         verify(auditService).record(eq("SUBMIT_ASSIGNMENT"), eq("SUBMISSION"), eq(SUBMISSION_ID),
                 eq(DOCUMENT_ID), eq("200"), any());
+    }
+
+    @Test
+    void submitLinksLatestCompletedFormatCheck() {
+        OffsetDateTime due = OffsetDateTime.now().plusDays(2);
+        when(mapper.selectAssignmentById(ASSIGNMENT_ID)).thenReturn(assignment("PUBLISHED", due, "N"));
+        when(mapper.selectOwnedReadyDocument(STUDENT_ID, DOCUMENT_ID)).thenReturn(ownedDocument());
+        when(mapper.countSubmissions(ASSIGNMENT_ID, STUDENT_ID)).thenReturn(0L);
+        when(mapper.selectSubmissionId(ASSIGNMENT_ID, STUDENT_ID, 1L)).thenReturn(SUBMISSION_ID);
+        when(formatCheckService.latestCompletedCheckId(VERSION_ID)).thenReturn(CHECK_ID);
+
+        service.submit(ASSIGNMENT_ID, DOCUMENT_ID);
+
+        verify(mapper).insertSubmission(ASSIGNMENT_ID, STUDENT_ID, DOCUMENT_ID, VERSION_ID, CHECK_ID,
+                1L, "SUBMITTED");
     }
 
     // ---------- 提交消息生产者（2-5 生产者①） ----------

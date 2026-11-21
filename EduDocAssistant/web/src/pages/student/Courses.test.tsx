@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('../../api/http', () => ({ getErrorMessage: (e: Error) => e?.message ?? 'err' }))
 vi.mock('../../api/coursework', () => ({
   listStudentAssignments: vi.fn(),
   submitAssignment: vi.fn(),
+  listAssignmentAttachments: vi.fn().mockResolvedValue([]),
+  downloadAssignmentAttachment: vi.fn(),
+  createDocumentFromAttachment: vi.fn(),
 }))
 vi.mock('../../api/documents', () => ({
   listCourses: vi.fn(),
@@ -28,7 +32,8 @@ function row(over: Partial<StudentAssignmentView> = {}): StudentAssignmentView {
     deadline: '2026-11-05T23:59:00+08:00', remainText: '已截止', status: 'PENDING',
     format: { state: 'NONE', note: '' }, score: null, feedback: null, attemptNo: null,
     submittedDoc: null, submitTime: null, documentId: null, documentVersionId: null,
-    versionNo: null, submissionFormat: 'DOCX', requireFormatCheck: 'Y', ...over,
+    versionNo: null, submissionFormat: 'DOCX', requireFormatCheck: 'Y',
+    templateVersionId: null, templateName: null, templateVersionNo: null, ...over,
   }
 }
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 vi.mock('../api/http', () => ({ getErrorMessage: (e: Error) => e?.message ?? 'err' }))
@@ -22,7 +22,9 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('../api/ai', () => api)
 const getDocument = vi.hoisted(() => vi.fn())
-vi.mock('../api/documents', () => ({ getDocument }))
+const saveDocumentBlocks = vi.hoisted(() => vi.fn())
+const exportDocumentDocx = vi.hoisted(() => vi.fn())
+vi.mock('../api/documents', () => ({ getDocument, saveDocumentBlocks, exportDocumentDocx, reindexDocument: vi.fn() }))
 vi.mock('../api/collaboration', () => ({
   listAnnotations: vi.fn().mockResolvedValue([]),
   listPresence: vi.fn().mockResolvedValue([]),
@@ -37,7 +39,7 @@ vi.mock('../api/collaboration', () => ({
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({
     user: { userId: 'U1', username: 't', roles: ['TEACHER'], permissions: [
-      'DOCUMENT_READ', 'AI_SUMMARY', 'AI_KEYPOINT', 'AI_QA', 'AI_POLISH',
+      'DOCUMENT_READ', 'DOCUMENT_EDIT', 'AI_SUMMARY', 'AI_KEYPOINT', 'AI_QA', 'AI_POLISH',
     ], courseScope: [] },
     loading: false, login: vi.fn(), logout: vi.fn(),
   }),
@@ -47,10 +49,10 @@ import DocumentView from './DocumentView'
 import type { Preview } from '../api/ai'
 
 const preview: Preview = {
-  documentId: 'D1', versionId: 'V1', versionNo: 1, vectorReady: true,
+  documentId: 'D1', versionId: 'V1', versionNo: 1, structure: [], vectorReady: true,
   blocks: [
     { chunkId: 'C1', chunkNo: 1, headingPath: '第一章', pageNo: 1, charStart: 0, charEnd: 4, text: 'hello' },
-    { chunkId: 'C2', chunkNo: 2, headingPath: null, pageNo: 2, charStart: 5, charEnd: 9, text: '\nworld' },
+    { chunkId: 'C2', chunkNo: 2, headingPath: null, pageNo: 2, charStart: 5, charEnd: 10, text: '\nworld' },
   ],
 }
 
@@ -75,6 +77,8 @@ describe('DocumentView（C-10）', () => {
   beforeEach(() => {
     api.getPreview.mockResolvedValue(preview)
     getDocument.mockResolvedValue(docDetail)
+    saveDocumentBlocks.mockResolvedValue({ versionId: 'V2', versionNo: 2 })
+    exportDocumentDocx.mockResolvedValue(new Blob(['docx']))
     api.loadTaskId.mockReturnValue(null)
   })
 
@@ -90,6 +94,90 @@ describe('DocumentView（C-10）', () => {
     expect(screen.getByText('第一章')).toBeTruthy()
   })
 
+  it('有结构层时渲染标题/表格，且块容器 id 与 testid 不变', async () => {
+    api.getPreview.mockResolvedValue({
+      ...preview,
+      structure: [
+        { no: 1, kind: 'HEADING', level: 2, text: '第一章', anchor: 0 },
+        { no: 2, kind: 'HEADING', level: 2, start: 0, end: 4 },
+        { no: 3, kind: 'TABLE_CELL', tableNo: 1, row: 1, col: 1, start: 5, end: 10 },
+      ],
+    })
+    renderView()
+    const b1 = await screen.findByTestId('block-1')
+    const headings = [...b1.querySelectorAll('h2')].map((h) => h.textContent)
+    expect(headings.some((t) => t?.includes('第一章'))).toBe(true)
+    expect(headings.some((t) => t?.includes('hello'))).toBe(true)
+    expect(screen.getByTestId('block-2').querySelector('td')?.textContent).toContain('world')
+  })
+
+  it('润色选择按结构块：一个正文段一个勾选单位，标题/代码不出现勾选框', async () => {
+    api.getPreview.mockResolvedValue({
+      ...preview,
+      structure: [
+        { no: 1, kind: 'HEADING', level: 1, start: 0, end: 4 },
+        { no: 2, kind: 'PARAGRAPH', start: 5, end: 10 },
+      ],
+    })
+    api.polishParagraphs.mockResolvedValue([])
+    renderView()
+    await screen.findByTestId('block-1')
+    const boxes = screen.getAllByRole('checkbox')
+    expect(boxes).toHaveLength(1) // 只有正文段可勾选
+    fireEvent.click(boxes[0])
+    fireEvent.click(screen.getByText('润色'))
+    expect(await screen.findByText(/已选 1 段/)).toBeTruthy()
+    fireEvent.click(screen.getByTestId('run-polish'))
+    await waitFor(() => expect(api.polishParagraphs).toHaveBeenCalledWith('D1',
+      [expect.objectContaining({ text: 'world' })]))
+  })
+
+  it('协作文档只保留批注/问答/格式校验，隐藏编辑、导出、摘要、要点、润色', async () => {
+    getDocument.mockResolvedValue({ ...docDetail, relation: 'COLLAB' })
+    renderView()
+    await screen.findByTestId('block-1')
+    expect(screen.getByRole('tab', { name: '批注' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '问答' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '格式校验' })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: '摘要' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: '要点' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: '润色' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /编\s*辑/ })).toBeNull()
+    expect(screen.queryByText('导出 Word')).toBeNull()
+  })
+
+  it('批注页点击结构块即可选中，标题显示一级标题而不是正文', async () => {
+    api.getPreview.mockResolvedValue({
+      ...preview,
+      structure: [
+        { no: 1, kind: 'HEADING', level: 1, text: '第一章', anchor: 0 },
+        { no: 2, kind: 'PARAGRAPH', start: 1, end: 4 },
+      ],
+    })
+    renderView()
+    await screen.findByTestId('block-1')
+    fireEvent.click(screen.getByRole('tab', { name: '批注' }))
+    fireEvent.click(document.querySelector('.doc-structure h1') as HTMLElement)
+    expect(await screen.findByText(/一级标题 · 第一章/)).toBeTruthy()
+  })
+
+  it('块编辑：编辑 → + 正文 → 填内容 → 保存调用 saveDocumentBlocks', async () => {
+    renderView()
+    await screen.findByTestId('block-1')
+    fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }))
+    const texts = screen.getAllByPlaceholderText('内容…')
+    expect(texts.length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: '+' }))
+    const afterAdd = screen.getAllByPlaceholderText('内容…')
+    fireEvent.change(afterAdd[afterAdd.length - 1], { target: { value: '新段落' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存为新版本' }))
+    await waitFor(() => expect(saveDocumentBlocks).toHaveBeenCalledTimes(1))
+    const [id, body] = saveDocumentBlocks.mock.calls[0]
+    expect(id).toBe('D1')
+    expect(body.baseVersionId).toBe('V1')
+    expect(body.blocks.some((b: { text: string }) => b.text === '新段落')).toBe(true)
+  })
+
   it('摘要句「定位」点击 → 正文出现 <mark> 高亮（引用回跳贯通）', async () => {
     api.loadTaskId.mockReturnValue('T1')
     api.getAiTask.mockResolvedValue({
@@ -103,7 +191,7 @@ describe('DocumentView（C-10）', () => {
     })
     renderView()
     // 右侧切到摘要 Tab（默认即摘要页），点块引用 Tag 触发 onHighlight(5,9)
-    const tag = await screen.findByText('#2')
+    const tag = await screen.findByText('块 2')
     tag.click()
     await waitFor(() => expect(document.querySelectorAll('mark').length).toBeGreaterThan(0))
     expect(api.getAiTask).toHaveBeenCalledWith('T1')

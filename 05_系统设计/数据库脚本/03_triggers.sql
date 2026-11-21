@@ -336,3 +336,11 @@ BEGIN
     :NEW.update_time := SYSTIMESTAMP;
 END;
 /
+
+CREATE OR REPLACE TRIGGER trg_assignment_attachment_bu
+BEFORE UPDATE ON edudoc_assignment_attachment
+FOR EACH ROW
+BEGIN
+    :NEW.update_time := SYSTIMESTAMP;
+END;
+/

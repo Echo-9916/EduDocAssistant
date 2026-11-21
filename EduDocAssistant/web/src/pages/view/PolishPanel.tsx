@@ -1,4 +1,4 @@
-// C-13：润色面板——勾选块→对照→采纳/部分采纳/放弃；采纳成功提示新版本+可撤销一次；重润。
+// C-13：润色面板——勾选块→对照→采纳/放弃；采纳成功提示新版本+可撤销一次；重润。
 import { useMemo, useState } from 'react'
 import { Alert, Input, List, Space, Tag, Typography, message } from 'antd'
 import { AppButton } from '../../components'
@@ -130,13 +130,12 @@ export default function PolishPanel({ documentId, selectedBlocks, onHighlight, a
               {row.decision === 'PENDING' && (
                 <Space style={{ marginTop: 8 }}>
                   <AppButton size="small" data-testid={`accept-${row.polishId}`}
-                    onClick={() => void decide(row, 'ACCEPT')}>采纳</AppButton>
-                  <AppButton size="small" type="default"
-                    disabled={(acceptedTexts[row.polishId] ?? '').trim() === row.sourceText.trim()
-                      || !(acceptedTexts[row.polishId] ?? '').trim()}
-                    onClick={() => void decide(row, 'PARTIAL', acceptedTexts[row.polishId].trim())}>
-                    部分采纳
-                  </AppButton>
+                    onClick={() => {
+                      // 采纳即用当前文本：教师改过则按 PARTIAL 落改动，未改则整段采纳
+                      const edited = (acceptedTexts[row.polishId] ?? '').trim()
+                      const changed = !!edited && edited !== row.polishedText.trim()
+                      void decide(row, changed ? 'PARTIAL' : 'ACCEPT', changed ? edited : undefined)
+                    }}>采纳</AppButton>
                   <AppButton size="small" type="default" data-testid={`reject-${row.polishId}`}
                     onClick={() => void decide(row, 'REJECT')}>放弃</AppButton>
                   <AppButton size="small" type="link"

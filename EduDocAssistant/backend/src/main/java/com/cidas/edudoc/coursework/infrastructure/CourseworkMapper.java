@@ -63,11 +63,15 @@ public interface CourseworkMapper {
                          @Param("dueTime") OffsetDateTime dueTime, @Param("allowLate") String allowLate,
                          @Param("submissionFormat") String submissionFormat,
                          @Param("requireFormatCheck") String requireFormatCheck,
+                         @Param("templateVersionIdHex") String templateVersionIdHex,
                          @Param("rubricJson") String rubricJson, @Param("status") String status);
 
 
     /** 未提交学生名单（临近截止扫描的收件人来源，2-5 生产者④）。 */
     List<CourseworkRow.MemberAccount> selectUnsubmittedMembers(@Param("assignmentIdHex") String assignmentIdHex);
+
+    /** 课程内全部活跃学生（课程管理行展开）。 */
+    List<CourseworkRow.CourseStudent> selectCourseStudents(@Param("courseIdHex") String courseIdHex);
 
     /** 课程 TEACHER 成员（提交作业的收件人来源，2-5 生产者①）。 */
     List<CourseworkRow.MemberAccount> selectTeacherMembers(@Param("courseIdHex") String courseIdHex);
@@ -110,8 +114,10 @@ public interface CourseworkMapper {
                               @Param("studentIdHex") String studentIdHex, @Param("attemptNo") long attemptNo);
 
     List<CourseworkRow.Submission> selectSubmissions(@Param("userIdHex") String userIdHex,
+                                                    @Param("courseIdHex") String courseIdHex,
                                                     @Param("assignmentIdHex") String assignmentIdHex,
-                                                    @Param("status") String status);
+                                                    @Param("status") String status,
+                                                    @Param("keyword") String keyword);
 
     int updateSubmissionGrade(@Param("submissionIdHex") String submissionIdHex, @Param("score") BigDecimal score,
                               @Param("feedback") String feedback, @Param("scoreJson") String scoreJson,
@@ -119,4 +125,26 @@ public interface CourseworkMapper {
 
     /** 批改入口按主键取单条提交（回填 id/assignmentId/studentId 归属列）；课程范围校验在应用服务层（40301）。 */
     CourseworkRow.Submission selectSubmissionById(@Param("submissionIdHex") String submissionIdHex);
+
+    // ---------- 作业附件（edudoc_assignment_attachment） ----------
+
+    /** 发布前上传：assignment_id 为空，发布确认时再绑定。 */
+    int insertAssignmentAttachment(@Param("idHex") String idHex,
+                                   @Param("fileName") String fileName,
+                                   @Param("mimeType") String mimeType,
+                                   @Param("sizeBytes") long sizeBytes,
+                                   @Param("objectKey") String objectKey,
+                                   @Param("uploaderIdHex") String uploaderIdHex);
+
+    /** 发布确认绑定：只绑本人上传且尚未绑定的附件，返回受影响行数。 */
+    int bindAssignmentAttachment(@Param("assignmentIdHex") String assignmentIdHex,
+                                 @Param("attachmentIdHex") String attachmentIdHex,
+                                 @Param("uploaderIdHex") String uploaderIdHex);
+
+    List<CourseworkRow.AssignmentAttachment> selectAssignmentAttachments(
+            @Param("assignmentIdHex") String assignmentIdHex);
+
+    CourseworkRow.AssignmentAttachment selectAssignmentAttachment(
+            @Param("assignmentIdHex") String assignmentIdHex,
+            @Param("attachmentIdHex") String attachmentIdHex);
 }

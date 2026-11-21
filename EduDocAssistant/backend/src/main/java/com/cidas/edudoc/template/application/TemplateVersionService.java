@@ -10,6 +10,9 @@ public interface TemplateVersionService {
 
     TemplateVersionView create(String templateId, String changeSummary, byte[] fileBytes, String fileName);
 
+    /** 无源文件的手工规则版本（教师直接「添加规则」建模板，不强制上传 .docx）。 */
+    TemplateVersionView createManual(String templateId, String changeSummary, List<RuleCommand> rules);
+
     /** 验收决议①：上传预览——解析规则草稿返回，不落版本不落对象；确认后走 create。 */
     List<RuleView> previewRules(String templateId, byte[] fileBytes, String fileName);
 

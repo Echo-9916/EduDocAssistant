@@ -1,6 +1,7 @@
 package com.cidas.edudoc.document.application;
 
 import com.cidas.edudoc.document.domain.Chunk;
+import com.cidas.edudoc.document.domain.ChunkingResult;
 import com.cidas.edudoc.document.domain.ChunkingService;
 import com.cidas.edudoc.document.domain.TextBlock;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
@@ -175,12 +176,14 @@ public class DocumentParseWorker {
         try {
             ossStorageAdapter.downloadTo(objectKey, temp);
             List<TextBlock> blocks = textMode ? textBlocks(temp) : extractor.extract(temp, fileNameOf(objectKey));
-            List<Chunk> chunks = new ChunkingService(properties.chunkSize()).chunk(blocks);
+            ChunkingResult result = new ChunkingService(properties.chunkSize()).chunk(blocks);
+            List<Chunk> chunks = result.chunks();
             if (chunks.isEmpty()) {
                 throw new IllegalStateException("文档无可提取文本（空文档或扫描件）");
             }
-            if (parseTxService.writeSuccess(documentId, versionId, chunks)) {
-                log.info("解析成功 documentId={} versionId={} chunks={}", documentId, versionId, chunks.size());
+            if (parseTxService.writeSuccess(documentId, versionId, chunks, result.nodes())) {
+                log.info("解析成功 documentId={} versionId={} chunks={} structureNodes={}",
+                        documentId, versionId, chunks.size(), result.nodes().size());
             } else {
                 // 1103 复审 N4：回写被守卫跳过时不谎报成功
                 log.info("提取完成但回写被跳过（文档已不在 PARSING）documentId={} chunks={}", documentId, chunks.size());

@@ -22,9 +22,11 @@ describe('公开共享只读页 /s/:token', () => {
   afterEach(() => vi.clearAllMocks())
 
   it('免登录展示标题、权限与当前版本文本', async () => {
+    const text = '一、项目背景\n本项目基于 React 与 Spring Boot。'
     vi.mocked(getPublicShare).mockResolvedValue({
-      title: '课程设计报告', versionNo: 2, permission: 'VIEW',
-      text: '一、项目背景\n本项目基于 React 与 Spring Boot。',
+      title: '课程设计报告', versionNo: 2, permission: 'VIEW', text,
+      blocks: [{ chunkId: 'C1', chunkNo: 1, headingPath: null, pageNo: null, charStart: 0, charEnd: text.length - 1, text }],
+      structure: [],
     })
     render(view('abc'))
     expect(await screen.findByText('课程设计报告')).toBeTruthy()

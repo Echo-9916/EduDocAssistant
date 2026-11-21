@@ -96,7 +96,7 @@ export default function FormatPane({ documentId, mimeType, documentUpdateTime }:
   }
   const url = urlRef.current
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {(phase === 'loading' || phase === 'converting') && (
         <Space direction="vertical" style={{ width: '100%', margin: '60px 0', textAlign: 'center' }}>
           <Progress type="circle" size={56} percent={phase === 'converting' ? 60 : 10} status="active" showInfo={false} />
@@ -111,7 +111,8 @@ export default function FormatPane({ documentId, mimeType, documentUpdateTime }:
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>页内内嵌渲染（与下载产物同一引擎生成）</Typography.Text>
             <AppButton size="small" type="link" onClick={() => window.open(url, '_blank')}>在新标签页打开</AppButton>
           </Space>
-          <iframe title="版式预览" src={url} style={{ width: '100%', height: '66vh', border: 'none' }} />
+          <iframe title="版式预览" src={url}
+            style={{ width: '100%', flex: 1, minHeight: 0, border: 'none' }} />
         </>
       )}
       <Alert style={{ marginTop: 8 }} type="info" showIcon banner

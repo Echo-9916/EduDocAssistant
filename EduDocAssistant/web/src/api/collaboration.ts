@@ -34,6 +34,14 @@ export interface CollaboratorView {
   joinedAt: string | null
 }
 
+export interface CollaboratorCandidate {
+  userId: string
+  username: string
+  displayName: string
+  role: 'TEACHER' | 'STUDENT' | string
+  groupName: string | null
+}
+
 export interface PresenceView {
   userId: string
   displayName: string
@@ -58,6 +66,11 @@ export const listCollaborators = (documentId: string) =>
 
 export const addCollaborator = (documentId: string, body: { username: string; permission: CollabPermission }) =>
   post<CollaboratorView>(`/documents/${documentId}/collaborators`, body)
+
+/** owner 按课程成员搜索候选人（教师/学生，排除本人和已有协作者）。 */
+export const listCollaboratorCandidates = (documentId: string, keyword?: string) =>
+  get<CollaboratorCandidate[]>(`/documents/${documentId}/collaborator-candidates`,
+    { params: keyword ? { keyword } : {} })
 
 export const removeCollaborator = (documentId: string, userId: string) =>
   del<void>(`/documents/${documentId}/collaborators/${userId}`)

@@ -21,6 +21,8 @@ public interface DocumentCollaboratorMapper {
 
     int countActiveMember(@Param("documentIdHex") String documentIdHex, @Param("userIdHex") String userIdHex);
 
+    long countActiveSessionsForUser(@Param("userIdHex") String userIdHex);
+
     int insertMember(@Param("idHex") String idHex, @Param("sessionIdHex") String sessionIdHex,
                      @Param("userIdHex") String userIdHex, @Param("permissionLevel") String permissionLevel);
 
@@ -30,4 +32,10 @@ public interface DocumentCollaboratorMapper {
     int removeMember(@Param("sessionIdHex") String sessionIdHex, @Param("userIdHex") String userIdHex);
 
     CollaboratorRow selectUserByUsername(@Param("username") String username);
+
+    /** 文档所属课程内、尚未成为协作者的教师/学生候选。 */
+    List<CollaboratorCandidateRow> selectCandidates(@Param("courseIdHex") String courseIdHex,
+                                                     @Param("documentIdHex") String documentIdHex,
+                                                     @Param("ownerIdHex") String ownerIdHex,
+                                                     @Param("keyword") String keyword);
 }

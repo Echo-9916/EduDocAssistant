@@ -75,6 +75,10 @@ export const createVersion = (templateId: string, file: File, changeSummary?: st
   )
 }
 
+/** 不上传 .docx，直接用「添加规则」生成一个手工规则版本（发布流程相同）。 */
+export const createManualVersion = (templateId: string, rules: Omit<RuleView, 'id'>[], changeSummary?: string) =>
+  post<TemplateVersionView>(`/templates/${templateId}/versions/manual`, { rules, changeSummary })
+
 /** 验收决议①：上传预览——解析规则草稿返回，不落版本；确认后走 createVersion */
 export const previewTemplateRules = (templateId: string, file: File) => {
   const form = new FormData()

@@ -1,5 +1,6 @@
 package com.cidas.edudoc.template.application;
 
+import com.cidas.edudoc.document.application.DocumentWordExportService;
 import com.cidas.edudoc.document.infrastructure.OssObject;
 import com.cidas.edudoc.document.infrastructure.OssObjectRepository;
 import com.cidas.edudoc.infrastructure.oss.OssStorageAdapter;
@@ -39,17 +40,21 @@ class FormatCheckWorkerTest {
 
     private final OssObjectRepository ossObjectRepository = mock(OssObjectRepository.class);
     private final OssStorageAdapter ossStorageAdapter = mock(OssStorageAdapter.class);
+    private final com.cidas.edudoc.document.infrastructure.DocumentVersionRepository versionRepository =
+            mock(com.cidas.edudoc.document.infrastructure.DocumentVersionRepository.class);
     private final DocxStyleExtractor extractor = mock(DocxStyleExtractor.class);
     private final FormatRuleRepository ruleRepository = mock(FormatRuleRepository.class);
     private final FormatRuleMatcher matcher = mock(FormatRuleMatcher.class);
     private final DocumentStructureService structureService = mock(DocumentStructureService.class);
+    private final DocumentWordExportService wordExportService = mock(DocumentWordExportService.class);
     private final FormatCheckRepository checkRepository = mock(FormatCheckRepository.class);
     private final FormatCheckTxService txService = mock(FormatCheckTxService.class);
 
     private final FormatCheckWorker worker = new FormatCheckWorker(
             mock(org.springframework.data.redis.core.StringRedisTemplate.class),
-            ossObjectRepository, ossStorageAdapter, extractor, ruleRepository, matcher, structureService,
-            checkRepository, txService,
+            ossObjectRepository, ossStorageAdapter, versionRepository, extractor, ruleRepository, matcher,
+            structureService,
+            wordExportService, checkRepository, txService,
             new com.cidas.edudoc.template.infrastructure.FormatCheckProperties(false, 1,
                     "edudoc:stream:format-check", "cg-format-check"),
             new com.fasterxml.jackson.databind.ObjectMapper());
@@ -64,6 +69,8 @@ class FormatCheckWorkerTest {
             Files.copy(temp, invocation.getArgument(1), StandardCopyOption.REPLACE_EXISTING);
             return null;
         }).when(ossStorageAdapter).downloadTo(anyString(), any());
+        when(wordExportService.exportVersionDocx(anyString(), anyString()))
+                .thenReturn("PK-rendered".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         when(extractor.extract(any())).thenReturn(new StyleSnapshot(List.of(),
                 new StyleSnapshot.PageFacts(25.4, 25.4, 31.75, 25.4, 210.0, 297.0, true, true)));
     }
@@ -111,12 +118,37 @@ class FormatCheckWorkerTest {
                 eq("DOC1"), eq("VER1"));
     }
 
+    /** 回归：块编辑后的 .txt 版本在 worker 侧先按结构生成 DOCX，不再被当成坏 docx。 */
+    @Test
+    void textSourceRendersDocxBeforeStyleCheck() throws Exception {
+        when(checkRepository.markRunning("CH1")).thenReturn(1);
+        happy(rule());
+        when(matcher.match(anyList(), any())).thenReturn(List.of());
+
+        worker.process("CH1", "DOC1", "VER1", "TV1", "OBJ1");
+
+        verify(wordExportService).exportVersionDocx("DOC1", "VER1");
+        verify(structureService).parseAndPersist(any(), eq("VER1"));
+    }
+
+    /** 回归：文本派生版校验沿用最近 .docx 原件的版式，不再按文本重排生成合规 DOCX。 */
+    @Test
+    void textSourceUsesAncestorDocxForStyleCheck() throws Exception {
+        when(checkRepository.markRunning("CH1")).thenReturn(1);
+        happy(rule());
+        when(matcher.match(anyList(), any())).thenReturn(List.of());
+        when(versionRepository.findNearestDocxSourceObject("VER1")).thenReturn(Optional.of("OBJ1"));
+
+        worker.process("CH1", "DOC1", "VER1", "TV1", "OBJ1");
+
+        verify(wordExportService, never()).exportVersionDocx(anyString(), anyString());
+        verify(structureService, never()).parseAndPersist(any(), anyString());
+    }
+
     @Test
     void brokenDocxWritesErrorState() throws Exception {
         when(checkRepository.markRunning("CH1")).thenReturn(1);
-        when(ossObjectRepository.findById("OBJ1")).thenReturn(Optional.of(
-                new OssObject("OBJ1", "b", "r", "k.docx", null, "e", "h", 4,
-                        FormatCheckWorker.DOCX_MIME, "NONE", "ORIGINAL")));
+        happy(rule());
         when(extractor.extract(any())).thenThrow(new TemplateParseException("坏文件"));
 
         worker.process("CH1", "DOC1", "VER1", "TV1", "OBJ1");

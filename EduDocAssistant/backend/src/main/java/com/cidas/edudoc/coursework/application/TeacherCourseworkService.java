@@ -25,17 +25,27 @@ public interface TeacherCourseworkService {
     /** 名单导入（同步逐行）：已存在成员计 conflicts，无账号的建未激活账号计 activated。 */
     ImportResult importMembers(String courseId, List<MemberImportRow> rows);
 
+    /** 课程内全部学生（课程管理行展开用，仅本人任教课程）。 */
+    List<CourseStudentView> listCourseStudents(String courseId);
+
     /** 教师作业列表（带提交统计）；courseId 传入时先校验课程范围。 */
     PageResult<AssignmentView> listAssignments(String courseId, String status, Integer page, Integer pageSize);
 
-    /** 新建作业：draft=true 存草稿，否则直接发布。 */
+    /** 新建作业：draft=true 存草稿，否则直接发布；attachmentIds 为发布前已上传的附件。 */
     CreatedAssignment createAssignment(AssignmentCreateCommand command);
 
-    /** 未提交学生名单（提醒入口，消息投递随切片 2 开放）。 */
+    /** 发布前上传作业附件（仅 .docx，与模板要求一致）；返回附件 ID 供发布确认绑定。 */
+    AttachmentView uploadAttachment(AttachmentUpload upload);
+
+    /** 未提交学生名单（只读，不投递）。 */
     UnsubmittedResult listUnsubmitted(String assignmentId);
 
-    /** 提交列表（批改视角，仅本人课程内、每人最新一次提交）。 */
-    PageResult<SubmissionView> listSubmissions(String assignmentId, String status, Integer page, Integer pageSize);
+    /** 向未提交学生发布提醒（同一天同一作业按学生去重）。 */
+    RemindResult remindUnsubmitted(String assignmentId);
+
+    /** 提交列表（批改视角，仅本人课程内、每人最新一次提交；支持课程/学号姓名/状态筛选）。 */
+    PageResult<SubmissionView> listSubmissions(String courseId, String assignmentId, String status,
+                                               String keyword, Integer page, Integer pageSize);
 
     /** 分项批改：按作业评分标准校验并归一化，总分服务端计算。 */
     GradeResult gradeSubmission(String submissionId, GradeCommand command);
@@ -56,6 +66,9 @@ public interface TeacherCourseworkService {
     record MemberImportRow(String accountNo, String name, String group) {
     }
 
+    record CourseStudentView(String userId, String accountNo, String name, String groupName) {
+    }
+
     record ImportResult(int total, int created, int activated, int conflicts, List<ImportFailure> failures) {
     }
 
@@ -64,7 +77,15 @@ public interface TeacherCourseworkService {
 
     record AssignmentCreateCommand(String courseId, String title, String requirement, String dueTime,
                                    String allowLate, String submissionFormat, String requireFormatCheck,
-                                   Boolean draft, List<RubricInput> rubric) {
+                                   String templateVersionId, Boolean draft, List<RubricInput> rubric,
+                                   List<String> attachmentIds) {
+    }
+
+    /** 附件上传入参：控制器读 MultipartFile 后只传字节与元数据，应用层不感知 Spring Web。 */
+    record AttachmentUpload(String fileName, String mimeType, long sizeBytes, byte[] bytes) {
+    }
+
+    record AttachmentView(String id, String fileName, String mimeType, long sizeBytes) {
     }
 
     record RubricInput(String name, Integer maxScore) {
@@ -76,15 +97,19 @@ public interface TeacherCourseworkService {
     /** 作业视图：unsubmitted = expected - submitted；rubric 由 rubric_json 解析回分项数组。 */
     record AssignmentView(String id, String courseId, String courseName, String title, String description,
                           OffsetDateTime dueTime, String allowLate, String submissionFormat,
-                          String requireFormatCheck, String status, long expected, long submitted,
-                          long unsubmitted, long overdue, long graded, long formatIssues,
-                          List<RubricItem> rubric) {
+                          String requireFormatCheck, String status, String templateVersionId,
+                          String templateName, Integer templateVersionNo,
+                          long expected, long submitted, long unsubmitted, long overdue, long graded,
+                          long formatIssues, List<RubricItem> rubric) {
     }
 
     record UnsubmittedResult(List<UnsubmittedStudent> items) {
     }
 
     record UnsubmittedStudent(String accountNo, String name) {
+    }
+
+    record RemindResult(int reminded) {
     }
 
     record GradeCommand(List<GradeInput> items, String feedback) {

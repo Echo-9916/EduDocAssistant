@@ -15,7 +15,7 @@ vi.mock('../../api/opsWorkbench', () => ({
 
 import OpsWorkbench from './Workbench'
 
-describe('运维工作台（对应原型：运维 01）', () => {
+describe('运维工作台', () => {
   it('渲染真实 KPI 卡与演示的风险事件、服务健康、待办审批', async () => {
     render(<OpsWorkbench />)
     expect(await screen.findByText('用户总数')).toBeTruthy()

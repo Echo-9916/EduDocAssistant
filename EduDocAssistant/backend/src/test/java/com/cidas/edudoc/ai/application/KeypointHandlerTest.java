@@ -42,7 +42,7 @@ class KeypointHandlerTest {
     private final AiTaskWorker worker = new AiTaskWorker(
             mock(org.springframework.data.redis.core.StringRedisTemplate.class), new ObjectMapper(),
             new AiTaskWorkerProperties(false, 1, "s", "g", 60, 6000),
-            aiTaskRepository, embeddingRepository, aiGateway, new CitationService(),
+            aiTaskRepository, embeddingRepository, new SemanticBlockFactory(), aiGateway,
             resultTxService, auditService);
 
     private static VersionChunk chunk(String id, int no, int charStart) {

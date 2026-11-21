@@ -34,9 +34,9 @@ describe('QaPanel（C-12）', () => {
     api.listQaMessages.mockResolvedValue(msgs)
   })
 
-  it('citationLabel：页码+片段前 40 字', () => {
+  it('citationLabel：不再显示页码，只保留片段前 40 字', () => {
     expect(citationLabel({ chunkId: 'C1', pageNo: 3, charStart: null, charEnd: null, quoteText: '甲'.repeat(60) }, 0))
-      .toBe('[1] 第3页 ' + '甲'.repeat(40))
+      .toBe('[1] ' + '甲'.repeat(40))
   })
 
   it('三态消息流渲染 + 引用 chip 跳回调 + 拒答文案突出', async () => {
@@ -49,7 +49,7 @@ describe('QaPanel（C-12）', () => {
     expect(screen.getByText('失败')).toBeTruthy()
     expect(screen.queryByText('超时')).toBeNull()
 
-    fireEvent.click(screen.getByText(/^\[1\] 第3页/))
+    fireEvent.click(screen.getByText(/^\[1\]/))
     expect(onHighlight).toHaveBeenCalledWith(12, 16)
   })
 

@@ -16,11 +16,34 @@ export interface PreviewBlock {
   text: string
 }
 
+export type StructureKind = 'HEADING' | 'PARAGRAPH' | 'LIST_ITEM' | 'TABLE_CELL' | 'CODE'
+
+/** 阅读结构节点：与 blocks 同坐标系（绝对闭区间）；标记型 HEADING 无 start/end，用 anchor。 */
+export interface StructureNode {
+  no: number
+  kind: StructureKind
+  level?: number | null
+  text?: string | null
+  anchor?: number | null
+  start?: number | null
+  end?: number | null
+  headingPath?: string | null
+  pageNo?: number | null
+  ordinal?: number | null
+  tableNo?: number | null
+  row?: number | null
+  col?: number | null
+  /** CODE 节点的语言（java/cpp/python/sql） */
+  lang?: string | null
+}
+
 export interface Preview {
   documentId: string
   versionId: string
   versionNo: number
   blocks: PreviewBlock[]
+  /** 老版本无结构层时为空数组；前端据此回退到纯文本块渲染 */
+  structure: StructureNode[]
   /** 当前版本分块是否全部完成向量索引（R3/1106 P2-1） */
   vectorReady: boolean
 }

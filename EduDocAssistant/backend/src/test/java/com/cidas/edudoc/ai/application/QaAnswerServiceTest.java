@@ -20,6 +20,7 @@ import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
+import com.cidas.edudoc.document.application.CollaborationService;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,14 +56,15 @@ class QaAnswerServiceTest {
     private static final String PROFILE_ID = "AA0000000000000000000000000000F1";
 
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
+    private final CollaborationService collaborationService = mock(CollaborationService.class);
     private final ChunkEmbeddingRepository embeddingRepository = mock(ChunkEmbeddingRepository.class);
     private final AiModelProfileRepository profileRepository = mock(AiModelProfileRepository.class);
     private final AiGateway aiGateway = mock(AiGateway.class);
     private final QaRepository qaRepository = mock(QaRepository.class);
     private final QaTxService qaTxService = mock(QaTxService.class);
     private final AiResultRepository aiResultRepository = mock(AiResultRepository.class);
-    private final QaService service = new QaServiceImpl(documentRepository, embeddingRepository,
-            profileRepository, aiGateway, qaRepository, qaTxService,
+    private final QaService service = new QaServiceImpl(documentRepository, collaborationService,
+            embeddingRepository, profileRepository, aiGateway, qaRepository, qaTxService,
             new QaProperties(0.35, 5000), aiResultRepository, new ObjectMapper());
 
     @BeforeEach
@@ -323,9 +325,9 @@ class QaAnswerServiceTest {
                 new QaSession(SESSION_ID, DOC_ID, "U1", "t", "A")));
         when(documentRepository.findById(DOC_ID)).thenReturn(java.util.Optional.of(
                 new com.cidas.edudoc.document.infrastructure.Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION)));
-        QaService tight = new QaServiceImpl(documentRepository, embeddingRepository, profileRepository,
-                aiGateway, qaRepository, qaTxService, new QaProperties(0.35, 0), aiResultRepository,
-                new ObjectMapper());
+        QaService tight = new QaServiceImpl(documentRepository, collaborationService, embeddingRepository,
+                profileRepository, aiGateway, qaRepository, qaTxService, new QaProperties(0.35, 0),
+                aiResultRepository, new ObjectMapper());
 
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> tight.ask(SESSION_ID, "问题？"));
@@ -359,6 +361,20 @@ class QaAnswerServiceTest {
         CidasBusinessException e = assertThrows(CidasBusinessException.class,
                 () -> service.createSession(DOC_ID, null));
         assertEquals(ErrorCode.FORBIDDEN, e.errorCode());
+    }
+
+    @Test
+    void collaboratorCanCreateQaSession() {
+        AuthContext.set(new UserPrincipal("U2", "stu2", null, Set.of("STUDENT"),
+                Set.of("AI_QA", "DOCUMENT_READ"), Set.of()));
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(
+                new Document(DOC_ID, null, "U1", "标题", "PDF", "READY", VERSION)));
+        when(collaborationService.isCollaborator(DOC_ID, "U2")).thenReturn(true);
+
+        QaService.SessionView view = service.createSession(DOC_ID, null);
+
+        assertEquals(DOC_ID, view.documentId());
+        verify(qaRepository).insertSession(any());
     }
 
     @Test

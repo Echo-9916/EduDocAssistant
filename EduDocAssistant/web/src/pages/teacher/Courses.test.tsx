@@ -9,6 +9,8 @@ vi.mock('../../api/coursework', () => ({
   listAssignments: vi.fn(),
   publishAssignment: vi.fn(),
   listUnsubmitted: vi.fn(),
+  listCourseStudents: vi.fn(),
+  remindUnsubmitted: vi.fn(),
   listSubmissions: vi.fn(),
   gradeSubmission: vi.fn(),
 }))
@@ -16,9 +18,11 @@ vi.mock('../../api/coursework', () => ({
 import {
   gradeSubmission,
   listAssignments,
+  listCourseStudents,
   listSubmissions,
   listTeacherCourses,
   listUnsubmitted,
+  remindUnsubmitted,
 } from '../../api/coursework'
 import type { AssignmentView, SubmissionView, TeacherCourseView } from '../../api/coursework'
 import TeacherCourses from './Courses'
@@ -39,7 +43,8 @@ const RUBRIC = [
 const ASSIGNMENT: AssignmentView = {
   id: 'A1', courseId: 'C1', courseName: 'Web开发技术', title: 'Web开发课程设计报告',
   description: null, dueTime: '2026-11-20T23:59:00+08:00', allowLate: 'N', submissionFormat: 'BOTH',
-  requireFormatCheck: 'Y', status: 'PUBLISHED', expected: 32, submitted: 31, unsubmitted: 1,
+  requireFormatCheck: 'Y', status: 'PUBLISHED', templateVersionId: null, templateName: null,
+  templateVersionNo: null, expected: 32, submitted: 31, unsubmitted: 1,
   overdue: 0, graded: 18, formatIssues: 3, rubric: RUBRIC,
 }
 
@@ -61,6 +66,10 @@ describe('教师课程与作业（原型 20–25 屏，真实端点）', () => {
     vi.mocked(listAssignments).mockResolvedValue(page([ASSIGNMENT]))
     vi.mocked(listSubmissions).mockResolvedValue(page([SUBMISSION]))
     vi.mocked(listUnsubmitted).mockResolvedValue({ items: [{ accountNo: '2023003', name: '刘同学' }] })
+    vi.mocked(listCourseStudents).mockResolvedValue([
+      { userId: 'U1', accountNo: '2023002', name: '陈同学', groupName: '课程组 3' },
+    ])
+    vi.mocked(remindUnsubmitted).mockResolvedValue({ reminded: 1 })
     vi.mocked(gradeSubmission).mockResolvedValue({ score: 92, status: 'GRADED' })
   })
 
@@ -70,7 +79,7 @@ describe('教师课程与作业（原型 20–25 屏，真实端点）', () => {
     expect(await screen.findByText('Web开发技术')).toBeTruthy()
     expect(screen.getByText('李老师')).toBeTruthy()
     expect(screen.getByText(/CS-3101/)).toBeTruthy()
-    expect(screen.getByText('32')).toBeTruthy()
+    expect(screen.getByText('32 人')).toBeTruthy()
     // 「进行中」出现两次：Segmented 筛选项 + 状态 Tag
     expect(screen.getAllByText('进行中').length).toBeGreaterThanOrEqual(2)
     expect(listTeacherCourses).toHaveBeenCalled()
@@ -95,13 +104,33 @@ describe('教师课程与作业（原型 20–25 屏，真实端点）', () => {
     expect(listAssignments).toHaveBeenCalledTimes(2)
   })
 
-  it('提醒未提交学生：调用 listUnsubmitted 展示名单并提示投递随消息切片开放', async () => {
+  it('课程管理行展开课程学生', async () => {
+    render(<TeacherCourses />)
+    fireEvent.click(await screen.findByText('查看所有学生'))
+    await waitFor(() => expect(listCourseStudents).toHaveBeenCalledWith('C1'))
+    expect(await screen.findByText('课程组 3')).toBeTruthy()
+  })
+
+  it('提醒未提交学生：先出名单，点「发布提醒」调用真实提醒接口', async () => {
     render(<TeacherCourses />)
     fireEvent.click(await screen.findByText('作业与提交统计'))
     expect(await screen.findByText('Web开发课程设计报告')).toBeTruthy()
     fireEvent.click(screen.getByText('提醒未提交学生'))
     await waitFor(() => expect(listUnsubmitted).toHaveBeenCalledWith('A1'))
     expect(await screen.findByText('刘同学（2023003）')).toBeTruthy()
-    expect(screen.getByText(/投递随消息切片开放/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '发布提醒' }))
+    await waitFor(() => expect(remindUnsubmitted).toHaveBeenCalledWith('A1'))
+  })
+
+  it('已批改提交只读：评分按钮禁用且不调用批改接口', async () => {
+    vi.mocked(listSubmissions).mockResolvedValue(page([{ ...SUBMISSION, status: 'GRADED', score: 92 }]))
+    render(<TeacherCourses />)
+    fireEvent.click(await screen.findByText('批改与反馈'))
+    fireEvent.click(await screen.findByText('陈同学'))
+    expect(await screen.findByText(/该提交已批改/)).toBeTruthy()
+    const button = screen.getByRole('button', { name: '保存并反馈' })
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(button)
+    expect(gradeSubmission).not.toHaveBeenCalled()
   })
 })

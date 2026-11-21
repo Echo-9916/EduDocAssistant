@@ -91,12 +91,16 @@ public class CourseworkRepository {
         String idHex = Ids.hex16();
         mapper.insertAssignment(idHex, cmd.courseIdHex(), cmd.title(), cmd.description(), cmd.publishedByHex(),
                 cmd.dueTime(), cmd.allowLate(), cmd.submissionFormat(), cmd.requireFormatCheck(),
-                cmd.rubricJson(), cmd.status());
+                cmd.templateVersionIdHex(), cmd.rubricJson(), cmd.status());
         return idHex;
     }
 
     public List<MemberAccount> listUnsubmitted(String assignmentIdHex) {
         return mapper.selectUnsubmittedMembers(assignmentIdHex);
+    }
+
+    public List<CourseworkRow.CourseStudent> listCourseStudents(String courseIdHex) {
+        return mapper.selectCourseStudents(courseIdHex);
     }
 
     /** 课程 TEACHER 成员（提交作业消息的收件人，2-5 生产者①）。 */
@@ -157,18 +161,43 @@ public class CourseworkRepository {
         return mapper.selectSubmissionById(submissionIdHex);
     }
 
-    public List<Submission> listSubmissions(String userIdHex, String assignmentIdHex, String status) {
-        return mapper.selectSubmissions(userIdHex, assignmentIdHex, status);
+    public List<Submission> listSubmissions(String userIdHex, String courseIdHex, String assignmentIdHex,
+                                           String status, String keyword) {
+        return mapper.selectSubmissions(userIdHex, courseIdHex, assignmentIdHex, status, keyword);
     }
 
-    public void gradeSubmission(String submissionIdHex, BigDecimal score, String feedback,
-                                String scoreJson, String status) {
-        mapper.updateSubmissionGrade(submissionIdHex, score, feedback, scoreJson, status);
+    /** 条件更新：已批改的提交不会被覆盖，返回 0 由应用层翻译成 40902。 */
+    public int gradeSubmission(String submissionIdHex, BigDecimal score, String feedback,
+                               String scoreJson, String status) {
+        return mapper.updateSubmissionGrade(submissionIdHex, score, feedback, scoreJson, status);
+    }
+
+    // ---------- 作业附件 ----------
+
+    public String createAttachment(String fileName, String mimeType, long sizeBytes,
+                                   String objectKey, String uploaderIdHex) {
+        String idHex = Ids.hex16();
+        mapper.insertAssignmentAttachment(idHex, fileName, mimeType, sizeBytes, objectKey, uploaderIdHex);
+        return idHex;
+    }
+
+    /** 发布确认绑定；返回 0 表示附件不存在/已被绑定/非本人上传。 */
+    public int bindAttachment(String assignmentIdHex, String attachmentIdHex, String uploaderIdHex) {
+        return mapper.bindAssignmentAttachment(assignmentIdHex, attachmentIdHex, uploaderIdHex);
+    }
+
+    public List<CourseworkRow.AssignmentAttachment> listAttachments(String assignmentIdHex) {
+        return mapper.selectAssignmentAttachments(assignmentIdHex);
+    }
+
+    public CourseworkRow.AssignmentAttachment findAttachment(String assignmentIdHex, String attachmentIdHex) {
+        return mapper.selectAssignmentAttachment(assignmentIdHex, attachmentIdHex);
     }
 
     /** 作业新建入参（含状态：DRAFT 存草稿、PUBLISHED 直接发布）。 */
     public record AssignmentCreate(String courseIdHex, String title, String description, String publishedByHex,
                                    OffsetDateTime dueTime, String allowLate, String submissionFormat,
-                                   String requireFormatCheck, String rubricJson, String status) {
+                                   String requireFormatCheck, String templateVersionIdHex,
+                                   String rubricJson, String status) {
     }
 }

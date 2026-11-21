@@ -103,6 +103,24 @@ public class DocumentLifecycleServiceImpl implements DocumentLifecycleService {
 
     @Override
     @Transactional
+    public String reindexEmbedding(String documentId) {
+        Document doc = requireOwned(documentId);
+        String versionId = doc.getCurrentVersionId();
+        if (versionId == null || chunkRepository.countByVersion(versionId) == 0) {
+            throw new CidasBusinessException(ErrorCode.CONFLICT, "当前版本没有可索引分块，请重新解析");
+        }
+        String taskId = outboxEventRepository.publish("DOCUMENT_VERSION", versionId,
+                "DOCUMENT_EMBED_REQUESTED", Map.of(
+                        "schemaVersion", 1,
+                        "documentId", documentId,
+                        "versionId", versionId));
+        auditService.record("EMBED_REINDEX_REQUESTED", "DOCUMENT", documentId, documentId, "200",
+                Map.of("versionId", versionId, "taskId", taskId));
+        return taskId;
+    }
+
+    @Override
+    @Transactional
     public RestoredVersion restoreVersion(String documentId, String versionId) {
         Document doc = requireOwned(documentId);
         if (!Ids.isHex16(versionId)) {

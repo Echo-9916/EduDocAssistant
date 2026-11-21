@@ -44,6 +44,24 @@
           AND m.connection_status &lt;&gt; 'REMOVED'
     </select>
 
+    <!-- 学生工作台「进行中协作」：当前用户可访问且会话仍 OPEN 的文档数，owner 与协作者都算 -->
+    <select id="countActiveSessionsForUser" resultType="long">
+        SELECT COUNT(DISTINCT s.document_id)
+        FROM edudoc_collab_session s
+        JOIN edudoc_document d ON d.id = s.document_id
+        WHERE s.status = 'OPEN'
+          AND d.deleted_at IS NULL
+          AND d.status &lt;&gt; 'DELETED'
+          AND (EXISTS (SELECT 1 FROM edudoc_collab_member m
+                       WHERE m.collab_session_id = s.id
+                         AND m.user_id = HEXTORAW(#{userIdHex})
+                         AND m.connection_status &lt;&gt; 'REMOVED')
+               OR (d.owner_id = HEXTORAW(#{userIdHex})
+                   AND EXISTS (SELECT 1 FROM edudoc_collab_member m2
+                               WHERE m2.collab_session_id = s.id
+                                 AND m2.connection_status &lt;&gt; 'REMOVED')))
+    </select>
+
     <insert id="insertMember">
         INSERT INTO edudoc_collab_member
             (id, collab_session_id, user_id, permission_level, connection_status)
@@ -68,6 +86,30 @@
     <select id="selectUserByUsername" resultType="com.cidas.edudoc.document.infrastructure.CollaboratorRow">
         SELECT RAWTOHEX(id) AS userId, username AS username, display_name AS displayName
         FROM edudoc_user WHERE username = #{username}
+    </select>
+
+<select id="selectCandidates"
+            resultType="com.cidas.edudoc.document.infrastructure.CollaboratorCandidateRow">
+        SELECT RAWTOHEX(u.id) AS userId, u.username AS username,
+               u.display_name AS displayName, m.member_role AS role, m.group_name AS groupName
+        FROM edudoc_course_member m
+        JOIN edudoc_user u ON u.id = m.user_id
+        WHERE m.course_id = HEXTORAW(#{courseIdHex})
+          AND m.status = 'A'
+          AND u.id &lt;&gt; HEXTORAW(#{ownerIdHex})
+          AND NOT EXISTS (
+              SELECT 1 FROM edudoc_collab_member cm
+              JOIN edudoc_collab_session cs ON cs.id = cm.collab_session_id
+              WHERE cs.document_id = HEXTORAW(#{documentIdHex})
+                AND cm.user_id = u.id
+                AND cm.connection_status &lt;&gt; 'REMOVED'
+          )
+        <if test="keyword != null and keyword != ''">
+            AND (UPPER(u.username) LIKE '%' || UPPER(#{keyword}) || '%'
+                 OR UPPER(u.display_name) LIKE '%' || UPPER(#{keyword}) || '%')
+        </if>
+        ORDER BY CASE m.member_role WHEN 'TEACHER' THEN 0 ELSE 1 END, u.display_name
+        FETCH FIRST 100 ROWS ONLY
     </select>
 
 </mapper>

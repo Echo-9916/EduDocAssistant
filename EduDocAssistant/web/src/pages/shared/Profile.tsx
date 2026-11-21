@@ -358,14 +358,11 @@ export default function Profile() {
   return (
     <DemoPage
       title="个人中心"
-      screens="对应原型：学生 27、教师 27、运维 26/27"
       desc={
         isOps
           ? '维护运维账号的组织信息、值班联系方式、双因素认证、会话与登录记录。'
           : '维护账号资料、通知偏好，以及密码、双因素认证、会话与登录记录。'
       }
-      live
-      mixedNote="会话精确下线与告警投递未接入"
     >
       <Tabs
         defaultActiveKey="info"

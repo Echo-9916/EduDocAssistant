@@ -12,6 +12,9 @@ import com.cidas.edudoc.ai.infrastructure.AiTaskRepository;
 import com.cidas.edudoc.ai.infrastructure.AiTaskWorkerProperties;
 import com.cidas.edudoc.ai.infrastructure.ChunkEmbeddingRepository;
 import com.cidas.edudoc.ai.infrastructure.ChunkEmbeddingRepository.VersionChunk;
+import com.cidas.edudoc.document.application.StructureJson;
+import com.cidas.edudoc.document.domain.StructureNode;
+import com.cidas.edudoc.document.domain.TextBlock;
 import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,7 +53,7 @@ class AiTaskWorkerTest {
     private final AuditService auditService = mock(AuditService.class);
     private final AiTaskWorker worker = new AiTaskWorker(redis, new ObjectMapper(),
             new AiTaskWorkerProperties(false, 1, "edudoc:stream:ai-task", "cg-ai-task", 60, 50),
-            aiTaskRepository, embeddingRepository, aiGateway, new CitationService(),
+            aiTaskRepository, embeddingRepository, new SemanticBlockFactory(), aiGateway,
             resultTxService, auditService);
 
     private static AiTask task(String status) {
@@ -177,6 +180,36 @@ class AiTaskWorkerTest {
         verify(aiTaskRepository).markFailed(TASK_ID, "50201");
         verify(auditService).record(eq("AI_TASK_FAILED"), eq("AI_TASK"), eq(TASK_ID), eq("D1"),
                 eq("50201"), any());
+    }
+
+    /** 摘要以结构块为输入/引用单位：模型返回 blockId，引用回填真实 chunk 但保留块区间。 */
+    @Test
+    void summaryUsesStructureBlockIdsAndMapsCitationsToOwningChunk() {
+        List<VersionChunk> chunks = List.of(
+                new VersionChunk("C1", 1, 1, 0, 5, "标题\n正文A", "READY"),
+                new VersionChunk("C2", 2, 1, 6, 8, "正文B", "READY"));
+        when(embeddingRepository.selectVersionChunks(VERSION)).thenReturn(chunks);
+        when(embeddingRepository.selectStructureJson(VERSION)).thenReturn(StructureJson.write(List.of(
+                StructureNode.ranged(1, TextBlock.HEADING, 0, 1, null, 1, 1, null, null, null, null),
+                StructureNode.ranged(2, TextBlock.PARAGRAPH, 3, 5, null, 1, null, null, null, null, null),
+                StructureNode.ranged(3, TextBlock.PARAGRAPH, 6, 8, null, 1, null, null, null, null, null))));
+        when(aiTaskRepository.findById(TASK_ID)).thenReturn(Optional.of(task("QUEUED")));
+        when(aiTaskRepository.casStart(TASK_ID)).thenReturn(true);
+        when(aiTaskRepository.updateProgress(eq(TASK_ID), anyInt())).thenReturn(true);
+        when(aiGateway.summarize(anyList())).thenReturn(new SummarizeOutcome("m", "p", null,
+                List.of(new SummarySegment("按块摘要", List.of("B2", "B3")))));
+        when(resultTxService.completeTask(any(), anyList())).thenReturn(true);
+
+        worker.processTask(TASK_ID);
+
+        ArgumentCaptor<AiResult> result = ArgumentCaptor.forClass(AiResult.class);
+        ArgumentCaptor<List<AiCitation>> citations = ArgumentCaptor.forClass(List.class);
+        verify(resultTxService).completeTask(result.capture(), citations.capture());
+        assertTrue(result.getValue().getStructuredJson().contains("\"blockIds\":[\"B2\",\"B3\"]"));
+        assertEquals(List.of("C1", "C2"),
+                citations.getValue().stream().map(AiCitation::getChunkId).toList());
+        assertEquals(List.of(3, 6),
+                citations.getValue().stream().map(AiCitation::getCharStart).toList());
     }
 
     @Test

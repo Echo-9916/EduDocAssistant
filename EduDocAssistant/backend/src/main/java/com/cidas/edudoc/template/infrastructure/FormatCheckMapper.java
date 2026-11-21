@@ -16,6 +16,8 @@ public interface FormatCheckMapper {
                              @Param("templateVersionId") String templateVersionIdHex,
                              @Param("requestedBy") String requestedByHex);
 
+    String selectLatestCompletedByVersion(@Param("documentVersionId") String documentVersionIdHex);
+
     int markRunning(@Param("checkId") String checkIdHex);
 
     int updateResult(@Param("checkId") String checkIdHex, @Param("totalIssueCount") int totalIssueCount,

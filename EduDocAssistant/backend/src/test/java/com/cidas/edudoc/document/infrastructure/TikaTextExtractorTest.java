@@ -55,6 +55,48 @@ class TikaTextExtractorTest {
         assertTrue(!first.headingPath().contains("1.1 背景"), "兄弟标题不应污染浅层级");
     }
 
+    @Test
+    void docxTagsHeadingsListsAndTableCellsWithoutChangingText() throws Exception {
+        Path file = dir.resolve("structure.docx");
+        try (XWPFDocument doc = new XWPFDocument(); var out = Files.newOutputStream(file)) {
+            doc.createParagraph().createRun().setText("一、项目概述");
+            doc.createParagraph().createRun().setText("这是正文。");
+            doc.createParagraph().createRun().setText("（1）列表项");
+            var table = doc.createTable(2, 2);
+            table.getRow(0).getCell(0).setText("表头A");
+            table.getRow(0).getCell(1).setText("表头B");
+            table.getRow(1).getCell(0).setText("值1");
+            table.getRow(1).getCell(1).setText("值2");
+            doc.write(out);
+        }
+
+        List<TextBlock> blocks = extractor.extract(file, "structure.docx");
+
+        // 结构识别只加元数据：段落/列表/表格文字仍在同一条文本流里
+        String full = String.join("\n", blocks.stream().map(b -> b.text().strip()).toList());
+        assertTrue(full.contains("一、项目概述"));
+        assertTrue(full.contains("（1）列表项"));
+        assertTrue(full.contains("表头A"));
+
+        TextBlock heading = find(blocks, "一、项目概述");
+        assertEquals(TextBlock.HEADING, heading.kind());
+        assertEquals(1, heading.level());
+
+        TextBlock list = find(blocks, "（1）列表项");
+        assertEquals(TextBlock.LIST_ITEM, list.kind());
+        assertEquals(1, list.ordinal());
+
+        TextBlock cell = find(blocks, "表头A");
+        assertEquals(TextBlock.TABLE_CELL, cell.kind());
+        assertEquals(1, cell.tableNo());
+        assertEquals(1, cell.row());
+        assertEquals(1, cell.col());
+    }
+
+    private static TextBlock find(List<TextBlock> blocks, String text) {
+        return blocks.stream().filter(b -> b.text().contains(text)).findFirst().orElseThrow();
+    }
+
     private static void defineHeadingStyles(XWPFDocument doc) {
         XWPFStyles styles = doc.createStyles();
         addNamedStyle(styles, "Heading1", "heading 1", 1);
@@ -137,7 +179,7 @@ class TikaTextExtractorTest {
                 .filter(t -> !t.isEmpty())
                 .toList());
         List<com.cidas.edudoc.document.domain.Chunk> chunks =
-                new com.cidas.edudoc.document.domain.ChunkingService(20).chunk(blocks);
+                new com.cidas.edudoc.document.domain.ChunkingService(20).chunk(blocks).chunks();
 
         assertTrue(!chunks.isEmpty(), "贯通例必须产出分块");
         assertEquals(0, chunks.get(0).charStart());

@@ -45,6 +45,11 @@ public class DocumentCollaboratorRepository {
         return mapper.countActiveMember(documentIdHex, userIdHex) > 0;
     }
 
+    /** 当前用户可访问的 OPEN 协作会话文档数（owner 或活跃协作者）。 */
+    public long countActiveSessionsForUser(String userIdHex) {
+        return mapper.countActiveSessionsForUser(userIdHex);
+    }
+
     public void addMember(String sessionIdHex, String userIdHex, String permissionLevel) {
         CollaboratorRow existing = mapper.selectMember(sessionIdHex, userIdHex);
         if (existing != null && !"REMOVED".equals(existing.getConnectionStatus())) {
@@ -64,5 +69,11 @@ public class DocumentCollaboratorRepository {
 
     public CollaboratorRow findUserByUsername(String username) {
         return mapper.selectUserByUsername(username);
+    }
+
+    public List<CollaboratorCandidateRow> findCandidates(String courseIdHex, String documentIdHex,
+                                                         String ownerIdHex, String keyword) {
+        return mapper.selectCandidates(courseIdHex, documentIdHex, ownerIdHex,
+                keyword == null || keyword.isBlank() ? null : keyword.trim());
     }
 }

@@ -15,13 +15,6 @@ import {
 } from '../../api/template'
 import type { RuleView, TemplateView } from '../../api/template'
 
-const DOC_TYPES = [
-  { value: 'REPORT', label: '课程报告' },
-  { value: 'HOMEWORK', label: '作业' },
-  { value: 'THESIS', label: '论文' },
-  { value: 'COURSEWARE', label: '课件' },
-]
-
 export default function StudentTemplates() {
   const navigate = useNavigate()
   const [templates, setTemplates] = useState<TemplateView[]>([])
@@ -31,7 +24,6 @@ export default function StudentTemplates() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [title, setTitle] = useState('')
-  const [docType, setDocType] = useState('REPORT')
 
   useEffect(() => {
     listTemplates({ page: 1, pageSize: 100 })
@@ -60,7 +52,7 @@ export default function StudentTemplates() {
       return
     }
     try {
-      const view = await provisionFromTemplate(active.id, title.trim(), docType)
+      const view = await provisionFromTemplate(active.id, title.trim(), 'REPORT')
       message.success('已按模板创建文档，正在解析')
       navigate(`../documents/${view.documentId}/view`, { relative: 'path' })
     } catch (e) {
@@ -108,7 +100,6 @@ export default function StudentTemplates() {
       <AppModal title="按模板新建文档" open={createOpen} okText="创建"
         onOk={() => void submit()} onCancel={() => setCreateOpen(false)}>
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Select value={docType} style={{ width: '100%' }} options={DOC_TYPES} onChange={setDocType} />
           <Input placeholder="文档标题（1-200 字）" value={title} maxLength={200}
             onChange={(e) => setTitle(e.target.value)} />
           <Alert type="info" showIcon

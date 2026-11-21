@@ -1,6 +1,6 @@
 // 06 切片 1：课程与作业 API（契约=后端 TeacherCourseworkController / StudentCourseworkController，
 // 见 docs/tasks/06-backend-followup.md「落地差异」：路径按 /teacher、/student 前缀收口）。
-import { get, post, put } from './http'
+import { get, getBlob, post, put } from './http'
 import type { PageResult } from './types'
 
 /** 格式校验结论：-1 未校验 → NONE，有阻塞 → BLOCK，有警告 → WARN，否则 PASS。 */
@@ -42,6 +42,9 @@ export interface AssignmentView {
   submissionFormat: 'DOCX' | 'PDF' | 'BOTH'
   requireFormatCheck: 'Y' | 'N'
   status: 'DRAFT' | 'PUBLISHED' | 'CLOSED'
+  templateVersionId: string | null
+  templateName: string | null
+  templateVersionNo: number | null
   expected: number
   submitted: number
   unsubmitted: number
@@ -85,6 +88,13 @@ export interface ImportResult {
   failures: { accountNo: string; reason: string }[]
 }
 
+export interface CourseStudentView {
+  userId: string
+  accountNo: string
+  name: string
+  groupName: string | null
+}
+
 export interface WorkbenchSummary {
   dueThisWeek: number
   pendingGrade: number
@@ -122,12 +132,22 @@ export interface StudentAssignmentView {
   versionNo: number | null
   submissionFormat: string
   requireFormatCheck: string
+  templateVersionId: string | null
+  templateName: string | null
+  templateVersionNo: number | null
 }
 
 export interface SubmissionResult {
   submissionId: string
   attemptNo: number
   status: 'SUBMITTED' | 'LATE'
+}
+
+export interface AssignmentAttachment {
+  id: string
+  fileName: string
+  mimeType: string
+  sizeBytes: number
 }
 
 export const listTeacherCourses = (query: { term?: string; status?: string; keyword?: string; page?: number; pageSize?: number }) =>
@@ -151,15 +171,36 @@ export const publishAssignment = (cmd: {
   allowLate?: 'Y' | 'N'
   submissionFormat?: 'DOCX' | 'PDF' | 'BOTH'
   requireFormatCheck?: 'Y' | 'N'
+  templateVersionId?: string
   draft?: boolean
   rubric: RubricItem[]
+  attachmentIds?: string[]
 }) => post<{ id: string; status: string }>('/teacher/assignments', cmd)
+
+/** 发布前上传附件：multipart 到后端再落私有 OSS，返回附件 ID 供发布确认绑定。 */
+export const uploadAssignmentAttachment = (file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return post<AssignmentAttachment>('/teacher/assignment-attachments', form)
+}
 
 export const listUnsubmitted = (assignmentId: string) =>
   get<{ items: { accountNo: string; name: string }[] }>(`/teacher/assignments/${assignmentId}/unsubmitted`)
 
-export const listSubmissions = (query: { assignmentId?: string; status?: string; page?: number; pageSize?: number }) =>
-  get<PageResult<SubmissionView>>('/teacher/submissions', { params: query })
+export const remindUnsubmitted = (assignmentId: string) =>
+  post<{ reminded: number }>(`/teacher/assignments/${assignmentId}/reminders`)
+
+export const listCourseStudents = (courseId: string) =>
+  get<CourseStudentView[]>(`/teacher/courses/${courseId}/students`)
+
+export const listSubmissions = (query: {
+  courseId?: string
+  assignmentId?: string
+  status?: string
+  keyword?: string
+  page?: number
+  pageSize?: number
+}) => get<PageResult<SubmissionView>>('/teacher/submissions', { params: query })
 
 export const gradeSubmission = (submissionId: string, cmd: { items: { name: string; score: number }[]; feedback?: string }) =>
   put<{ score: number; status: string }>(`/teacher/submissions/${submissionId}/grade`, cmd)
@@ -171,3 +212,13 @@ export const listStudentAssignments = (query: { status?: string; courseId?: stri
 
 export const submitAssignment = (assignmentId: string, documentId: string) =>
   post<SubmissionResult>(`/student/assignments/${assignmentId}/submissions`, { documentId })
+
+export const listAssignmentAttachments = (assignmentId: string) =>
+  get<AssignmentAttachment[]>(`/student/assignments/${assignmentId}/attachments`)
+
+export const downloadAssignmentAttachment = (assignmentId: string, attachmentId: string) =>
+  getBlob(`/student/assignments/${assignmentId}/attachments/${attachmentId}/download`)
+
+export const createDocumentFromAttachment = (assignmentId: string, attachmentId: string) =>
+  post<{ documentId: string; versionId: string }>(
+    `/student/assignments/${assignmentId}/attachments/${attachmentId}/documents`, {})

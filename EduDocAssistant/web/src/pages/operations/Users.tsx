@@ -34,7 +34,7 @@ const toGovUser = (u: OpsUserView): GovUser => ({
   visits: [],
 })
 
-/** 用户与权限：用户目录 + 角色权限矩阵（对应原型：运维 07/08/09/10/11/12）。 */
+/** 用户与权限：用户目录 + 角色权限矩阵。 */
 export default function OpsUsers() {
   const [users, setUsers] = useState<GovUser[]>([])
   const [roles, setRoles] = useState<GovRole[]>([])
@@ -314,10 +314,7 @@ export default function OpsUsers() {
 
   return (
     <DemoPage
-      live
-      mixedNote="新增用户、变更角色与角色权限矩阵仍为演示数据"
       title="用户与权限"
-      screens="对应原型：运维 07/08/09/10/11/12"
       desc="管理教师、学生、课程组和运维账号，区分身份、角色、课程范围与职责冲突。"
     >
       <Tabs
@@ -325,11 +322,11 @@ export default function OpsUsers() {
         onChange={setTab}
         items={[
           { key: 'users', label: '用户目录', children: usersPane },
-          { key: 'roles', label: '角色权限矩阵（演示）', children: rolesPane },
+          { key: 'roles', label: '角色权限矩阵', children: rolesPane },
         ]}
         tabBarExtraContent={
           tab === 'users' ? (
-            <Space><Tag color="orange">演示</Tag><AppButton onClick={() => setAddOpen(true)}>添加用户</AppButton></Space>
+            <Space><AppButton onClick={() => setAddOpen(true)}>添加用户</AppButton></Space>
           ) : (
             <AppButton onClick={() => setCreateRoleOpen(true)}>新增角色</AppButton>
           )
@@ -337,7 +334,7 @@ export default function OpsUsers() {
       />
 
       {/* 08 屏：用户权限详情抽屉 */}
-      <Drawer open={!!detail} onClose={() => setDetail(null)} width={620} title={detail ? `用户权限详情 · ${detail.name}（访问记录为演示）` : ''}>
+      <Drawer open={!!detail} onClose={() => setDetail(null)} width={620} title={detail ? `用户权限详情 · ${detail.name}` : ''}>
         {detail && (
           <>
             <Descriptions column={2} size="small" bordered>
@@ -364,7 +361,7 @@ export default function OpsUsers() {
       {/* 12 屏：变更用户角色 */}
       <AppModal
         open={!!roleTarget}
-        title="变更用户角色（演示）"
+        title="变更用户角色"
         okText="确认变更"
         width={560}
         onOk={onChangeRole}
@@ -405,7 +402,7 @@ export default function OpsUsers() {
       </AppModal>
 
       {/* 09 屏：添加用户 */}
-      <AppModal open={addOpen} title="添加用户（演示）" okText="创建并发送邀请" width={560} onOk={onAddUser} onCancel={() => setAddOpen(false)}>
+      <AppModal open={addOpen} title="添加用户" okText="创建并发送邀请" width={560} onOk={onAddUser} onCancel={() => setAddOpen(false)}>
         <Typography.Paragraph type="secondary">账号将通过校内身份服务完成绑定；新账号首次登录前不会获得任何课程或文档访问权限。</Typography.Paragraph>
         <Form form={addForm} layout="vertical">
           <Space.Compact block>

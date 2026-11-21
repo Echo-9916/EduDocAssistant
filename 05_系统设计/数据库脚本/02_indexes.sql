@@ -74,3 +74,6 @@ WITH TARGET ACCURACY 95;
 CREATE INDEX ix_notification_recipient ON edudoc_notification (recipient_id, read_at, create_time);
 CREATE INDEX ix_notification_type ON edudoc_notification (notif_type, create_time);
 CREATE INDEX ix_notif_pref_user ON edudoc_notification_preference (user_id, enabled);
+
+-- 作业附件（06 切片3 附件）
+CREATE INDEX ix_assignment_attachment ON edudoc_assignment_attachment (assignment_id);

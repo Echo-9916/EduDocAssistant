@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.poi.wp.usermodel.HeaderFooterType;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFStyle;
 import org.apache.poi.xwpf.usermodel.XWPFStyles;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts;
@@ -48,16 +49,23 @@ public class TemplateOutlineGenerator {
 
             XWPFParagraph cover = doc.createParagraph();
             cover.createRun().setText(title);
+            applyBodyFormat(cover, outline);
 
             for (String[] spec : SKELETON) {
                 int level = Integer.parseInt(spec[0].substring(spec[0].lastIndexOf('_') + 1));
                 XWPFParagraph heading = doc.createParagraph();
                 heading.setStyle("Heading" + level);
                 heading.createRun().setText(spec[1]);
-                doc.createParagraph().createRun().setText("（正文占位）");
+                XWPFParagraph body = doc.createParagraph();
+                body.createRun().setText("（正文占位）");
+                // 正文占位/封面也必须满足 BODY 规则，否则「按模板新建」后立刻校验就会出一串 WARNING
+                applyBodyFormat(body, outline);
             }
             if (outline.headerPresent) {
                 doc.createHeader(HeaderFooterType.DEFAULT);
+            }
+            if (outline.footerPresent) {
+                doc.createFooter(HeaderFooterType.DEFAULT);
             }
             applyMargins(doc, outline);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -94,6 +102,47 @@ public class TemplateOutlineGenerator {
         return new XWPFStyle(ct);
     }
 
+    /** 导出/临时校验 DOCX 复用：按 selector（HEADING_1..3 / BODY）把规则直接写到段落 run。 */
+    public void applyParagraphFormat(XWPFParagraph paragraph, List<FormatRule> rules, String selector) {
+        Outline outline = readOutline(rules);
+        applyFacts(paragraph, headingFacts(outline, selector));
+    }
+
+    /** BODY 规则（readOutline 中 selector 非 HEADING 的规则都落在 key=0）应用到封面/正文占位。 */
+    private void applyBodyFormat(XWPFParagraph paragraph, Outline outline) {
+        applyFacts(paragraph, outline.heading.get(0));
+    }
+
+    private void applyFacts(XWPFParagraph paragraph, RuleFacts facts) {
+        if (facts == null) {
+            return;
+        }
+        XWPFRun run = paragraph.getRuns().isEmpty() ? paragraph.createRun() : paragraph.getRuns().get(0);
+        if (facts.family != null) {
+            run.setFontFamily(facts.family, XWPFRun.FontCharRange.ascii);
+        }
+        if (facts.eastAsia != null) {
+            run.setFontFamily(facts.eastAsia, XWPFRun.FontCharRange.eastAsia);
+        }
+        if (facts.pt != null) {
+            run.setFontSize(facts.pt);
+        }
+        if (facts.lineKind != null) {
+            var pPr = paragraph.getCTP().isSetPPr() ? paragraph.getCTP().getPPr() : paragraph.getCTP().addNewPPr();
+            var spacing = pPr.isSetSpacing() ? pPr.getSpacing() : pPr.addNewSpacing();
+            if ("EXACT".equals(facts.lineKind) || "AT_LEAST".equals(facts.lineKind)) {
+                spacing.setLineRule("EXACT".equals(facts.lineKind)
+                        ? STLineSpacingRule.EXACT : STLineSpacingRule.AT_LEAST);
+                spacing.setLine(BigInteger.valueOf(
+                        Math.round((facts.lineValue == null ? 20 : facts.lineValue) * 20)));
+            } else {
+                spacing.setLineRule(STLineSpacingRule.AUTO);
+                spacing.setLine(BigInteger.valueOf(
+                        Math.round((facts.lineValue == null ? 1.5 : facts.lineValue) * 240)));
+            }
+        }
+    }
+
     private void applyMargins(XWPFDocument doc, Outline outline) {
         var body = doc.getDocument().getBody();
         var sectPr = body.isSetSectPr() ? body.getSectPr() : body.addNewSectPr();
@@ -126,16 +175,23 @@ public class TemplateOutlineGenerator {
             switch (rule.getRuleType()) {
                 case "FONT" -> {
                     RuleFacts facts = headingFacts(outline, rule.getTargetSelector());
-                    facts.family = config.family();
-                    facts.eastAsia = config.eastAsia();
+                    if (facts != null) {
+                        facts.family = config.family();
+                        facts.eastAsia = config.eastAsia();
+                    }
                 }
-                case "SIZE" -> headingFacts(outline, rule.getTargetSelector()).pt = config.pt();
+                case "SIZE" -> {
+                    RuleFacts facts = headingFacts(outline, rule.getTargetSelector());
+                    if (facts != null) {
+                        facts.pt = config.pt();
+                    }
+                }
                 case "LINE_SPACING" -> {
                     RuleFacts facts = headingFacts(outline, rule.getTargetSelector());
-                    if (config.multiplier() != null) {
+                    if (facts != null && config.multiplier() != null) {
                         facts.lineKind = "AUTO";
                         facts.lineValue = config.multiplier();
-                    } else if (config.fixedLine() != null) {
+                    } else if (facts != null && config.fixedLine() != null) {
                         facts.lineKind = config.fixedLine().kind();
                         facts.lineValue = config.fixedLine().value();
                     }
@@ -144,6 +200,8 @@ public class TemplateOutlineGenerator {
                 case "HEADER_FOOTER" -> {
                     if ("HEADER".equals(rule.getTargetSelector())) {
                         outline.headerPresent = config.present();
+                    } else if ("FOOTER".equals(rule.getTargetSelector())) {
+                        outline.footerPresent = config.present();
                     }
                 }
                 default -> {
@@ -154,10 +212,16 @@ public class TemplateOutlineGenerator {
         return outline;
     }
 
-    /** 终审 I6 纵深防御：仅 HEADING_1..3 计入；异常 selector 归入 0 层（生成时忽略）。 */
+    /**
+     * 只收集 HEADING_1..3 与 BODY 的规则：题注/代码/其它选择器不参与生成，
+     * 否则会把 CODE 的等宽字体等规则错误套到正文上。BODY 落 key=0。
+     */
     private static RuleFacts headingFacts(Outline outline, String selector) {
         int level = selector != null && selector.matches("HEADING_[1-3]")
                 ? Integer.parseInt(selector.substring(selector.lastIndexOf('_') + 1)) : 0;
+        if (level == 0 && !"BODY".equals(selector)) {
+            return null;
+        }
         return outline.heading.computeIfAbsent(level, k -> new RuleFacts());
     }
 
@@ -173,5 +237,6 @@ public class TemplateOutlineGenerator {
         final Map<Integer, RuleFacts> heading = new HashMap<>();
         final Map<String, Double> margins = new HashMap<>();
         boolean headerPresent;
+        boolean footerPresent;
     }
 }

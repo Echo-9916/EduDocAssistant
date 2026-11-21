@@ -79,6 +79,14 @@ public class CollaborationController {
         return ApiResponse.ok(collaborationService.listCollaborators(documentId));
     }
 
+    @GetMapping("/documents/{documentId}/collaborator-candidates")
+    @RequirePermission(PermissionCode.DOCUMENT_READ)
+    public ApiResponse<List<CollaborationService.CollaboratorCandidate>> collaboratorCandidates(
+            @PathVariable("documentId") String documentId,
+            @RequestParam(name = "keyword", required = false) String keyword) {
+        return ApiResponse.ok(collaborationService.listCandidates(documentId, keyword));
+    }
+
     @PostMapping("/documents/{documentId}/collaborators")
     @ResponseStatus(HttpStatus.CREATED)
     @RequirePermission(PermissionCode.DOCUMENT_READ)

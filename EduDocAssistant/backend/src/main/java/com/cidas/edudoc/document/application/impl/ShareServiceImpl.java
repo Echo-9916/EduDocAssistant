@@ -5,12 +5,17 @@ import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
+import com.cidas.edudoc.document.application.DocumentPreviewService;
 import com.cidas.edudoc.document.application.ShareService;
+import com.cidas.edudoc.document.application.StructureJson;
+import com.cidas.edudoc.document.domain.StructureNode;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentChunkRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentShareRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentShareRow;
+import com.cidas.edudoc.document.infrastructure.DocumentVersion;
+import com.cidas.edudoc.document.infrastructure.DocumentVersionRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentViewRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -41,6 +46,7 @@ public class ShareServiceImpl implements ShareService {
     private static final int MAX_DAYS = 365;
 
     private final DocumentRepository documentRepository;
+    private final DocumentVersionRepository versionRepository;
     private final DocumentChunkRepository chunkRepository;
     private final DocumentShareRepository shareRepository;
     private final AuditService auditService;
@@ -117,11 +123,26 @@ public class ShareServiceImpl implements ShareService {
         if ("DELETED".equals(doc.getStatus())) {
             throw new CidasBusinessException(ErrorCode.SHARE_LINK_EXPIRED);
         }
-        String text = doc.getCurrentVersionId() == null ? ""
-                : chunkRepository.selectAllByVersion(doc.getCurrentVersionId()).stream()
-                        .map(c -> c.getContentText() == null ? "" : c.getContentText())
-                        .collect(Collectors.joining());
-        return new PublicShare(doc.getTitle(), doc.getVersionNo(), share.getPermission(), text);
+        // 免登录页与 owner 预览同口径：返回块流 + 结构层，前端按标题/正文/列表/表格渲染，
+        // 不能只给纯文本——否则协作者看到的是挤成一团的无结构文本。
+        var chunks = doc.getCurrentVersionId() == null
+                ? List.<com.cidas.edudoc.document.infrastructure.DocumentChunk>of()
+                : chunkRepository.selectAllByVersion(doc.getCurrentVersionId());
+        String text = chunks.stream()
+                .map(c -> c.getContentText() == null ? "" : c.getContentText())
+                .collect(Collectors.joining());
+        List<DocumentPreviewService.Block> blocks = chunks.stream()
+                .map(c -> new DocumentPreviewService.Block(c.getId(), c.getChunkNo(), c.getHeadingPath(),
+                        c.getPageNo(), c.getCharStart(), c.getCharEnd(), c.getContentText()))
+                .toList();
+        List<StructureNode> structure = doc.getCurrentVersionId() == null
+                ? List.of()
+                : versionRepository.findById(doc.getCurrentVersionId())
+                        .map(DocumentVersion::getStructureJson)
+                        .map(StructureJson::read)
+                        .orElse(List.of());
+        return new PublicShare(doc.getTitle(), doc.getVersionNo(), share.getPermission(), text,
+                blocks, structure);
     }
 
     private ShareView toView(DocumentShareRow row, OffsetDateTime now) {

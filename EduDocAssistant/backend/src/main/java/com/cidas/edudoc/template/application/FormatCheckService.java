@@ -9,6 +9,12 @@ public interface FormatCheckService {
 
     CheckView get(String checkId);
 
+    /** 提交关联用：该文档版本最近一次已完成（PASSED/FAILED）的校验 ID；没有返回 null。 */
+    String latestCompletedCheckId(String documentVersionId);
+
+    /** 导出 Word 用：文档绑定模板版本优先，否则课程已发布模板；没有返回 null。 */
+    String resolveTemplateVersionId(String documentId);
+
     PageResult<IssueView> issues(String checkId, String severity, Integer page, Integer pageSize);
 
     record CheckView(String id, String documentId, String documentVersionId, String templateVersionId,

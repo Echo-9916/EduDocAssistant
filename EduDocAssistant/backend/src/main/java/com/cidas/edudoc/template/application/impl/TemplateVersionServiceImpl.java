@@ -108,6 +108,25 @@ public class TemplateVersionServiceImpl implements TemplateVersionService {
                 changeSummary, version.getSourceObjectId(), rules.size(), failureReason);
     }
 
+    /** 手工规则版本：无 .docx 源对象，规则即模板唯一真源；发布/引用路径与上传版本一致。 */
+    @Override
+    public TemplateVersionView createManual(String templateId, String changeSummary,
+                                            List<RuleCommand> commands) {
+        Template template = requireManageable(templateId);
+        int versionNo = versionRepository.maxVersionNo(template.getId()) + 1;
+        String versionId = Ids.hex16();
+        List<FormatRule> rules = buildRules(versionId, commands == null ? List.of() : commands);
+        String validation = rules.isEmpty() ? "PENDING" : "VALID";
+        TemplateVersion version = new TemplateVersion(versionId, template.getId(), versionNo, null,
+                validation, null, null,
+                changeSummary == null || changeSummary.isBlank()
+                        ? "手工添加规则" : changeSummary,
+                null, null);
+        txWriter.persistNewVersion(null, version, rules);
+        return new TemplateVersionView(versionId, template.getId(), versionNo, validation, null,
+                version.getChangeSummary(), null, rules.size(), null);
+    }
+
     /** 验收决议①：仅解析返回草稿（id 空=未落库）；不上传对象、不建版本、不写审计。 */
     @Override
     public List<RuleView> previewRules(String templateId, byte[] fileBytes, String fileName) {

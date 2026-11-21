@@ -31,6 +31,16 @@ public class DocumentVersionRepository {
         return Optional.ofNullable(mapper.selectById(idHex));
     }
 
+    /** 最近一个 .docx 源对象（文本派生版校验版式时用；无则空）。 */
+    public Optional<String> findNearestDocxSourceObject(String versionIdHex) {
+        return Optional.ofNullable(mapper.selectNearestDocxSourceObject(versionIdHex));
+    }
+
+    /** 解析派生元数据：阅读结构层 JSON（不改版本内容）。 */
+    public int updateStructureJson(String versionIdHex, String json) {
+        return mapper.updateStructureJson(versionIdHex, json);
+    }
+
     /** 当前最大版本号（无版本返回 0）。 */
     public int maxVersionNo(String documentIdHex) {
         Integer max = mapper.selectMaxVersionNo(documentIdHex);

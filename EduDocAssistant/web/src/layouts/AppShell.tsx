@@ -28,8 +28,8 @@ export default function AppShell() {
 
   return (
     <ConfigProvider theme={roleTheme(role)}>
-      <Layout style={{ minHeight: '100vh' }}>
-        <Sider width={200} theme="dark" style={{ background: palette.nav }}>
+      <Layout style={{ height: '100vh' }}>
+        <Sider width={200} theme="dark" style={{ background: palette.nav, height: '100vh', overflow: 'auto' }}>
           {/* 品牌位与登录页同一套口径：Logo + 中文简称 + 英文昵称（Profile.md）；白底 chip 保证深色导航上可读 */}
           <div style={{ margin: '14px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <img
@@ -51,7 +51,7 @@ export default function AppShell() {
             onClick={({ key }) => navigate(`${base}/${key}`)}
           />
         </Sider>
-        <Layout>
+        <Layout style={{ height: '100vh', minWidth: 0 }}>
           <Header
             style={{
               background: '#fff',
@@ -60,6 +60,7 @@ export default function AppShell() {
               justifyContent: 'flex-end',
               alignItems: 'center',
               borderBottom: `2px solid ${palette.primary}`,
+              flex: '0 0 auto',
             }}
           >
             <Dropdown
@@ -80,7 +81,7 @@ export default function AppShell() {
               </Space>
             </Dropdown>
           </Header>
-          <Content style={{ margin: 16 }}>
+          <Content style={{ padding: 16, overflow: 'auto', minHeight: 0 }}>
             <Outlet />
           </Content>
         </Layout>

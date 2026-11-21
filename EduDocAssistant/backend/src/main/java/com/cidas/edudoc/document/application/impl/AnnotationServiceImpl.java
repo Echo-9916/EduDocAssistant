@@ -80,8 +80,12 @@ public class AnnotationServiceImpl implements AnnotationService {
         if (chunks.isEmpty()) {
             throw new CidasBusinessException(ErrorCode.CONFLICT, "该版本暂无可读文本，无法批注");
         }
-        // 区间必须落在某个 chunk 的闭区间内：与引用回跳共用同一字符偏移口径
-        boolean covered = chunks.stream().anyMatch(c -> c.getCharStart() <= end && c.getCharEnd() >= start);
+        // 区间必须落在可读文本总范围内，并与至少一个 chunk 相交：
+        // 结构块可能跨 chunk（长段落），不能再用「单个 chunk 必须包住整个区间」。
+        int minStart = chunks.stream().mapToInt(DocumentChunk::getCharStart).min().orElse(0);
+        int maxEnd = chunks.stream().mapToInt(DocumentChunk::getCharEnd).max().orElse(-1);
+        boolean covered = start >= minStart && end <= maxEnd
+                && chunks.stream().anyMatch(c -> c.getCharStart() <= end && c.getCharEnd() >= start);
         if (!covered) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "批注区间不在可读文本范围内");
         }

@@ -14,7 +14,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/ai', () => api)
 
 import SummaryPanel from './SummaryPanel'
-import type { AiTaskView, PreviewBlock } from '../../api/ai'
+import type { AiTaskView, PreviewBlock, StructureNode } from '../../api/ai'
 
 const blocks: PreviewBlock[] = [
   { chunkId: 'C1', chunkNo: 1, headingPath: null, pageNo: 1, charStart: 0, charEnd: 9, text: '第一段原文' },
@@ -66,6 +66,8 @@ describe('SummaryPanel（C-11）', () => {
     fireEvent.click(screen.getByText('生成摘要'))
     await waitFor(() => expect(api.createSummaryTask).toHaveBeenCalledWith('D1'))
     expect(api.saveTaskId).toHaveBeenCalledWith('D1', 'SUMMARY', 'T1')
+    // 生成后默认折叠：先展开第一条摘要再定位
+    fireEvent.click(await screen.findByText(/结论一关于第一段/))
     expect(await screen.findByTestId('segment-0')).toBeTruthy()
     expect(api.clearTaskId).toHaveBeenCalledWith('D1', 'SUMMARY')
 
@@ -76,6 +78,33 @@ describe('SummaryPanel（C-11）', () => {
     fireEvent.click(screen.getByText('导出 .docx'))
     await waitFor(() => expect(api.fetchExportBlob).toHaveBeenCalledWith('R1', 'docx'))
     expect(URL.createObjectURL).toHaveBeenCalled()
+  })
+
+  it('新结果按 blockIds 定位到结构块原文，不再用整 chunk 文本', async () => {
+    const structure: StructureNode[] = [
+      { no: 1, kind: 'PARAGRAPH', start: 0, end: 4 },
+      { no: 2, kind: 'PARAGRAPH', start: 5, end: 9 },
+    ]
+    const onHighlight = vi.fn()
+    api.createSummaryTask.mockResolvedValue({ taskId: 'T1', status: 'QUEUED' })
+    api.getAiTask.mockResolvedValue({
+      ...succeeded,
+      result: {
+        ...succeeded.result!,
+        structuredJson: JSON.stringify({
+          segments: [{ text: '按块结论', blockIds: ['B2'], chunkIds: ['C2'] }],
+          groupCount: 1,
+        }),
+      },
+    })
+    render(<SummaryPanel documentId="D1" blocks={blocks} structure={structure}
+      onHighlight={onHighlight} allowed />)
+
+    fireEvent.click(screen.getByText('生成摘要'))
+    fireEvent.click(await screen.findByText(/按块结论/))
+    expect((await screen.findAllByText(/正文 · 第二段原文/)).length).toBeGreaterThan(0)
+    fireEvent.click(within(screen.getByTestId('segment-0')).getByText(/定\s*位/))
+    expect(onHighlight).toHaveBeenLastCalledWith(5, 9)
   })
 
   it('创建失败保留生成按钮可页面内重试（1106 复审 P2）', async () => {
@@ -106,6 +135,7 @@ describe('SummaryPanel（C-11）', () => {
     api.getAiTask.mockResolvedValue(succeeded)
     render(<SummaryPanel documentId="D1" blocks={blocks} onHighlight={vi.fn()} allowed />)
     await waitFor(() => expect(api.getAiTask).toHaveBeenCalledWith('T-OLD'))
+    fireEvent.click(await screen.findByText(/结论二关于第二段/))
     expect(await screen.findByTestId('segment-1')).toBeTruthy()
   })
 })

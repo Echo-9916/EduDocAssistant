@@ -4,6 +4,7 @@ import com.cidas.edudoc.common.api.CidasBusinessException;
 import com.cidas.edudoc.common.outbox.OutboxEventRepository;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
+import com.cidas.edudoc.document.application.CollaborationService;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentVersion;
@@ -45,14 +46,15 @@ class FormatCheckServiceTest {
 
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final DocumentVersionRepository versionRepository = mock(DocumentVersionRepository.class);
+    private final CollaborationService collaborationService = mock(CollaborationService.class);
     private final OssObjectRepository ossObjectRepository = mock(OssObjectRepository.class);
     private final FormatCheckRepository checkRepository = mock(FormatCheckRepository.class);
     private final com.cidas.edudoc.template.infrastructure.FormatIssueRepository issueRepository =
             mock(com.cidas.edudoc.template.infrastructure.FormatIssueRepository.class);
     private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
     private final FormatCheckService service = new FormatCheckServiceImpl(
-            documentRepository, versionRepository, ossObjectRepository, checkRepository,
-            issueRepository, outboxEventRepository);
+            documentRepository, versionRepository, collaborationService, ossObjectRepository,
+            checkRepository, issueRepository, outboxEventRepository);
 
     @AfterEach
     void tearDown() {
@@ -129,22 +131,19 @@ class FormatCheckServiceTest {
         assertEquals(boundVer, captor.getValue().getTemplateVersionId());
     }
 
-    /** 终审 Minor：非 docx 且无模板时提示两个事实（不再只报模板误导 J1 语义）。 */
+    /** 无模板时仍是模板缺失错误；非 docx 不再单独拒绝。 */
     @Test
-    void nonDocxWithoutTemplateMentionsBothFacts() {
+    void nonDocxWithoutTemplateStillRejectsForMissingTemplate() {
         owner("U1");
         when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(
                 new Document(DOC_ID, COURSE, "U1", "课件", "COURSEWARE", "READY", VER_ID)));
         when(versionRepository.findById(VER_ID)).thenReturn(Optional.of(
                 new DocumentVersion(VER_ID, DOC_ID, 1, "UPLOAD", OBJ_ID, "U1", "hash", "A")));
-        when(ossObjectRepository.findById(OBJ_ID)).thenReturn(Optional.of(new OssObject(
-                OBJ_ID, "bucket", "cn-beijing", "edudoc/uploads/a.pdf", null, "etag", "hash", 100,
-                "application/pdf", "NONE", "ORIGINAL")));
         when(checkRepository.selectCoursePublishedTemplate(COURSE)).thenReturn(null);
 
         var e = assertThrows(CidasBusinessException.class, () -> service.create(DOC_ID));
         assertEquals(40901, e.errorCode().code());
-        assertTrue(e.getMessage().contains("Word"));
+        assertTrue(e.getMessage().contains("模板"));
     }
 
     @Test
@@ -159,8 +158,31 @@ class FormatCheckServiceTest {
         verify(checkRepository, never()).insert(any());
     }
 
+    /** 回归：块编辑后的 text/plain 版本进入 QUEUED，由 worker 先按结构生成 DOCX 再校验。 */
     @Test
-    void nonDocxPersistsErrorWithoutEvent() {
+    void textVersionQueuesCheckInsteadOfError() {
+        owner("U1");
+        when(checkRepository.selectCoursePublishedTemplate(COURSE)).thenReturn(TPL_VER);
+        when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(
+                new Document(DOC_ID, COURSE, "U1", "课件", "COURSEWARE", "READY", VER_ID)));
+        when(versionRepository.findById(VER_ID)).thenReturn(Optional.of(
+                new DocumentVersion(VER_ID, DOC_ID, 1, "EDIT", OBJ_ID, "U1", "hash", "A")));
+        when(ossObjectRepository.findById(OBJ_ID)).thenReturn(Optional.of(new OssObject(
+                OBJ_ID, "bucket", "cn-beijing", "edudoc/derived/a.txt", null, "etag", "hash",
+                100, "text/plain", "NONE", "PARSED")));
+        when(checkRepository.findActive(VER_ID, TPL_VER, "U1")).thenReturn(Optional.empty());
+        when(checkRepository.insert(any())).thenReturn("CH2");
+
+        CheckView view = service.create(DOC_ID);
+
+        assertEquals("QUEUED", view.status());
+        verify(outboxEventRepository).publish(eq("FORMAT_CHECK"), eq("CH2"), eq("FORMAT_CHECK_REQUESTED"),
+                any(Map.class));
+    }
+
+    /** J1 保留：PDF 等非文本版本仍立即落 ERROR（worker 未开时不会永久 QUEUED）。 */
+    @Test
+    void pdfPersistsErrorWithoutEvent() {
         owner("U1");
         when(checkRepository.selectCoursePublishedTemplate(COURSE)).thenReturn(TPL_VER);
         when(documentRepository.findById(DOC_ID)).thenReturn(Optional.of(
@@ -170,12 +192,26 @@ class FormatCheckServiceTest {
         when(ossObjectRepository.findById(OBJ_ID)).thenReturn(Optional.of(new OssObject(
                 OBJ_ID, "bucket", "cn-beijing", "edudoc/uploads/a.pdf", null, "etag", "hash",
                 100, "application/pdf", "NONE", "ORIGINAL")));
-        when(checkRepository.insertError(any())).thenReturn("CH2");
+        when(checkRepository.insertError(any())).thenReturn("CH3");
 
         CheckView view = service.create(DOC_ID);
 
         assertEquals("ERROR", view.status());
         verify(outboxEventRepository, never()).publish(any(), any(), any(), any());
+    }
+
+    @Test
+    void collaboratorCanCreateFormatCheck() {
+        owner("U2");
+        docx("READY");
+        when(collaborationService.isCollaborator(DOC_ID, "U2")).thenReturn(true);
+        when(checkRepository.findActive(VER_ID, TPL_VER, "U2")).thenReturn(Optional.empty());
+        when(checkRepository.insert(any())).thenReturn("CH4");
+
+        CheckView view = service.create(DOC_ID);
+
+        assertEquals("QUEUED", view.status());
+        verify(checkRepository).insert(any());
     }
 
     @Test

@@ -27,6 +27,7 @@ import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.common.security.UserPrincipal;
+import com.cidas.edudoc.document.application.CollaborationService;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -58,6 +59,7 @@ public class QaServiceImpl implements QaService {
     static final String REFUSAL_TEXT = "未在文档中找到依据，无法回答该问题。";
 
     private final DocumentRepository documentRepository;
+    private final CollaborationService collaborationService;
     private final ChunkEmbeddingRepository embeddingRepository;
     private final AiModelProfileRepository profileRepository;
     private final AiGateway aiGateway;
@@ -316,7 +318,8 @@ public class QaServiceImpl implements QaService {
         }
         Document doc = documentRepository.findById(documentId)
                 .orElseThrow(() -> new CidasBusinessException(ErrorCode.NOT_FOUND));
-        if (!principal.userId().equalsIgnoreCase(doc.getOwnerId())) {
+        if (!principal.userId().equalsIgnoreCase(doc.getOwnerId())
+                && !collaborationService.isCollaborator(documentId, principal.userId())) {
             throw new CidasBusinessException(ErrorCode.NOT_FOUND, "文档不存在或不可见");
         }
         if (!"READY".equals(doc.getStatus())) {

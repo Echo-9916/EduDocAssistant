@@ -72,7 +72,7 @@ const PERM_OPTIONS: { value: CollabPermission; label: string }[] = [
 
 const fmt = (v: string | null) => (v ? new Date(v).toLocaleString('zh-CN', { hour12: false }) : '-')
 
-/** 协作与版本：批注/在线/协作者已接真实接口；版本记录与共享范围仍为演示数据。 */
+/** 协作与版本：批注/在线/协作者已接真实接口；版本记录与共享范围仍为内存数据。 */
 export default function Collab({ role }: { role: RoleCodeValue }) {
   const isTeacher = role === 'TEACHER'
   const owner = ownerName(role)
@@ -90,10 +90,7 @@ export default function Collab({ role }: { role: RoleCodeValue }) {
 
   return (
     <DemoPage
-      live
-      mixedNote="版本记录与共享范围仍为演示数据"
       title="协作与版本"
-      screens="对应原型：学生 16/17/18/19/20/21、教师 15/16/17/18/19"
       desc={
         isTeacher
           ? '与课程组成员共同维护教学文档，集中查看教师批注、编辑活动、版本链与成员权限。'
@@ -108,7 +105,7 @@ export default function Collab({ role }: { role: RoleCodeValue }) {
           placeholder="选择已解析完成的文档"
           options={docs.map((d) => ({
             value: d.id,
-            label: `${d.title}（v${d.versionNo ?? '?'}）${d.relation === 'COLLAB' ? ` · 协作 · ${d.ownerName ?? ''}` : ''}`,
+            label: `${d.title}（v${d.versionNo ?? '?'}）${d.relation === 'COLLAB' ? ` · 协同 · ${d.ownerName ?? ''}` : ''}`,
           }))}
           onChange={setDocId}
           notFoundContent="暂无已解析文档"
@@ -201,7 +198,7 @@ function CollabEditTab({ documentId }: { documentId?: string }) {
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
       <Alert
         type="info" showIcon style={{ marginBottom: 12 }}
-        message="在线成员由 15 秒心跳维护，批注与在线列表每 3 秒刷新；正文与活动流仍为演示内容。"
+        message="在线成员由 15 秒心跳维护，批注与在线列表每 3 秒刷新"
       />
       <DemoCard
         title="在线成员"
@@ -289,7 +286,7 @@ function CollabEditTab({ documentId }: { documentId?: string }) {
           )}
         />
       </DemoCard>
-      <DemoCard title="编辑活动流" extra={<Tag color="orange">演示数据</Tag>}>
+      <DemoCard title="编辑活动流">
         <Timeline
           items={activities.map((a) => ({
             children: (
@@ -306,7 +303,7 @@ function CollabEditTab({ documentId }: { documentId?: string }) {
   )
 }
 
-/* ---------- 版本记录 / 对比 / 恢复（演示数据） ---------- */
+/* ---------- 版本记录 / 对比 / 恢复（内存数据） ---------- */
 
 function VersionsTab({ owner }: { owner: string }) {
   const [rows, setRows] = useState<DocVersion[]>([])
@@ -387,7 +384,6 @@ function VersionsTab({ owner }: { owner: string }) {
         title="版本链"
         extra={
           <Space wrap>
-            <Tag color="orange">演示数据</Tag>
             <Select
               style={{ width: 130 }}
               value={source}
@@ -557,16 +553,16 @@ function ShareTab({ owner, documentId }: { owner: string; documentId?: string })
     <Spin spinning={loading}>
       {data && (
         <>
-          <DemoCard title="访问范围" extra={<Tag color="orange">演示数据</Tag>}>
+          <DemoCard title="访问范围">
             <Alert type="info" showIcon style={{ marginBottom: 12 }}
-              message="访问范围与链接有效期仍为演示数据；真实共享链接请在文档列表「共享」中生成。" />
+              message="访问范围与链接有效期请在文档列表「共享」中设置。" />
             <Radio.Group
               value={data.scope}
               onChange={async (e) => {
                 const scope = e.target.value as ShareScope
                 await setShareScope(scope, owner)
                 await reload()
-                message.success('共享范围已保存（演示）')
+                message.success('共享范围已保存')
               }}
             >
               <Space direction="vertical">
@@ -593,7 +589,7 @@ function ShareTab({ owner, documentId }: { owner: string; documentId?: string })
                     onChange={async (v) => {
                       await setLinkExpiry(v, owner)
                       await reload()
-                      message.success(`链接有效期已调整为「${v}」（演示）`)
+                      message.success(`链接有效期已调整为「${v}」`)
                     }}
                   />
                 </Space>
@@ -629,7 +625,7 @@ function ShareTab({ owner, documentId }: { owner: string; documentId?: string })
               协作者拥有文档读取与批注权限；公开共享链接不支持批注。
             </Typography.Text>
           </DemoCard>
-          <DemoCard title="权限变更记录" extra={<Tag color="orange">演示数据</Tag>}>
+          <DemoCard title="权限变更记录">
             <AppTable<PermLog>
               rowKey="id"
               size="small"
@@ -676,7 +672,7 @@ function ShareTab({ owner, documentId }: { owner: string; documentId?: string })
             <Typography.Text type="secondary">邀请说明</Typography.Text>
             <Input style={{ marginTop: 4 }} value={inviteNote} onChange={(e) => setInviteNote(e.target.value)} />
           </div>
-          <Alert type="info" showIcon message="邀请说明仅用于演示；协作者添加后立即拥有读取与批注权限。" />
+          <Alert type="info" showIcon message="邀请说明不落库；协作者添加后立即拥有读取与批注权限。" />
         </Space>
       </AppModal>
     </Spin>

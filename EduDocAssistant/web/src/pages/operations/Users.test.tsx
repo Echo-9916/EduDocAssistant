@@ -5,10 +5,28 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('../../auth/AuthContext', () => ({
   useAuth: () => ({ user: { roles: ['OPS'], permissions: ['ROLE_MANAGE', 'AUDIT_READ'] } as never, login: vi.fn(), logout: vi.fn() }),
 }))
+vi.mock('../../api/opsUsers', () => {
+  const users = [
+    { id: '1', username: 'teacher', displayName: '李老师', role: 'TEACHER', accountStatus: 'A', department: '计算机学院', lastLoginTime: null },
+    { id: '2', username: 'ops', displayName: '赵工', role: 'OPS', accountStatus: 'A', department: '信息中心', lastLoginTime: null },
+    { id: '3', username: 'student', displayName: '张同学', role: 'STUDENT', accountStatus: 'A', department: '计算机学院', lastLoginTime: null },
+    { id: '4', username: 'T2021043', displayName: '王老师', role: 'TEACHER', accountStatus: 'A', department: '计算机学院', lastLoginTime: null },
+    { id: '5', username: 'T2021044', displayName: '陈老师', role: 'TEACHER', accountStatus: 'A', department: '软件学院', lastLoginTime: null },
+    { id: '6', username: '2023003', displayName: '刘同学', role: 'STUDENT', accountStatus: 'I', department: '计算机学院', lastLoginTime: null },
+    { id: '7', username: '2024017', displayName: '钱同学', role: 'STUDENT', accountStatus: 'L', department: '人工智能学院', lastLoginTime: null },
+  ]
+  const listOpsUsers = vi.fn(({ keyword }: { keyword?: string }) => {
+    const items = keyword
+      ? users.filter((u) => u.username.includes(keyword) || u.displayName.includes(keyword))
+      : users
+    return Promise.resolve({ items, total: items.length, page: 1, pageSize: 20 })
+  })
+  return { listOpsUsers, freezeUser: vi.fn(), unfreezeUser: vi.fn() }
+})
 
 import OpsUsers from './Users'
 
-describe('用户与权限（对应原型：运维 07–12）', () => {
+describe('用户与权限', () => {
   it('用户目录渲染世界观账号与状态标签', async () => {
     render(<OpsUsers />)
     expect(await screen.findByText('李老师')).toBeTruthy()

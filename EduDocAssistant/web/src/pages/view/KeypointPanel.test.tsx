@@ -35,7 +35,7 @@ describe('parseKeypoints（C-05 契约）', () => {
     expect(parseKeypoints(null).keypoints).toEqual([])
     expect(parseKeypoints('not json').keypoints).toEqual([])
     expect(parseKeypoints('{"keypoints":["x",{"text":"甲","chunkId":"C1"}]}').keypoints)
-      .toEqual([{ text: '甲', chunkId: 'C1', charStart: null }])
+      .toEqual([{ text: '甲', blockId: null, chunkId: 'C1', charStart: null }])
     expect(parseKeypoints('{"keypoints":[],"underMin":true}').underMin).toBe(true)
   })
 })

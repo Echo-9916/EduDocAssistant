@@ -6,10 +6,22 @@ httpx 直连 chat/embeddings/rerank；超时分级 + 429/5xx/超时重试一次 
 
 import json
 import re
+import socket
 import time
 
 import httpx
 from pydantic import ValidationError
+
+# 本机/部分校园网 IPv6 无出口时，DNS 优先返回 IPv6 会让 httpx 每次连接白等 8s，
+# embedding 必然撞后端 10s 超时。SiliconFlow 为双栈，这里固定 IPv4。
+_ORIG_GETADDRINFO = socket.getaddrinfo
+
+
+def _ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    return _ORIG_GETADDRINFO(host, port, socket.AF_INET, type, proto, flags)
+
+
+socket.getaddrinfo = _ipv4_getaddrinfo
 
 from .config import TIMEOUTS, Settings, answer_timeout
 

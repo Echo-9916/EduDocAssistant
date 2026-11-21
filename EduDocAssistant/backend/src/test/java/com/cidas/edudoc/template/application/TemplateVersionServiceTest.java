@@ -108,6 +108,26 @@ class TemplateVersionServiceTest {
         assertEquals(10, rules.getValue().get(0).getRuleOrder());
     }
 
+    /** 新模板未上传 .docx 时，教师直接「添加规则」也能生成首版（无源对象）。 */
+    @Test
+    void createManualPersistsRulesWithoutSourceObject() {
+        teacherPrincipal();
+        when(templateRepository.findById(TPL)).thenReturn(Optional.of(template("D")));
+        when(versionRepository.maxVersionNo(TPL)).thenReturn(0);
+
+        TemplateVersionView view = service.createManual(TPL, "手工规则", List.of(
+                new RuleCommand("FONT", "HEADING_1", "WARNING", "N",
+                        "{\"expect\":{\"eastAsia\":\"黑体\"}}", 10)));
+
+        assertEquals(1, view.versionNo());
+        assertEquals("VALID", view.validationStatus());
+        assertNull(view.sourceObjectId());
+        ArgumentCaptor<List<FormatRule>> rules = ArgumentCaptor.forClass(List.class);
+        verify(ruleRepository).insertBatch(rules.capture());
+        assertEquals("FONT", rules.getValue().get(0).getRuleType());
+        verify(ossStorageAdapter, never()).putBytes(anyString(), any(), anyString());
+    }
+
     /** 复审 P2-3：模板版本必须带 .docx 源文件（D-02 契约「上传并解析」，追溯性不回退）。 */
     @Test
     void createWithoutFileRejected() {

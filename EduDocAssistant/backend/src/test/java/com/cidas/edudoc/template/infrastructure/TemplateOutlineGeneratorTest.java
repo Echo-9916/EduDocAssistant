@@ -1,5 +1,6 @@
 package com.cidas.edudoc.template.infrastructure;
 
+import com.cidas.edudoc.template.domain.FormatRuleMatcher;
 import com.cidas.edudoc.template.domain.StyleSnapshot;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +15,8 @@ class TemplateOutlineGeneratorTest {
     private final TemplateOutlineGenerator generator =
             new TemplateOutlineGenerator(new com.fasterxml.jackson.databind.ObjectMapper());
     private final DocxStyleExtractor extractor = new DocxStyleExtractor();
+    private final FormatRuleMatcher matcher =
+            new FormatRuleMatcher(new com.fasterxml.jackson.databind.ObjectMapper());
 
     private static FormatRule rule(String type, String selector, String config) {
         return new FormatRule("R1", "V1", type, selector, "BLOCKER", "Y", config, 10);
@@ -44,6 +47,35 @@ class TemplateOutlineGeneratorTest {
         StyleSnapshot.ParagraphFact heading = snapshot.withSelector("HEADING_1").get(0);
         assertEquals("Times New Roman", heading.family());
         assertEquals("黑体", heading.familyEastAsia());
+    }
+
+    /** 回归：按模板新建的正文/封面默认格式不再触发 BODY 字体/字号/行距 WARNING，页脚规则也生成。 */
+    @Test
+    void generatedBodyAndFooterSatisfyTemplateRules() {
+        List<FormatRule> rules = List.of(
+                rule("FONT", "HEADING_1", "{\"expect\":{\"family\":\"黑体\"}}"),
+                rule("SIZE", "HEADING_1", "{\"expect\":{\"pt\":16}}"),
+                rule("LINE_SPACING", "HEADING_1", "{\"expect\":{\"multiplier\":1.5}}"),
+                rule("FONT", "BODY",
+                        "{\"expect\":{\"family\":\"Times New Roman\",\"eastAsia\":\"宋体\"}}"),
+                rule("SIZE", "BODY", "{\"expect\":{\"pt\":10.5}}"),
+                rule("LINE_SPACING", "BODY", "{\"expect\":{\"multiplier\":1.5}}"),
+                rule("MARGIN", "PAGE",
+                        "{\"expect\":{\"top\":25.4,\"bottom\":25.4,\"left\":31.75,\"right\":25.4,\"unit\":\"mm\"}}"),
+                rule("HEADER_FOOTER", "HEADER", "{\"expect\":{\"present\":true}}"),
+                rule("HEADER_FOOTER", "FOOTER", "{\"expect\":{\"present\":true}}"));
+
+        StyleSnapshot snapshot = extractor.extract(generator.generate("课程设计报告", rules));
+
+        assertTrue(matcher.match(rules, snapshot).isEmpty(),
+                "按模板新建后应立即满足全部规则，实际=" + matcher.match(rules, snapshot));
+        StyleSnapshot.ParagraphFact body = snapshot.withSelector("BODY").stream()
+                .filter(p -> p.text() != null && p.text().contains("正文占位")).findFirst().orElseThrow();
+        assertEquals("Times New Roman", body.family());
+        assertEquals("宋体", body.familyEastAsia());
+        assertEquals(10.5, body.pt(), 0.01);
+        assertEquals(1.5, body.line().value(), 0.01);
+        assertTrue(snapshot.page().footerPresent());
     }
 
     @Test

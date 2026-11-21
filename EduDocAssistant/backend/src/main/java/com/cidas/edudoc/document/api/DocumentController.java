@@ -6,14 +6,21 @@ import com.cidas.edudoc.common.api.PageResult;
 import com.cidas.edudoc.common.security.RequirePermission;
 import com.cidas.edudoc.document.api.dto.ParseRequest;
 import com.cidas.edudoc.document.api.dto.ParseResponse;
+import com.cidas.edudoc.document.application.DocumentBlockEditService;
+import com.cidas.edudoc.document.application.DocumentBlockEditService.Block;
+import com.cidas.edudoc.document.application.DocumentBlockEditService.Result;
 import com.cidas.edudoc.document.application.DocumentLifecycleService;
 import com.cidas.edudoc.document.application.DocumentPreviewService;
 import com.cidas.edudoc.document.application.DocumentQueryService;
+import com.cidas.edudoc.document.application.DocumentWordExportService;
 import com.cidas.edudoc.document.application.DocumentQueryService.Detail;
 import com.cidas.edudoc.document.application.DocumentQueryService.ListQuery;
 import com.cidas.edudoc.document.application.DocumentQueryService.Summary;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,6 +40,8 @@ public class DocumentController {
     private final DocumentQueryService documentQueryService;
     private final DocumentLifecycleService documentLifecycleService;
     private final DocumentPreviewService documentPreviewService;
+    private final DocumentBlockEditService documentBlockEditService;
+    private final DocumentWordExportService documentWordExportService;
 
     @GetMapping("/{documentId}/preview")
     @RequirePermission(PermissionCode.DOCUMENT_READ)
@@ -80,6 +89,31 @@ public class DocumentController {
     }
 
     /** 格式视图字节流：某版本源文件（前端 fetch→blob 内嵌；owner 校验同 detail）。 */
+    /** 块编辑：H1/H2/正文/代码块整篇保存为新 EDIT 版本（仅 owner）。 */
+    @PostMapping("/{documentId}/block-edits")
+    @ResponseStatus(HttpStatus.CREATED)
+    @RequirePermission(PermissionCode.DOCUMENT_EDIT)
+    public ApiResponse<Result> blockEdit(@PathVariable("documentId") String documentId,
+                                         @RequestBody BlockEditRequest request) {
+        var blocks = request.blocks() == null ? java.util.List.<Block>of()
+                : request.blocks().stream()
+                        .map(b -> new Block(b.type(), b.text(), b.lang()))
+                        .toList();
+        return ApiResponse.ok(documentBlockEditService.save(documentId, request.baseVersionId(), blocks));
+    }
+
+    /** 当前版本按结构层导出 Word（模板样式优先；只还原语义结构，不保证页面版式）。 */
+    @GetMapping("/{documentId}/exports/docx")
+    @RequirePermission(PermissionCode.DOCUMENT_READ)
+    public ResponseEntity<byte[]> exportDocx(@PathVariable("documentId") String documentId) {
+        byte[] bytes = documentWordExportService.exportDocx(documentId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"document.docx\"")
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                .body(bytes);
+    }
+
     @GetMapping("/{documentId}/versions/{versionId}/file")
     @RequirePermission(PermissionCode.DOCUMENT_READ)
     public org.springframework.http.ResponseEntity<byte[]> versionFile(
@@ -113,5 +147,19 @@ public class DocumentController {
         String taskId = documentLifecycleService.reparse(documentId,
                 request == null ? null : request.versionId());
         return ApiResponse.ok(new ParseResponse(taskId));
+    }
+
+    /** 只重发当前版本向量化事件（不重解析、不改结构）。 */
+    @PostMapping("/{documentId}/reindex")
+    @RequirePermission(PermissionCode.DOCUMENT_EDIT)
+    public ApiResponse<ParseResponse> reindex(@PathVariable("documentId") String documentId) {
+        return ApiResponse.ok(new ParseResponse(documentLifecycleService.reindexEmbedding(documentId)));
+    }
+
+    /** 块编辑请求：baseVersionId 用于乐观锁；blocks 按顺序构成整篇文本。 */
+    public record BlockEditRequest(String baseVersionId, java.util.List<BlockRequest> blocks) {
+    }
+
+    public record BlockRequest(String type, String text, String lang) {
     }
 }

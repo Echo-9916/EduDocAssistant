@@ -158,7 +158,7 @@ describe('Documents', () => {
         changeSummary: null, downloadUrl: null, current: false },
     ])
     const preview = (text: string, versionId: string) => ({
-      documentId: 'D1', versionId, versionNo: 1, vectorReady: true,
+      documentId: 'D1', versionId, versionNo: 1, structure: [], vectorReady: true,
       blocks: [{ chunkId: 'C1', chunkNo: 1, headingPath: null, pageNo: 1, charStart: 0,
         charEnd: text.length - 1, text }],
     })
@@ -172,14 +172,14 @@ describe('Documents', () => {
     expect(await screen.findByText(/当前版本内容/)).toBeTruthy()
   })
 
-  it('协作文档显示「协作」标签与所有者，隐藏上传者专属操作', async () => {
+  it('协作文档显示「协同」标签与所有者，隐藏上传者专属操作', async () => {
     vi.mocked(listDocuments).mockResolvedValue(page([
       row({ id: 'D2', title: '协作课件', relation: 'COLLAB', ownerName: '李老师' }),
     ]))
     render(<Documents role="STUDENT" />)
-    expect(await screen.findByText('协作')).toBeTruthy()
+    expect(await screen.findByText('协同')).toBeTruthy()
     expect(screen.getByText('李老师')).toBeTruthy()
-    expect(await screen.findByText('版本', { selector: 'a' })).toBeTruthy()
+    expect(screen.queryByText('版本', { selector: 'a' })).toBeNull()
     expect(screen.getByText('预览', { selector: 'a' })).toBeTruthy()
     expect(screen.queryByText('删除', { selector: 'a' })).toBeNull()
     expect(screen.queryByText('共享', { selector: 'a' })).toBeNull()

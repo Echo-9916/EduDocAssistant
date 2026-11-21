@@ -49,6 +49,19 @@ public class TemplateVersionController {
         return ApiResponse.ok(templateVersionService.create(templateId, changeSummary, bytes, fileName));
     }
 
+    /** 教师不上传 .docx、直接添加规则建版本（body 为全量规则）。 */
+    @PostMapping("/manual")
+    @ResponseStatus(HttpStatus.CREATED)
+    @RequirePermission(PermissionCode.TEMPLATE_MANAGE)
+    public ApiResponse<TemplateVersionView> createManual(@PathVariable("templateId") String templateId,
+                                                         @RequestBody ManualRequest request) {
+        return ApiResponse.ok(templateVersionService.createManual(templateId,
+                request.changeSummary(), request.rules()));
+    }
+
+    public record ManualRequest(List<RuleCommand> rules, String changeSummary) {
+    }
+
     /** 验收反馈：编辑既有版本另存为新版本（body 带基版本、全量规则与可选说明）。 */
     @PostMapping("/fork")
     @RequirePermission(PermissionCode.TEMPLATE_MANAGE)

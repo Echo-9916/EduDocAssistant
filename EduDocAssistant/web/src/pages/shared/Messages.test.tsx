@@ -72,6 +72,6 @@ describe('消息中心（学生 26 / 教师 26 / 运维 25 屏，真实端点）
     role = 'OPS'
     render(<Messages />)
     expect(await screen.findByText('消息与告警')).toBeTruthy()
-    expect(screen.getByText('告警与审批类消息随切片 4 产生')).toBeTruthy()
+    expect(screen.getByText(/告警与审批类消息随切片 4 产生/)).toBeTruthy()
   })
 })

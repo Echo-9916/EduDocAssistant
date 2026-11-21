@@ -3,17 +3,25 @@
 // 提交 = POST /student/assignments/{id}/submissions；
 // 导出/下载中心 = 复用转换接口 POST /conversions、GET /conversions?documentId（06 计划：无独立下载端点）。
 import { useEffect, useState } from 'react'
-import { Descriptions, Form, Segmented, Select, Space, Tag, Typography, message } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { Descriptions, Form, List, Segmented, Select, Space, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { AppButton, AppModal, AppTable, requiredRule } from '../../components'
 import DemoPage, { DemoCard } from '../DemoPage'
 import { getErrorMessage } from '../../api/http'
-import { listStudentAssignments, submitAssignment } from '../../api/coursework'
-import type { FormatState, StudentAssignmentView } from '../../api/coursework'
+import {
+  createDocumentFromAttachment,
+  downloadAssignmentAttachment,
+  listAssignmentAttachments,
+  listStudentAssignments,
+  submitAssignment,
+} from '../../api/coursework'
+import type { AssignmentAttachment, FormatState, StudentAssignmentView } from '../../api/coursework'
 import { listCourses, listDocuments } from '../../api/documents'
 import type { CourseView, DocumentSummary } from '../../api/documents'
 import { createConversion, listConversions } from '../../api/format'
 import type { ConversionView } from '../../api/format'
+import { rolePath } from '../../routes'
 
 type Tab = 'assignments' | 'export' | 'downloads'
 
@@ -50,8 +58,75 @@ const dt = (v: string | null) => {
   return d.toLocaleString('zh-CN', { hour12: false }).slice(0, 16)
 }
 
+/** 作业附件：可下载，也可在附件基础上新建一份本人可编辑文档（绑定作业模板）。 */
+function AttachmentList({ assignmentId }: { assignmentId: string }) {
+  const navigate = useNavigate()
+  const [items, setItems] = useState<AssignmentAttachment[]>([])
+  const [busy, setBusy] = useState<string | null>(null)
+
+  useEffect(() => {
+    listAssignmentAttachments(assignmentId).then(setItems).catch(() => setItems([]))
+  }, [assignmentId])
+
+  if (items.length === 0) return null
+
+  const download = async (a: AssignmentAttachment) => {
+    setBusy(a.id)
+    try {
+      const blob = await downloadAssignmentAttachment(assignmentId, a.id)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = a.fileName
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const useAsDraft = async (a: AssignmentAttachment) => {
+    setBusy(a.id)
+    try {
+      const created = await createDocumentFromAttachment(assignmentId, a.id)
+      message.success('已基于附件新建文档，正在解析')
+      navigate(`${rolePath.STUDENT}/documents/${created.documentId}/view`)
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8 }}>
+      <Typography.Text strong>作业附件</Typography.Text>
+      <List
+        size="small"
+        dataSource={items}
+        renderItem={(a) => (
+          <List.Item actions={[
+            <AppButton key="download" type="link" size="small" loading={busy === a.id}
+              onClick={() => void download(a)}>下载</AppButton>,
+            <AppButton key="edit" type="link" size="small" loading={busy === a.id}
+              onClick={() => void useAsDraft(a)}>基于附件编辑</AppButton>,
+          ]}>
+            <Space size={6}>
+              <Tag color="blue">DOCX</Tag>
+              <span>{a.fileName}</span>
+            </Space>
+          </List.Item>
+        )}
+      />
+    </div>
+  )
+}
+
 /** 课程与作业（作业与交付分区）：我的作业 24 / 提交 25 / 导出文档 22 / 下载中心 23 屏。 */
 export default function StudentCourses() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('assignments')
   // 我的作业（屏 24）：筛选值直接传后端，点击即重新请求
   const [loading, setLoading] = useState(true)
@@ -142,6 +217,18 @@ export default function StudentCourses() {
   const assignmentColumns: ColumnsType<StudentAssignmentView> = [
     { title: '课程', dataIndex: 'course', width: 110 },
     { title: '作业名', dataIndex: 'title', width: 200 },
+    {
+      title: '模板', width: 150,
+      render: (_, row) => row.templateName ? (
+        <Space direction="vertical" size={0}>
+          <Tag color="blue">{`${row.templateName} v${row.templateVersionNo ?? ''}`}</Tag>
+          <AppButton type="link" size="small" style={{ padding: 0 }}
+            onClick={() => navigate(`${rolePath.STUDENT}/format`)}>
+            按模板新建
+          </AppButton>
+        </Space>
+      ) : <Typography.Text type="secondary">-</Typography.Text>,
+    },
     { title: '要求', dataIndex: 'requirement', ellipsis: true, render: (v: string | null) => v ?? '-' },
     {
       title: '截止时间',
@@ -216,9 +303,7 @@ export default function StudentCourses() {
   return (
     <DemoPage
       title="课程与作业"
-      screens="对应原型：学生 22/23/24/25"
       desc="查看课程作业与提交状态，状态与格式结论由服务端派生；导出走格式转换服务，产物在下载中心按文档查看。"
-      live
       extra={
         <Segmented<Tab>
           value={tab}
@@ -335,6 +420,7 @@ export default function StudentCourses() {
                 {submitRow.requireFormatCheck === 'Y' ? '，提交后回填格式校验结论（暂不阻断）' : ''}
               </Descriptions.Item>
             </Descriptions>
+            <AttachmentList assignmentId={submitRow.id} />
             <Form form={submitForm} layout="vertical">
               <Form.Item name="docId" label="选择提交文档" rules={[requiredRule('请选择要提交的文档')]}>
                 <Select
@@ -352,6 +438,8 @@ export default function StudentCourses() {
       {/* 查看提交 / 查看反馈 */}
       <AppModal title={detailRow?.status === 'GRADED' ? '批改反馈' : '提交记录'} open={!!detailRow} footer={null} onCancel={() => setDetailRow(null)}>
         {detailRow && (
+          <>
+          <AttachmentList assignmentId={detailRow.id} />
           <Descriptions size="small" column={1}>
             <Descriptions.Item label="作业">{detailRow.course} · {detailRow.title}</Descriptions.Item>
             <Descriptions.Item label="提交文档">{detailRow.submittedDoc ?? '-'}</Descriptions.Item>
@@ -367,6 +455,7 @@ export default function StudentCourses() {
               </>
             )}
           </Descriptions>
+          </>
         )}
       </AppModal>
     </DemoPage>

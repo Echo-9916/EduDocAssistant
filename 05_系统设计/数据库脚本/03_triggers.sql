@@ -344,3 +344,11 @@ BEGIN
     :NEW.update_time := SYSTIMESTAMP;
 END;
 /
+
+CREATE OR REPLACE TRIGGER trg_document_image_bu
+BEFORE UPDATE ON edudoc_document_image
+FOR EACH ROW
+BEGIN
+    :NEW.update_time := SYSTIMESTAMP;
+END;
+/

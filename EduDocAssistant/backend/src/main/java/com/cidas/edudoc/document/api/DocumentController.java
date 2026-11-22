@@ -2,6 +2,8 @@ package com.cidas.edudoc.document.api;
 
 import com.cidas.edudoc.access.domain.PermissionCode;
 import com.cidas.edudoc.common.api.ApiResponse;
+import com.cidas.edudoc.common.api.CidasBusinessException;
+import com.cidas.edudoc.common.api.ErrorCode;
 import com.cidas.edudoc.common.api.PageResult;
 import com.cidas.edudoc.common.security.RequirePermission;
 import com.cidas.edudoc.document.api.dto.ParseRequest;
@@ -9,6 +11,9 @@ import com.cidas.edudoc.document.api.dto.ParseResponse;
 import com.cidas.edudoc.document.application.DocumentBlockEditService;
 import com.cidas.edudoc.document.application.DocumentBlockEditService.Block;
 import com.cidas.edudoc.document.application.DocumentBlockEditService.Result;
+import com.cidas.edudoc.document.application.DocumentImageService;
+import com.cidas.edudoc.document.application.DocumentImageService.ImageView;
+import com.cidas.edudoc.document.application.DocumentImageService.Upload;
 import com.cidas.edudoc.document.application.DocumentLifecycleService;
 import com.cidas.edudoc.document.application.DocumentPreviewService;
 import com.cidas.edudoc.document.application.DocumentQueryService;
@@ -30,6 +35,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 /** 文档查询与生命周期端点（详细设计 §3.1.3）。 */
 @RestController
@@ -41,6 +49,7 @@ public class DocumentController {
     private final DocumentLifecycleService documentLifecycleService;
     private final DocumentPreviewService documentPreviewService;
     private final DocumentBlockEditService documentBlockEditService;
+    private final DocumentImageService documentImageService;
     private final DocumentWordExportService documentWordExportService;
 
     @GetMapping("/{documentId}/preview")
@@ -97,9 +106,37 @@ public class DocumentController {
                                          @RequestBody BlockEditRequest request) {
         var blocks = request.blocks() == null ? java.util.List.<Block>of()
                 : request.blocks().stream()
-                        .map(b -> new Block(b.type(), b.text(), b.lang()))
+                        .map(b -> new Block(b.type(), b.text(), b.lang(), b.imageId()))
                         .toList();
         return ApiResponse.ok(documentBlockEditService.save(documentId, request.baseVersionId(), blocks));
+    }
+
+    /** 块编辑插入图片：上传到私有 OSS，返回 imageId 供块保存时引用。 */
+    @PostMapping(value = "/{documentId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    @RequirePermission(PermissionCode.DOCUMENT_EDIT)
+    public ApiResponse<ImageView> uploadImage(@PathVariable("documentId") String documentId,
+                                              @RequestParam("file") MultipartFile file) {
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "图片读取失败");
+        }
+        return ApiResponse.ok(documentImageService.upload(documentId,
+                new Upload(file.getOriginalFilename(), file.getContentType(), file.getSize(), bytes)));
+    }
+
+    /** 图片代理：`<img>` 无法携带 Authorization，前端取 Blob 后本地展示。 */
+    @GetMapping("/{documentId}/images/{imageId}")
+    @RequirePermission(PermissionCode.DOCUMENT_READ)
+    public ResponseEntity<byte[]> image(@PathVariable("documentId") String documentId,
+                                        @PathVariable("imageId") String imageId) {
+        var content = documentImageService.load(documentId, imageId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(content.mimeType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .body(content.bytes());
     }
 
     /** 当前版本按结构层导出 Word（模板样式优先；只还原语义结构，不保证页面版式）。 */
@@ -160,6 +197,6 @@ public class DocumentController {
     public record BlockEditRequest(String baseVersionId, java.util.List<BlockRequest> blocks) {
     }
 
-    public record BlockRequest(String type, String text, String lang) {
+    public record BlockRequest(String type, String text, String lang, String imageId) {
     }
 }

@@ -7,6 +7,7 @@ import com.cidas.edudoc.common.persistence.Ids;
 import com.cidas.edudoc.document.application.DocumentBlockEditService.Result;
 import com.cidas.edudoc.document.application.DocumentParseTxService;
 import com.cidas.edudoc.document.domain.ChunkingResult;
+import com.cidas.edudoc.document.domain.StructureNode;
 import com.cidas.edudoc.document.infrastructure.Document;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentVersion;
@@ -18,6 +19,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 
 /** 块编辑成版事务：派生对象登记 → EDIT 版本 → current/状态 → 分块+结构+embed → 审计，单事务。 */
@@ -33,7 +35,7 @@ public class DocumentBlockEditTxService {
 
     @Transactional
     public Result save(Document doc, OssObject derived, String editorId, String newText,
-                       ChunkingResult chunking, int blockCount) {
+                       ChunkingResult chunking, int blockCount, List<StructureNode> nodes) {
         int versionNo = versionRepository.maxVersionNo(doc.getId()) + 1;
         String versionId = Ids.hex16();
         ossObjectRepository.insert(derived);
@@ -45,7 +47,7 @@ public class DocumentBlockEditTxService {
         }
         documentRepository.updateCurrentVersion(doc.getId(), versionId);
         documentRepository.updateStatus(doc.getId(), "PARSING");
-        if (!parseTxService.writeSuccess(doc.getId(), versionId, chunking.chunks(), chunking.nodes())) {
+        if (!parseTxService.writeSuccess(doc.getId(), versionId, chunking.chunks(), nodes)) {
             throw new CidasBusinessException(ErrorCode.CONFLICT, "文档状态已变化，请刷新后重试");
         }
         auditService.record("DOCUMENT_BLOCK_EDITED", "DOCUMENT", doc.getId(), doc.getId(), "200",

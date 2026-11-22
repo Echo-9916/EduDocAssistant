@@ -24,7 +24,11 @@ vi.mock('../api/ai', () => api)
 const getDocument = vi.hoisted(() => vi.fn())
 const saveDocumentBlocks = vi.hoisted(() => vi.fn())
 const exportDocumentDocx = vi.hoisted(() => vi.fn())
-vi.mock('../api/documents', () => ({ getDocument, saveDocumentBlocks, exportDocumentDocx, reindexDocument: vi.fn() }))
+const uploadDocumentImage = vi.hoisted(() => vi.fn())
+vi.mock('../api/documents', () => ({
+  getDocument, saveDocumentBlocks, exportDocumentDocx, uploadDocumentImage,
+  getDocumentImage: vi.fn(), reindexDocument: vi.fn(),
+}))
 vi.mock('../api/collaboration', () => ({
   listAnnotations: vi.fn().mockResolvedValue([]),
   listPresence: vi.fn().mockResolvedValue([]),
@@ -167,7 +171,8 @@ describe('DocumentView（C-10）', () => {
     fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }))
     const texts = screen.getAllByPlaceholderText('内容…')
     expect(texts.length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: '+' }))
+    fireEvent.click(screen.getByRole('button', { name: /添加块/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '正文' }))
     const afterAdd = screen.getAllByPlaceholderText('内容…')
     fireEvent.change(afterAdd[afterAdd.length - 1], { target: { value: '新段落' } })
     fireEvent.click(screen.getByRole('button', { name: '保存为新版本' }))
@@ -176,6 +181,17 @@ describe('DocumentView（C-10）', () => {
     expect(id).toBe('D1')
     expect(body.baseVersionId).toBe('V1')
     expect(body.blocks.some((b: { text: string }) => b.text === '新段落')).toBe(true)
+  })
+
+  it('+ 下拉包含「图片」选项，选择后出现图片上传入口', async () => {
+    renderView()
+    await screen.findByTestId('block-1')
+    fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }))
+    fireEvent.click(screen.getByRole('button', { name: /添加块/ }))
+    expect(screen.getByRole('menuitem', { name: '图片' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitem', { name: '图片' }))
+    expect(await screen.findByText('尚未上传图片')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '上传图片' })).toBeTruthy()
   })
 
   it('摘要句「定位」点击 → 正文出现 <mark> 高亮（引用回跳贯通）', async () => {

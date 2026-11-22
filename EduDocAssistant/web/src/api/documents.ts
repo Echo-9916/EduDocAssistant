@@ -121,14 +121,34 @@ export type CodeLang = 'java' | 'cpp' | 'python' | 'sql'
 
 /** 块编辑：整篇块列表保存为新 EDIT 版本（baseVersionId 乐观锁）。 */
 export interface EditableBlock {
-  type: 'H1' | 'H2' | 'BODY' | 'CODE'
+  type: 'H1' | 'H2' | 'BODY' | 'CODE' | 'IMAGE'
   text: string
   /** 仅 CODE 块使用；缺省 java */
   lang?: CodeLang
+  /** 仅 IMAGE 块使用：先调用 uploadDocumentImage 拿到 id */
+  imageId?: string
+  imageName?: string
 }
 
 export const saveDocumentBlocks = (id: string, body: { baseVersionId: string; blocks: EditableBlock[] }) =>
   post<{ versionId: string; versionNo: number }>(`/documents/${id}/block-edits`, body)
+
+export interface DocumentImage {
+  id: string
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+}
+
+/** 块编辑插入图片：multipart 到后端，落私有 OSS 后返回 imageId。 */
+export const uploadDocumentImage = (id: string, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return post<DocumentImage>(`/documents/${id}/images`, form)
+}
+
+export const getDocumentImage = (id: string, imageId: string) =>
+  getBlob(`/documents/${id}/images/${imageId}`)
 
 /** 当前版本导出 Word（模板样式优先；只还原语义结构）。 */
 export const exportDocumentDocx = (id: string) =>

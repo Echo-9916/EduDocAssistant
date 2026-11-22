@@ -1,5 +1,5 @@
 // 文档共享链接 API（契约=后端 ShareController）：owner 创建/列出/撤销，公开 token 免登录只读。
-import { del, get, post } from './http'
+import { del, get, getBlob, post } from './http'
 import type { PreviewBlock, StructureNode } from './ai'
 
 export type SharePermission = 'VIEW' | 'COMMENT'
@@ -42,3 +42,6 @@ export const listShares = (documentId: string) =>
 export const revokeShare = (shareId: string) => del<void>(`/shares/${shareId}`)
 
 export const getPublicShare = (token: string) => get<PublicShare>(`/public/shares/${token}`)
+
+export const getPublicShareImage = (token: string, imageId: string) =>
+  getBlob(`/public/shares/${token}/images/${imageId}`)

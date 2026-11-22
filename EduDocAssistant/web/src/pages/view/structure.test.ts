@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildBlockUnits, markerHeadings, toEditableBlocks } from './structure'
+import { buildBlockUnits, looksLikeCode, markerHeadings, toEditableBlocks } from './structure'
 import type { PreviewBlock, StructureNode } from '../../api/ai'
 
 const block: PreviewBlock = {
@@ -65,6 +65,42 @@ describe('structure 渲染段', () => {
       { type: 'H1', text: 'H' },
       { type: 'BODY', text: 'B' },
       { type: 'CODE', text: 'C', lang: 'java' },
+    ])
+  })
+
+  it('正文节点里的连续代码行合并为 Java 代码块（预览与编辑同口径）', () => {
+    const lines = [
+      'public interface Shape<T extends Number> {',
+      '    T area();',
+      '}',
+      '定义泛型接口 Shape<T extends Number>，声明 area() 方法。',
+    ]
+    let offset = 0
+    const codeNodes: StructureNode[] = lines.map((line, i) => {
+      const start = offset
+      offset += line.length + 1
+      return { no: i + 1, kind: 'PARAGRAPH', start, end: start + line.length - 1 }
+    })
+    const text = lines.join('\n')
+    const codeBlock: PreviewBlock = {
+      chunkId: 'C1', chunkNo: 1, headingPath: null, pageNo: null,
+      charStart: 0, charEnd: text.length - 1, text,
+    }
+
+    expect(looksLikeCode(lines[0])).toBe(true)
+    expect(looksLikeCode(lines[2])).toBe(true)
+    expect(looksLikeCode(lines[3])).toBe(false)
+
+    const units = buildBlockUnits(codeBlock, codeNodes)
+    expect(units.map((u) => u.type)).toEqual(['code', 'paragraph'])
+    const code = units[0]
+    if (code.type !== 'code') throw new Error('expected code')
+    expect(code.lang).toBe('java')
+    expect(code.text).toBe(lines.slice(0, 3).join('\n'))
+
+    expect(toEditableBlocks([codeBlock], codeNodes)).toEqual([
+      { type: 'CODE', text: lines.slice(0, 3).join('\n'), lang: 'java' },
+      { type: 'BODY', text: lines[3] },
     ])
   })
 

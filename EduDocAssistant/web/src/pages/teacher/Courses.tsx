@@ -86,10 +86,10 @@ export default function TeacherCourses() {
   // 课程管理筛选（屏 20）
   const [courseFilter, setCourseFilter] = useState('ALL')
   const [keyword, setKeyword] = useState('')
-  // 课程管理行展开：课程内全部学生
-  const [expandedCourseIds, setExpandedCourseIds] = useState<string[]>([])
-  const [courseStudents, setCourseStudents] = useState<Record<string, CourseStudentView[]>>({})
-  const [courseStudentsLoading, setCourseStudentsLoading] = useState<Record<string, boolean>>({})
+  // 课程管理「查看所有学生」弹窗
+  const [studentsCourse, setStudentsCourse] = useState<TeacherCourseView | null>(null)
+  const [studentsList, setStudentsList] = useState<CourseStudentView[]>([])
+  const [studentsLoading, setStudentsLoading] = useState(false)
   // 成员导入（屏 22）/ 新建课程（屏 21）
   const [importCourse, setImportCourse] = useState<TeacherCourseView | null>(null)
   const [importFile, setImportFile] = useState('')
@@ -123,10 +123,7 @@ export default function TeacherCourses() {
 
   const loadCourses = () =>
     listTeacherCourses({ page: 1, pageSize: 100 })
-      .then((r) => {
-        setCourses(r.items)
-        setCourseStudents({})
-      })
+      .then((r) => setCourses(r.items))
       .catch((e) => message.error(getErrorMessage(e)))
   const loadAssignments = () =>
     listAssignments({ page: 1, pageSize: 100 }).then((r) => setAssignments(r.items)).catch((e) => message.error(getErrorMessage(e)))
@@ -229,9 +226,8 @@ export default function TeacherCourses() {
       setImportResult(res)
       message.success(`导入完成：新建 ${res.created} · 激活 ${res.activated} · 冲突 ${res.conflicts} · 失败 ${res.failures.length}`)
       await loadCourses()
-      if (expandedCourseIds.includes(importCourse.id)) {
-        const items = await listCourseStudents(importCourse.id)
-        setCourseStudents((prev) => ({ ...prev, [importCourse.id]: items }))
+      if (studentsCourse?.id === importCourse.id) {
+        setStudentsList(await listCourseStudents(importCourse.id))
       }
     } catch (e) {
       message.error(getErrorMessage(e))
@@ -319,18 +315,14 @@ export default function TeacherCourses() {
     }
   }
 
-  const toggleCourseStudents = (row: TeacherCourseView) => {
-    if (expandedCourseIds.includes(row.id)) {
-      setExpandedCourseIds((ids) => ids.filter((id) => id !== row.id))
-      return
-    }
-    setExpandedCourseIds((ids) => [...ids, row.id])
-    if (courseStudents[row.id]) return
-    setCourseStudentsLoading((prev) => ({ ...prev, [row.id]: true }))
+  const openCourseStudents = (row: TeacherCourseView) => {
+    setStudentsCourse(row)
+    setStudentsList([])
+    setStudentsLoading(true)
     listCourseStudents(row.id)
-      .then((items) => setCourseStudents((prev) => ({ ...prev, [row.id]: items })))
+      .then(setStudentsList)
       .catch((e) => message.error(getErrorMessage(e)))
-      .finally(() => setCourseStudentsLoading((prev) => ({ ...prev, [row.id]: false })))
+      .finally(() => setStudentsLoading(false))
   }
 
   const doGrade = async () => {
@@ -373,8 +365,8 @@ export default function TeacherCourses() {
       render: (v: number, row) => (
         <Space direction="vertical" size={0}>
           <span>{v} 人</span>
-          <AppButton type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => toggleCourseStudents(row)}>
-            {expandedCourseIds.includes(row.id) ? '收起' : '查看所有学生'}
+          <AppButton type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => openCourseStudents(row)}>
+            查看所有学生
           </AppButton>
         </Space>
       ),
@@ -507,33 +499,6 @@ export default function TeacherCourses() {
                   loading={loading}
                   columns={courseColumns}
                   dataSource={courseData}
-                  expandable={{
-                    expandedRowKeys: expandedCourseIds,
-                    expandIcon: () => null,
-                    indentSize: 28,
-                    expandedRowRender: (row) => (
-                      <div style={{
-                        margin: '4px 8px 12px',
-                        padding: '12px 16px',
-                        background: '#fafafa',
-                        border: '1px solid #f0f0f0',
-                        borderRadius: 8,
-                      }}>
-                        <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-                          全部学生（{courseStudents[row.id]?.length ?? 0} 人）
-                        </Typography.Text>
-                        <AppTable<CourseStudentView>
-                          rowKey="userId"
-                          size="small"
-                          pagination={false}
-                          loading={!!courseStudentsLoading[row.id]}
-                          columns={COURSE_STUDENT_COLUMNS}
-                          dataSource={courseStudents[row.id] ?? []}
-                          locale={{ emptyText: '该课程暂无学生' }}
-                        />
-                      </div>
-                    ),
-                  }}
                 />
               </DemoCard>
             ),
@@ -682,6 +647,28 @@ export default function TeacherCourses() {
           },
         ]}
       />
+
+      {/* 课程管理：查看该课程全部学生（独立弹窗，避免行内展开挤压大表） */}
+      <AppModal
+        title={`全部学生 · ${studentsCourse?.courseName ?? ''}`}
+        open={!!studentsCourse}
+        width={640}
+        onCancel={() => setStudentsCourse(null)}
+        footer={<AppButton onClick={() => setStudentsCourse(null)}>关闭</AppButton>}
+      >
+        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+          {studentsCourse?.termCode} · 共 {studentsList.length} 人
+        </Typography.Text>
+        <AppTable<CourseStudentView>
+          rowKey="userId"
+          size="small"
+          loading={studentsLoading}
+          columns={COURSE_STUDENT_COLUMNS}
+          dataSource={studentsList}
+          pagination={{ pageSize: 10 }}
+          locale={{ emptyText: '该课程暂无学生' }}
+        />
+      </AppModal>
 
       {/* 屏 21：新建课程（课程组/文档权限为演示字段，createCourse 只收 name/code/term） */}
       <AppModal title="新建课程" open={createOpen} okText="创建课程" cancelText="取消" onOk={doCreateCourse} onCancel={() => setCreateOpen(false)}>

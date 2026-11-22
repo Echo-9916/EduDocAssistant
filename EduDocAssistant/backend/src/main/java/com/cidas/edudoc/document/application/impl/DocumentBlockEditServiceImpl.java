@@ -7,8 +7,10 @@ import com.cidas.edudoc.common.security.AuthContext;
 import com.cidas.edudoc.document.application.DocumentBlockEditService;
 import com.cidas.edudoc.document.domain.ChunkingResult;
 import com.cidas.edudoc.document.domain.ChunkingService;
+import com.cidas.edudoc.document.domain.StructureNode;
 import com.cidas.edudoc.document.domain.TextBlock;
 import com.cidas.edudoc.document.infrastructure.Document;
+import com.cidas.edudoc.document.infrastructure.DocumentImageRepository;
 import com.cidas.edudoc.document.infrastructure.DocumentRepository;
 import com.cidas.edudoc.document.infrastructure.ParseProperties;
 import com.cidas.edudoc.document.infrastructure.OssObject;
@@ -30,12 +32,13 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DocumentBlockEditServiceImpl implements DocumentBlockEditService {
 
-    private static final Set<String> TYPES = Set.of("H1", "H2", "BODY", "CODE");
+    private static final Set<String> TYPES = Set.of("H1", "H2", "BODY", "CODE", "IMAGE");
     private static final Set<String> CODE_LANGS = Set.of("java", "cpp", "python", "sql");
     private static final int MAX_BLOCKS = 1000;
     private static final int MAX_TEXT_CHARS = 2_000_000;
 
     private final DocumentRepository documentRepository;
+    private final DocumentImageRepository imageRepository;
     private final OssStorageAdapter ossStorageAdapter;
     private final OssProperties ossProperties;
     private final ParseProperties parseProperties;
@@ -59,12 +62,23 @@ public class DocumentBlockEditServiceImpl implements DocumentBlockEditService {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "块数量不合法");
         }
         List<TextBlock> textBlocks = new ArrayList<>();
+        List<PendingImage> pendingImages = new ArrayList<>();
         StringBuilder fullText = new StringBuilder();
         int total = 0;
         for (Block block : blocks) {
             String type = block == null || block.type() == null ? "" : block.type().trim().toUpperCase(Locale.ROOT);
             if (!TYPES.contains(type)) {
-                throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "块类型仅支持 H1、H2、BODY、CODE");
+                throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "块类型仅支持 H1、H2、BODY、CODE、IMAGE");
+            }
+            if ("IMAGE".equals(type)) {
+                String imageId = block.imageId() == null ? "" : block.imageId().trim();
+                if (!Ids.isHex16(imageId)
+                        || imageRepository.findByIdAndDocument(imageId, doc.getId()) == null) {
+                    throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "图片不存在或不属于本文档");
+                }
+                // 图片不占正文文本：anchor 记录插入位置，结构层按 marker 节点回传
+                pendingImages.add(new PendingImage(fullText.length(), imageId));
+                continue;
             }
             String text = block.text() == null ? "" : block.text();
             total += text.length();
@@ -92,11 +106,17 @@ public class DocumentBlockEditServiceImpl implements DocumentBlockEditService {
         }
         String text = fullText.toString().stripTrailing();
         if (text.isBlank()) {
-            throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文档内容不能为空");
+            throw new CidasBusinessException(ErrorCode.BAD_REQUEST,
+                    pendingImages.isEmpty() ? "文档内容不能为空" : "文档至少保留一个文字块");
         }
         ChunkingResult chunking = new ChunkingService(parseProperties.chunkSize()).chunk(textBlocks);
         if (chunking.chunks().isEmpty()) {
             throw new CidasBusinessException(ErrorCode.BAD_REQUEST, "文档内容不能为空");
+        }
+        List<StructureNode> nodes = new ArrayList<>(chunking.nodes());
+        int nextNo = nodes.size() + 1;
+        for (PendingImage image : pendingImages) {
+            nodes.add(StructureNode.image(nextNo++, Math.min(image.anchor(), text.length()), image.imageId()));
         }
         String objectKey = ossProperties.objectKeyPrefix() + "/derived/" + doc.getId()
                 + "/" + Ids.hex16() + ".txt";
@@ -104,7 +124,10 @@ public class DocumentBlockEditServiceImpl implements DocumentBlockEditService {
         OssObject derived = new OssObject(Ids.hex16(), ossProperties.bucket(), ossProperties.region(),
                 objectKey, info.versionId(), info.etag(), sha256Hex(text), info.contentLength(),
                 "text/plain", info.encryption(), "PARSED");
-        return txService.save(doc, derived, userId, text, chunking, blocks.size());
+        return txService.save(doc, derived, userId, text, chunking, blocks.size(), nodes);
+    }
+
+    private record PendingImage(int anchor, String imageId) {
     }
 
     private static String sha256Hex(String content) {

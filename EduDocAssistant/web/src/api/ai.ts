@@ -16,7 +16,7 @@ export interface PreviewBlock {
   text: string
 }
 
-export type StructureKind = 'HEADING' | 'PARAGRAPH' | 'LIST_ITEM' | 'TABLE_CELL' | 'CODE'
+export type StructureKind = 'HEADING' | 'PARAGRAPH' | 'LIST_ITEM' | 'TABLE_CELL' | 'CODE' | 'IMAGE'
 
 /** 阅读结构节点：与 blocks 同坐标系（绝对闭区间）；标记型 HEADING 无 start/end，用 anchor。 */
 export interface StructureNode {
@@ -35,6 +35,8 @@ export interface StructureNode {
   col?: number | null
   /** CODE 节点的语言（java/cpp/python/sql） */
   lang?: string | null
+  /** IMAGE 节点引用的文档图片 ID */
+  imageId?: string | null
 }
 
 export interface Preview {

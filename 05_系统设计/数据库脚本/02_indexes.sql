@@ -77,3 +77,6 @@ CREATE INDEX ix_notif_pref_user ON edudoc_notification_preference (user_id, enab
 
 -- 作业附件（06 切片3 附件）
 CREATE INDEX ix_assignment_attachment ON edudoc_assignment_attachment (assignment_id);
+
+-- 文档图片（06 切片3 图片）
+CREATE INDEX ix_document_image_doc ON edudoc_document_image (document_id);

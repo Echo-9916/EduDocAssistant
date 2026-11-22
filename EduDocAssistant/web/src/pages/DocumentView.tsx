@@ -2,11 +2,11 @@
 // 块勾选为润色选择面；文档 PARSING 时 2s 轮询直至 READY（复用文档态停步逻辑）。
 import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Alert, Card, Checkbox, Empty, Input, Popconfirm, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd'
+import { Alert, Card, Checkbox, Dropdown, Empty, Input, Popconfirm, Select, Space, Spin, Tabs, Tag, Typography, Upload, message } from 'antd'
 import { AppButton } from '../components'
 import { useLocation, useParams } from 'react-router-dom'
 import { getErrorMessage } from '../api/http'
-import { exportDocumentDocx, getDocument, reindexDocument, saveDocumentBlocks } from '../api/documents'
+import { exportDocumentDocx, getDocument, reindexDocument, saveDocumentBlocks, uploadDocumentImage } from '../api/documents'
 import type { CodeLang, DocumentDetail, EditableBlock } from '../api/documents'
 import Editor from 'react-simple-code-editor'
 import { CODE_LANGS, highlightCode, normalizeLang } from './view/codeHighlight'
@@ -29,6 +29,7 @@ import {
   blockLabel,
   buildBlockUnits,
   fullText,
+  imageNodes,
   markerHeadings,
   nodeAtRange,
   nodeText,
@@ -41,6 +42,7 @@ import KeypointPanel from './view/KeypointPanel'
 import QaPanel from './view/QaPanel'
 import PolishPanel from './view/PolishPanel'
 import FormatPanel from './view/FormatPanel'
+import DocumentImage from './view/DocumentImage'
 
 interface Highlight {
   start: number
@@ -165,6 +167,7 @@ export default function DocumentView() {
   const [editMode, setEditMode] = useState(false)
   const [editBlocks, setEditBlocks] = useState<EditableBlock[]>([])
   const [savingEdit, setSavingEdit] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState<number | null>(null)
   const [reindexing, setReindexing] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
 
@@ -173,6 +176,7 @@ export default function DocumentView() {
     { value: 'H2', label: '二级标题' },
     { value: 'BODY', label: '正文' },
     { value: 'CODE', label: '代码块' },
+    { value: 'IMAGE', label: '图片' },
   ]
 
   const startEdit = () => {
@@ -182,9 +186,9 @@ export default function DocumentView() {
 
   const saveEdit = async () => {
     if (!docId || !preview) return
-    const blocksToSave = editBlocks.filter((b) => b.text.trim() !== '')
-    if (blocksToSave.length === 0) {
-      message.warning('文档内容不能为空')
+    const blocksToSave = editBlocks.filter((b) => b.type === 'IMAGE' ? !!b.imageId : b.text.trim() !== '')
+    if (!blocksToSave.some((b) => b.type !== 'IMAGE')) {
+      message.warning('文档至少保留一个文字块')
       return
     }
     setSavingEdit(true)
@@ -213,6 +217,20 @@ export default function DocumentView() {
 
   const updateBlock = (index: number, patch: Partial<EditableBlock>) => {
     setEditBlocks((prev) => prev.map((b, i) => (i === index ? { ...b, ...patch } : b)))
+  }
+
+  const doUploadImage = async (index: number, file: File) => {
+    if (!docId) return
+    setUploadingImage(index)
+    try {
+      const image = await uploadDocumentImage(docId, file)
+      updateBlock(index, { imageId: image.id, imageName: image.fileName })
+      message.success('图片已上传')
+    } catch (e) {
+      message.error(getErrorMessage(e))
+    } finally {
+      setUploadingImage(null)
+    }
   }
 
   const moveBlock = (from: number, to: number) => {
@@ -390,11 +408,25 @@ export default function DocumentView() {
     const counter = { value: 0 }
     const markers = markerHeadings(block, structure)
     const units = buildBlockUnits(block, structure)
+    const images = imageNodes(block, structure)
+    // ponytail: 图片只按块边界摆放（段内图片统一放块首），当前编辑器的图片块本身就是独立块，够用
+    const imagesBefore = images.filter((n) => n.anchor! < block.charEnd + 1)
+    const imagesAfter = images.filter((n) => n.anchor! >= block.charEnd + 1)
+    const renderImages = (list: typeof images) => list.map((n) => (
+      <DocumentImage key={`img-${n.no}`} documentId={docId!} imageId={n.imageId!} maxHeight={420} />
+    ))
     if (units.length === 0 && markers.length === 0) {
-      return renderText(block, block.text, 0, ranges, counter)
+      return (
+        <>
+          {renderImages(imagesBefore)}
+          {renderText(block, block.text, 0, ranges, counter)}
+          {renderImages(imagesAfter)}
+        </>
+      )
     }
     return (
       <>
+        {renderImages(imagesBefore)}
         {markers.map((m) => createElement(
           `h${Math.min(4, Math.max(1, m.level))}`,
           {
@@ -492,6 +524,7 @@ export default function DocumentView() {
             </table>
           )
         })}
+        {renderImages(imagesAfter)}
       </>
     )
   }
@@ -704,7 +737,25 @@ export default function DocumentView() {
                     onChange={(lang) => updateBlock(i, { lang })}
                   />
                 )}
-                {b.type === 'CODE' ? (
+                {b.type === 'IMAGE' ? (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {b.imageId ? (
+                      <DocumentImage documentId={docId!} imageId={b.imageId} alt={b.imageName} maxHeight={260} />
+                    ) : (
+                      <Typography.Text type="secondary">尚未上传图片</Typography.Text>
+                    )}
+                    <Upload
+                      accept="image/png,image/jpeg,image/gif,image/webp"
+                      showUploadList={false}
+                      beforeUpload={(file) => { void doUploadImage(i, file as File); return false }}
+                    >
+                      <AppButton size="small" loading={uploadingImage === i}
+                        style={{ marginTop: b.imageId ? 0 : 8 }}>
+                        {b.imageId ? '替换图片' : '上传图片'}
+                      </AppButton>
+                    </Upload>
+                  </div>
+                ) : b.type === 'CODE' ? (
                   <Editor
                     value={b.text}
                     onValueChange={(text) => updateBlock(i, { text })}
@@ -736,7 +787,15 @@ export default function DocumentView() {
               </div>
             ))}
             <Space wrap>
-              <AppButton onClick={() => addBlock('BODY')}>+</AppButton>
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: BLOCK_OPTIONS.map((o) => ({ key: o.value, label: o.label })),
+                  onClick: ({ key }) => addBlock(key as EditableBlock['type']),
+                }}
+              >
+                <AppButton>+ 添加块</AppButton>
+              </Dropdown>
               <AppButton type="primary" loading={savingEdit} onClick={saveEdit}>保存为新版本</AppButton>
               <AppButton disabled={savingEdit} onClick={() => setEditMode(false)}>取消</AppButton>
             </Space>

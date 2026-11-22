@@ -7,7 +7,8 @@ import { getErrorMessage } from '../api/http'
 import { getPublicShare } from '../api/shares'
 import type { PublicShare as PublicShareData } from '../api/shares'
 import type { PreviewBlock, StructureNode } from '../api/ai'
-import { buildBlockUnits, markerHeadings } from './view/structure'
+import { buildBlockUnits, imageNodes, markerHeadings } from './view/structure'
+import DocumentImage from './view/DocumentImage'
 import './view/structure.css'
 
 export default function PublicShare() {
@@ -45,7 +46,7 @@ export default function PublicShare() {
               通过共享链接查看当前版本，仅展示文本内容。
             </Typography.Paragraph>
             <div className="doc-structure">
-              {renderDocument(data.blocks ?? [], data.structure ?? [], data.text)}
+              {renderDocument(data.blocks ?? [], data.structure ?? [], data.text, token)}
             </div>
           </>
         )}
@@ -55,7 +56,7 @@ export default function PublicShare() {
 }
 
 /** 结构化只读渲染：与预览页同一套 block/structure 坐标，不做高亮与批注交互。 */
-function renderDocument(blocks: PreviewBlock[], structure: StructureNode[], fallback: string) {
+function renderDocument(blocks: PreviewBlock[], structure: StructureNode[], fallback: string, token: string) {
   if (blocks.length === 0) {
     return <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', lineHeight: 1.9, marginBottom: 0 }}>
       {fallback || '该版本暂无可读文本。'}
@@ -64,11 +65,24 @@ function renderDocument(blocks: PreviewBlock[], structure: StructureNode[], fall
   return blocks.map((block) => {
     const markers = markerHeadings(block, structure)
     const units = buildBlockUnits(block, structure)
+    const images = imageNodes(block, structure)
+    const imagesBefore = images.filter((n) => n.anchor! < block.charEnd + 1)
+    const imagesAfter = images.filter((n) => n.anchor! >= block.charEnd + 1)
+    const imageEls = (list: typeof images) => list.map((n) => (
+      <DocumentImage key={`img-${n.no}`} publicToken={token} imageId={n.imageId!} maxHeight={420} />
+    ))
     if (units.length === 0 && markers.length === 0) {
-      return <p key={block.chunkId} style={{ whiteSpace: 'pre-wrap' }}>{block.text}</p>
+      return (
+        <div key={block.chunkId}>
+          {imageEls(imagesBefore)}
+          <p style={{ whiteSpace: 'pre-wrap' }}>{block.text}</p>
+          {imageEls(imagesAfter)}
+        </div>
+      )
     }
     return (
       <div key={block.chunkId}>
+        {imageEls(imagesBefore)}
         {markers.map((m) => createElement(
           `h${Math.min(4, Math.max(1, m.level))}`,
           { key: `marker-${m.nodeNo}` },
@@ -115,6 +129,7 @@ function renderDocument(blocks: PreviewBlock[], structure: StructureNode[], fall
             </table>
           )
         })}
+        {imageEls(imagesAfter)}
       </div>
     )
   })

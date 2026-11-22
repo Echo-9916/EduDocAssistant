@@ -1417,3 +1417,30 @@ COMMENT ON COLUMN edudoc_assignment_attachment.mime_type IS 'MIME 类型，须�
 COMMENT ON COLUMN edudoc_assignment_attachment.size_bytes IS '文件字节数';
 COMMENT ON COLUMN edudoc_assignment_attachment.object_key IS 'OSS 私有桶对象键';
 COMMENT ON COLUMN edudoc_assignment_attachment.uploader_id IS '上传教师用户 ID';
+
+-- 文档图片表: 块编辑中插入的图片（正文流之外，按结构节点 anchor 定位）。
+CREATE TABLE edudoc_document_image (
+    id RAW(16) DEFAULT SYS_GUID() NOT NULL,
+    create_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    update_time TIMESTAMP(6) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    document_id RAW(16) NOT NULL,
+    uploader_id RAW(16) NOT NULL,
+    file_name VARCHAR2(255) NOT NULL,
+    mime_type VARCHAR2(100) NOT NULL,
+    size_bytes NUMBER(12) NOT NULL,
+    object_key VARCHAR2(500) NOT NULL,
+    CONSTRAINT pk_document_image PRIMARY KEY (id),
+    CONSTRAINT fk_document_image_1 FOREIGN KEY (document_id) REFERENCES edudoc_document (id),
+    CONSTRAINT fk_document_image_2 FOREIGN KEY (uploader_id) REFERENCES edudoc_user (id)
+);
+
+COMMENT ON TABLE edudoc_document_image IS '文档内插入的图片文件，预览时按结构节点 anchor 定位。';
+COMMENT ON COLUMN edudoc_document_image.id IS '主键，数据库自动生成 GUID';
+COMMENT ON COLUMN edudoc_document_image.create_time IS '创建时间，默认数据库当前时间';
+COMMENT ON COLUMN edudoc_document_image.update_time IS '最后更新时间，由触发器维护';
+COMMENT ON COLUMN edudoc_document_image.document_id IS '所属文档 ID';
+COMMENT ON COLUMN edudoc_document_image.uploader_id IS '上传用户 ID';
+COMMENT ON COLUMN edudoc_document_image.file_name IS '原始文件名';
+COMMENT ON COLUMN edudoc_document_image.mime_type IS '图片 MIME 类型：png/jpeg/gif/webp';
+COMMENT ON COLUMN edudoc_document_image.size_bytes IS '文件字节数';
+COMMENT ON COLUMN edudoc_document_image.object_key IS 'OSS 私有桶对象键';

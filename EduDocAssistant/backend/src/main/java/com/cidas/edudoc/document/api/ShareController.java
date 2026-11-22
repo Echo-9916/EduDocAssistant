@@ -3,13 +3,17 @@ package com.cidas.edudoc.document.api;
 import com.cidas.edudoc.access.domain.PermissionCode;
 import com.cidas.edudoc.common.api.ApiResponse;
 import com.cidas.edudoc.common.security.RequirePermission;
+import com.cidas.edudoc.document.application.DocumentImageService;
 import com.cidas.edudoc.document.application.ShareService;
 import com.cidas.edudoc.document.application.ShareService.CreateCommand;
 import com.cidas.edudoc.document.application.ShareService.CreatedShare;
 import com.cidas.edudoc.document.application.ShareService.PublicShare;
 import com.cidas.edudoc.document.application.ShareService.ShareView;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,6 +35,7 @@ import java.util.List;
 public class ShareController {
 
     private final ShareService shareService;
+    private final DocumentImageService documentImageService;
 
     @PostMapping("/documents/{documentId}/shares")
     @ResponseStatus(HttpStatus.CREATED)
@@ -58,6 +63,17 @@ public class ShareController {
     @GetMapping("/public/shares/{token}")
     public ApiResponse<PublicShare> publicView(@PathVariable("token") String token) {
         return ApiResponse.ok(shareService.publicView(token));
+    }
+
+    /** 免登录共享页的文档内图片（token 限定到该文档）。 */
+    @GetMapping("/public/shares/{token}/images/{imageId}")
+    public ResponseEntity<byte[]> publicImage(@PathVariable("token") String token,
+                                              @PathVariable("imageId") String imageId) {
+        var content = documentImageService.loadPublic(token, imageId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(content.mimeType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .body(content.bytes());
     }
 
     public record CreateShareRequest(Integer expiresInDays, String permission) {

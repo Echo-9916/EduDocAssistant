@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cidas.edudoc.document.infrastructure.DocumentImageMapper">
+
+    <insert id="insert">
+        INSERT INTO edudoc_document_image (id, document_id, uploader_id, file_name, mime_type,
+                                           size_bytes, object_key)
+        VALUES (HEXTORAW(#{image.id}), HEXTORAW(#{image.documentId}), HEXTORAW(#{image.uploaderId}),
+                #{image.fileName}, #{image.mimeType}, #{image.sizeBytes}, #{image.objectKey})
+    </insert>
+
+    <select id="selectByIdAndDocument"
+            resultType="com.cidas.edudoc.document.infrastructure.DocumentImage">
+        SELECT RAWTOHEX(id) AS id, RAWTOHEX(document_id) AS documentId,
+               RAWTOHEX(uploader_id) AS uploaderId, file_name AS fileName, mime_type AS mimeType,
+               size_bytes AS sizeBytes, object_key AS objectKey
+        FROM edudoc_document_image
+        WHERE id = HEXTORAW(#{idHex}) AND document_id = HEXTORAW(#{documentIdHex})
+    </select>
+
+</mapper>

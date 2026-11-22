@@ -12,7 +12,8 @@ package com.cidas.edudoc.document.domain;
  */
 public record StructureNode(int no, String kind, Integer level, String text, Integer anchor,
                             Integer start, Integer end, String headingPath, Integer pageNo,
-                            Integer ordinal, Integer tableNo, Integer row, Integer col, String lang) {
+                            Integer ordinal, Integer tableNo, Integer row, Integer col, String lang,
+                            String imageId) {
 
     public static StructureNode ranged(int no, String kind, int start, int end, String headingPath,
                                        Integer pageNo, Integer level, Integer ordinal,
@@ -24,11 +25,17 @@ public record StructureNode(int no, String kind, Integer level, String text, Int
                                        Integer pageNo, Integer level, Integer ordinal,
                                        Integer tableNo, Integer row, Integer col, String lang) {
         return new StructureNode(no, kind, level, null, null, start, end, headingPath, pageNo,
-                ordinal, tableNo, row, col, lang);
+                ordinal, tableNo, row, col, lang, null);
     }
 
     public static StructureNode marker(int no, int level, String text, int anchor) {
         return new StructureNode(no, TextBlock.HEADING, level, text, anchor, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
+    }
+
+    /** 图片标记节点：文字不在正文流里，anchor 指向插入位置，imageId 指向 edudoc_document_image。 */
+    public static StructureNode image(int no, int anchor, String imageId) {
+        return new StructureNode(no, "IMAGE", null, null, anchor, null, null, null, null,
+                null, null, null, null, null, imageId);
     }
 }

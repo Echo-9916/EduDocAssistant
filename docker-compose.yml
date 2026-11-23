@@ -1,0 +1,119 @@
+name: edudoc
+
+services:
+  oracle:
+    image: container-registry.oracle.com/database/free:latest
+    container_name: edudoc-oracle
+    environment:
+      ORACLE_PWD: ${EDUDOC_ORACLE_PWD:?请在 deploy/.env 设置 EDUDOC_ORACLE_PWD}
+    shm_size: "1g"
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+    healthcheck:
+      # 必须连上 FREEPDB1 并返回专用标记；不能只 grep "1"（ORA-12514 等错误文本也含 1，会假健康）
+      test: ["CMD-SHELL", "echo \"select 'READY' from dual;\" | sqlplus -s system/$$ORACLE_PWD@//localhost:1521/FREEPDB1 | grep -q READY"]
+      interval: 10s
+      timeout: 10s
+      retries: 90
+      start_period: 300s
+    networks: [edudoc-net]
+    restart: unless-stopped
+
+  db-init:
+    image: container-registry.oracle.com/database/free:latest
+    container_name: edudoc-db-init
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      ORACLE_PWD: ${EDUDOC_ORACLE_PWD:?请在 deploy/.env 设置 EDUDOC_ORACLE_PWD}
+      EDUDOC_DB_USERNAME: ${EDUDOC_DB_USERNAME:-user_cidas}
+      EDUDOC_DB_PASSWORD: ${EDUDOC_DB_PASSWORD:-cidas123}
+    volumes:
+      - ./deploy/oracle/init.sh:/init.sh:ro
+      - ./05_系统设计/数据库脚本:/schema:ro
+    command: ["/bin/bash", "/init.sh"]
+    networks: [edudoc-net]
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    container_name: edudoc-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [edudoc-net]
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ./EduDocAssistant/ai-service
+      args:
+        INSTALL_CONVERT: ${EDUDOC_INSTALL_CONVERT:-true}
+    container_name: edudoc-ai
+    environment:
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
+      EDUDOC_LLM_MODEL: ${EDUDOC_LLM_MODEL:-deepseek-ai/DeepSeek-V3}
+      EDUDOC_ANSWER_MODEL: ${EDUDOC_ANSWER_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      EDUDOC_EMBEDDING_MODEL: ${EDUDOC_EMBEDDING_MODEL:-BAAI/bge-m3}
+      EDUDOC_RERANK_MODEL: ${EDUDOC_RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+      EDUDOC_EMBEDDING_DIM: "1024"
+      EDUDOC_AI_INTERNAL_TOKEN: ${EDUDOC_AI_INTERNAL_TOKEN:?请在 deploy/.env 设置 EDUDOC_AI_INTERNAL_TOKEN}
+      TZ: Asia/Shanghai
+    networks: [edudoc-net]
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./EduDocAssistant/backend
+    container_name: edudoc-backend
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      EDUDOC_DB_URL: jdbc:oracle:thin:@//oracle:1521/FREEPDB1
+      EDUDOC_DB_USERNAME: ${EDUDOC_DB_USERNAME:-user_cidas}
+      EDUDOC_DB_PASSWORD: ${EDUDOC_DB_PASSWORD:-cidas123}
+      EDUDOC_REDIS_HOST: redis
+      EDUDOC_REDIS_PORT: "6379"
+      EDUDOC_AI_SERVICE_BASE_URL: http://ai-service:8000
+      EDUDOC_AI_INTERNAL_TOKEN: ${EDUDOC_AI_INTERNAL_TOKEN:?请在 deploy/.env 设置 EDUDOC_AI_INTERNAL_TOKEN}
+      EDUDOC_JWT_SECRET: ${EDUDOC_JWT_SECRET:?请在 deploy/.env 设置 EDUDOC_JWT_SECRET}
+      EDUDOC_OSS_ENDPOINT: ${EDUDOC_OSS_ENDPOINT:-https://oss-cn-beijing.aliyuncs.com}
+      EDUDOC_OSS_REGION: ${EDUDOC_OSS_REGION:-cn-beijing}
+      EDUDOC_OSS_BUCKET: ${EDUDOC_OSS_BUCKET:-cidas-oss-bucket}
+      EDUDOC_OSS_ACCESS_KEY_ID: ${EDUDOC_OSS_ACCESS_KEY_ID:-}
+      EDUDOC_OSS_ACCESS_KEY_SECRET: ${EDUDOC_OSS_ACCESS_KEY_SECRET:-}
+      EDUDOC_OSS_ROLE_ARN: ${EDUDOC_OSS_ROLE_ARN:-}
+      EDUDOC_OSS_STS_ENDPOINT: ${EDUDOC_OSS_STS_ENDPOINT:-sts.cn-beijing.aliyuncs.com}
+      TZ: Asia/Shanghai
+    networks: [edudoc-net]
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./EduDocAssistant/web
+    container_name: edudoc-web
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${EDUDOC_WEB_PORT:-8088}:80"
+    networks: [edudoc-net]
+    restart: unless-stopped
+
+volumes:
+  oracle_data:
+  redis_data:
+
+networks:
+  edudoc-net:
+    driver: bridge

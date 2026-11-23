@@ -11,6 +11,7 @@
 | `prototype/` | 三端可交互 HTML、预览图、Figma 配置与 81 屏逐屏索引 |
 | `tasks/` | 任务文档：foundation、auth、document 垂直切片 |
 | `test/` | 接口手动测试说明（AuthTest / DocumentTest）与 Apifox 集合 |
+| `user/` | 面向学生、教师、运维的用户操作手册 |
 | `review/` | 各切片代码审查与整改复审报告 |
 
 ## 快速导航
@@ -20,6 +21,11 @@
 - [页面原型](prototype/README.md)
 - [任务文档](tasks/README.md)
 - [手动测试](test/DocumentTest.md)
+- [用户操作手册（总览）](user/用户操作手册.md)
+  - [学生用户操作手册](user/学生用户操作手册.md)
+  - [教师用户操作手册](user/教师用户操作手册.md)
+  - [运维用户操作手册](user/运维用户操作手册.md)
+- [演示操作手册](demo/演示操作手册.md)
 
 ## 当前基线
 

@@ -15,16 +15,16 @@ CREATE INDEX ix_doc_course_status ON edudoc_document (course_id, status, update_
 CREATE INDEX ix_doc_purge ON edudoc_document (status, purge_at);
 -- 标题检索前缀
 CREATE INDEX ix_doc_title_search ON edudoc_document (title);
--- 版本列表
-CREATE INDEX ix_docver_doc_time ON edudoc_document_version (document_id, version_no);
+-- 版本列表：uk_document_version_1(document_id, version_no) 已建唯一索引，无需重复
+-- CREATE INDEX ix_docver_doc_time ON edudoc_document_version (document_id, version_no);
 -- 对象巡检
 CREATE INDEX ix_oss_role_status ON edudoc_oss_object (object_role, status);
 -- 派生文件查询
 CREATE INDEX ix_derived_version ON edudoc_derived_file (document_version_id, status);
 -- 图表编号顺序
 CREATE INDEX ix_element_version ON edudoc_document_element (document_version_id, element_type, chapter_no, sequence_no);
--- 分块顺序
-CREATE INDEX ix_chunk_version ON edudoc_document_chunk (document_version_id, chunk_no);
+-- 分块顺序：uk_document_chunk_1(document_version_id, chunk_no) 已建唯一索引，无需重复
+-- CREATE INDEX ix_chunk_version ON edudoc_document_chunk (document_version_id, chunk_no);
 -- 待索引任务
 CREATE INDEX ix_chunk_index ON edudoc_document_chunk (index_status, update_time);
 -- 文档共享查询

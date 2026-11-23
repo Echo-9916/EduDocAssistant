@@ -1,5 +1,7 @@
 server:
   port: 8080
+  # 容器部署经 Nginx 反向代理，保留 X-Forwarded-* 语义
+  forward-headers-strategy: framework
 
 spring:
   application:
@@ -10,7 +12,7 @@ spring:
       max-file-size: 20MB
       max-request-size: 25MB
   datasource:
-    url: jdbc:oracle:thin:@//localhost:1521/FREEPDB1
+    url: ${EDUDOC_DB_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
     username: ${EDUDOC_DB_USERNAME:user_cidas}
     password: ${EDUDOC_DB_PASSWORD:cidas123}
     driver-class-name: oracle.jdbc.OracleDriver

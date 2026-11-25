@@ -27,7 +27,7 @@
 7. 新异步任务三处齐动：`edudoc_outbox_event` 事件类型 + `application.yml` `edudoc.outbox.stream-keys` 登记（漏登记事件直接 FAILED）+ 新 Worker（沿用 `DocumentParseWorker` 骨架：MKSTREAM 幂等建组、`pid` consumer 名、XACK 兜底）。
 8. 版本不可变：提交/编辑/修复/恢复都生成新版本，历史只读。提交必须冻结 `document_version_id` 快照。
 9. 鉴权顺序：认证→账号状态→角色→课程范围→文档 ACL→动作约束。第 1–4 步靠 `@RequirePermission` 自动得到；**第 5–6 步（`courseScope`、owner/ACL）没有公共组件，必须在应用服务里手写**，且当前 owner 不符返回 40401，不是 40302（40302/40303/42202/42901 有码无抛出方，属"定义未接线"）。
-10. 设计文档改动三步走且不许跳步：改 `05_系统设计/*.docx` 源（`TempStore/docx-*.py` 工具链）→ 同步 `EduDocAssistant/docs/design/*.md` 复刻 → 才动 `05_系统设计/数据库脚本/01→02→03→04`。
+10. 设计文档改动三步走且不许跳步：改 `04_系统设计/*.docx` 源（`TempStore/docx-*.py` 工具链）→ 同步 `EduDocAssistant/docs/design/*.md` 复刻 → 才动 `04_系统设计/数据库脚本/01→02→03→04`。
 11. path 归属红线，五个同名不同物不得混用：`/courses`（精简下拉，已存在）· `/teacher/courses` · `/ops/courses` · `/documents/{id}/versions` · `/templates/{id}/versions`。
 12. 切片顺序已拍板：课程与作业 → 消息与个人中心 → 协作与版本（REST，无网关）→ 运维端；`gateway/`（Yjs）本期不建。
 13. 交付物、注释、提交信息简体中文；`mvn test` 必须在无 Oracle 时全绿（409 个 @Test，0 个 `@SpringBootTest`，3 个真库集成测试靠 `EDUDOC_DB_USERNAME/PASSWORD` + `assumeTrue` 跳过）。
@@ -81,8 +81,8 @@
 ### Task 1-1: DDL 与设计文档同步 + 演示种子
 
 **Files:**
-- Modify: `05_系统设计/02_数据库设计说明书.docx`（源，走 `TempStore/docx-update.py`）→ 同步 `EduDocAssistant/docs/design/数据库设计说明书.md`
-- Modify: `05_系统设计/数据库脚本/01_schema.sql`（`edudoc_assignment` 加列、两张新表）、`02_indexes.sql`、`03_triggers.sql`、`04_seed.sql`
+- Modify: `04_系统设计/02_数据库设计说明书.docx`（源，走 `TempStore/docx-update.py`）→ 同步 `EduDocAssistant/docs/design/数据库设计说明书.md`
+- Modify: `04_系统设计/数据库脚本/01_schema.sql`（`edudoc_assignment` 加列、两张新表）、`02_indexes.sql`、`03_triggers.sql`、`04_seed.sql`
 - Modify: `EduDocAssistant/backend/src/main/resources/db_seed/seed_accounts.csv`、`backend/src/main/java/com/cidas/edudoc/access/infrastructure/SeedDataRunner.java`
 - Modify: `EduDocAssistant/CLAUDE.md`（六域 → 七域，补 `coursework` 一行）
 - Test: `backend/src/test/java/com/cidas/edudoc/coursework/infrastructure/AssignmentSchemaIntegrationTest.java`

@@ -22,15 +22,18 @@ SoftwareProjectImpl/
 ├── 01_需求调研/                 # 调研材料
 ├── 02_需求规格说明/             # 需求陈述 / 需求规格（Word 源文件）
 ├── 03_页面原型/                 # 81 屏高保真原型
-├── 04_演示汇报/                 # 演示汇报材料
-├── 05_系统设计/                 # 概要 / 详细 / 数据库设计 + 数据库脚本
+├── 04_系统设计/                 # 概要 / 详细 / 数据库设计 + 数据库脚本
 │   └── 数据库脚本/              # 01_schema → 02_indexes → 03_triggers → 04_seed
+├── 05_用户手册/                 # 安装 / 配置 / 启动 / 操作（面向用户）
+│   └── 操作/                    # 学生、教师、运维
+├── 09_演示汇报/                 # 演示 PPT、演示操作手册与演示材料
 ├── EduDocAssistant/
 │   ├── backend/                 # Spring Boot 模块化单体（七个业务域）
 │   ├── web/                     # React 三端前端
 │   ├── ai-service/              # FastAPI 智能处理服务
-│   ├── docs/                    # 需求 / 设计 / 原型 / 任务 / 测试 / 审查文档（Markdown 复刻）
-│   ├── scripts/                 # 启动脚本、演示数据生成与复位
+│   ├── deploy/                  # Docker Compose、Dockerfile、启停脚本与初始化
+│   ├── docs/                    # 开发文档：需求 / 设计 / 原型 / 任务 / 测试 / 审查
+│   ├── scripts/                 # 开发脚本、演示数据生成与复位
 │   └── CLAUDE.md                # 编码约定、架构红线、踩坑清单
 └── README.md
 ```
@@ -47,13 +50,14 @@ SoftwareProjectImpl/
 已提供全量 compose：Oracle + Redis + backend + ai-service + Nginx Web，默认只暴露 `8088`。
 
 ```bash
-cp deploy/.env.example deploy/.env
+cd EduDocAssistant/deploy
+cp .env.example .env
 # 按需填写阿里云 OSS 凭据与 SILICONFLOW_API_KEY
-./deploy/start.sh          # Windows: .\deploy\start.ps1
+./start.sh          # Windows: .\start.ps1
 ```
 
 启动后访问 `http://localhost:8088`，演示账号 `teacher / student / ops`，密码 `Cidas@123`。
-详细说明（Oracle 首次初始化、OSS CORS、日志、重置、排错）见 [deploy/README.md](deploy/README.md)。
+详细说明见 [部署说明](EduDocAssistant/deploy/README.md)、[安装手册](05_用户手册/安装.md)、[配置说明](05_用户手册/配置.md) 与 [启动说明](05_用户手册/启动.md)。
 
 ## 本地开发（源码方式）
 
@@ -79,7 +83,7 @@ docker ps   # 两个容器均为 Up
 ```bash
 for f in 01_schema 02_indexes 03_triggers 04_seed; do
   docker exec -i oracle-dev sqlplus -s user_cidas/cidas123@//localhost:1521/FREEPDB1 \
-    < "05_系统设计/数据库脚本/${f}.sql"
+    < "04_系统设计/数据库脚本/${f}.sql"
 done
 ```
 
@@ -130,7 +134,7 @@ Windows 也可直接运行 `EduDocAssistant/scripts/start-backend.bat` 与 `star
 | 运维 | `ops` | `Cidas@123` |
 
 从 0 到 1 的完整演示流程、演示文件、检查清单与常见问题见
-[演示操作手册](EduDocAssistant/docs/demo/演示操作手册.md)。
+[演示操作手册](09_演示汇报/演示操作手册.md)。
 
 ## 测试
 
@@ -158,9 +162,12 @@ cd EduDocAssistant/ai-service && python -m pytest
 | 数据库设计 | [docs/design/数据库设计说明书.md](EduDocAssistant/docs/design/数据库设计说明书.md) |
 | 页面原型 | [03_页面原型/](03_页面原型/) 与 [docs/prototype/](EduDocAssistant/docs/prototype/) |
 | 编码约定与架构红线 | [EduDocAssistant/CLAUDE.md](EduDocAssistant/CLAUDE.md) |
-| 用户操作手册 | [总览](EduDocAssistant/docs/user/用户操作手册.md) · [学生版](EduDocAssistant/docs/user/学生用户操作手册.md) · [教师版](EduDocAssistant/docs/user/教师用户操作手册.md) · [运维版](EduDocAssistant/docs/user/运维用户操作手册.md) |
-| 演示操作手册 | [docs/demo/演示操作手册.md](EduDocAssistant/docs/demo/演示操作手册.md) |
-| Docker 部署说明 | [deploy/README.md](deploy/README.md) |
+| 安装手册 | [05_用户手册/安装.md](05_用户手册/安装.md) |
+| 配置说明 | [05_用户手册/配置.md](05_用户手册/配置.md) |
+| 启动说明 | [05_用户手册/启动.md](05_用户手册/启动.md) |
+| 用户操作手册 | [总览](05_用户手册/README.md) · [学生版](05_用户手册/操作/学生.md) · [教师版](05_用户手册/操作/教师.md) · [运维版](05_用户手册/操作/运维.md) |
+| 演示操作手册 | [09_演示汇报/演示操作手册.md](09_演示汇报/演示操作手册.md) |
+| Docker 部署说明 | [EduDocAssistant/deploy/README.md](EduDocAssistant/deploy/README.md) |
 | 审查与测试报告 | [docs/review/](EduDocAssistant/docs/review/) |
 
 ## 演示数据复位

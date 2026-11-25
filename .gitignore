@@ -11,7 +11,7 @@ TempStore/
 
 # 敏感信息
 *.env
-deploy/.env
+EduDocAssistant/deploy/.env
 
 # 数据库脚本执行日志（本地生成,不进版本库）
-05_系统设计/数据库脚本/exec_logs/
+04_系统设计/数据库脚本/exec_logs/

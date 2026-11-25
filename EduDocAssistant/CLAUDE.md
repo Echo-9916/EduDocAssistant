@@ -12,7 +12,7 @@ EduDocAssistant（CIDAS，校园智能文档辅助系统）的实现工作区。
 | 对齐页面行为与 81 屏                      | `docs/prototype/screens/{student,teacher,operations}.md`         |
 | 查原型需求覆盖                            | `docs/requirements/原型需求合规检查.md`                          |
 
-`docs/` 是仓库上一级 `02_需求规格说明/`、`05_系统设计/`、`03_页面原型/` 的复刻：需求、设计、原型改动时，Word/HTML 源文件与 `docs/` 同步更新，源文件为准；`docs/prototype/{student,staff}/README.md` 是本地改写版，同步时保留。
+`docs/` 是仓库上一级 `02_需求规格说明/`、`04_系统设计/`、`03_页面原型/` 的复刻：需求、设计、原型改动时，Word/HTML 源文件与 `docs/` 同步更新，源文件为准；`docs/prototype/{student,staff}/README.md` 是本地改写版，同步时保留。
 
 ## 代码布局
 
@@ -22,7 +22,7 @@ EduDocAssistant（CIDAS，校园智能文档辅助系统）的实现工作区。
 | `web/`        | React 18、TypeScript、Vite、pnpm | 学生、教师、运维三端界面                       |
 | `ai-service/` | Python 3.13、FastAPI             | 摘要、要点、问答、润色、向量化                 |
 | `gateway/`    | Node.js 22、Yjs                  | 协作 WebSocket 网关；做实时协作时再建          |
-| `deploy/`     | Nginx、systemd                   | 单机部署配置；做可部署版本时再建               |
+| `deploy/`     | Docker Compose、Nginx            | 一键部署、Dockerfile、Oracle 初始化与启停脚本 |
 
 `backend/` 按七个业务域分包：`document`、`ai`、`template`、`collaboration`、`access`、`export`、`coursework`（06 切片 1 新增：作业发布/提交/批改/统计）；每个域内含 `api` / `application` / `domain` / `infrastructure` 四层。横切能力（统一响应、错误码、trace、事务模板）放 `common`，不携带业务状态。
 
@@ -34,7 +34,7 @@ EduDocAssistant（CIDAS，校园智能文档辅助系统）的实现工作区。
 
 - 调用顺序固定：Controller → ApplicationService → Domain/Repository。Controller 只做参数校验与响应封装，Mapper、OSS 客户端只出现在 infrastructure。
 - 请求线程只做编排：解析、向量化、格式转换、导出、通知走 Redis Stream；业务事件通过 `edudoc_outbox_event` 与业务事务同库提交。
-- 数据表统一 `edudoc_` 前缀、`id RAW(16)`、`create_time` / `update_time`。建库顺序：`01_schema.sql → 02_indexes.sql → 03_triggers.sql → 04_seed.sql`（位于上一级 `05_系统设计/数据库脚本/`）。
+- 数据表统一 `edudoc_` 前缀、`id RAW(16)`、`create_time` / `update_time`。建库顺序：`01_schema.sql → 02_indexes.sql → 03_triggers.sql → 04_seed.sql`（位于上一级 `04_系统设计/数据库脚本/`）。
 - 鉴权顺序固定：认证 → 账号状态 → 角色 → 课程范围 → 文档 ACL/共享链接 → 动作约束。
 - 版本不可变：上传、编辑、协作、恢复都生成新版本，历史版本只读。
 - 写接口接收并校验 `Idempotency-Key`。

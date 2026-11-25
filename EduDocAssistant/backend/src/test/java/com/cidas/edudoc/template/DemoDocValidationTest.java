@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 演示文档回归：模板能解析出规则，合规报告应零问题，格式问题示例应有问题。 */
 class DemoDocValidationTest {
 
-    private static final Path DIR = Path.of("..", "docs", "demo");
+    private static final Path DIR = Path.of("..", "..", "09_演示汇报", "演示材料");
     private final TemplateRuleParser parser = new TemplateRuleParser(new ObjectMapper());
     private final DocxStyleExtractor extractor = new DocxStyleExtractor();
     private final FormatRuleMatcher matcher = new FormatRuleMatcher(new ObjectMapper());

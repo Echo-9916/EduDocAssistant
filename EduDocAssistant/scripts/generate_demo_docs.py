@@ -15,7 +15,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt, RGBColor
 
-OUT = Path(__file__).resolve().parents[1] / "docs" / "demo"
+OUT = Path(__file__).resolve().parents[2] / "09_演示汇报" / "演示材料"
 OUT.mkdir(parents=True, exist_ok=True)
 
 # 模板/报告共用的版式口径

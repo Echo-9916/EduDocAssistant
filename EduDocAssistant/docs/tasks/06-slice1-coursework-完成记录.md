@@ -34,7 +34,7 @@
 - 课程组不落新表，改存 `edudoc_course_member.group_name`；`edudoc_course_group` 仍归切片 3/4（届时一并收口 `share_grant.principal_type='GROUP'` 的悬空引用）。
 - 路径统一角色前缀：`/teacher/*`、`/student/*`、`/ops/*`（原任务正文里 `/assignments/{id}/submissions` 一类写法作废）。
 - 审计成功码兼容 `'200'` 与 `'SUCCESS'`：既有写入路径两种都写过，严格照 `'200'` 判会把所有成功登录标成 FAIL。
-- 文档同步进度：`docs/design/数据库设计说明书.md` 复刻**已补**（`course_member.group_name`、`assignment` 三列、`submission.score_json`，并注明「按速度优先口径不建明细表」的代价）；**唯一剩余欠账是 `05_系统设计/02_数据库设计说明书.docx` 源文件**，需要走 `TempStore/docx-*.py` 工具链改 Word 交付物——属于对外交付文档，改坏成本高，待你点头再动。表数与触发器数无变化（本切片没建新表）。
+- 文档同步进度：`docs/design/数据库设计说明书.md` 复刻**已补**（`course_member.group_name`、`assignment` 三列、`submission.score_json`，并注明「按速度优先口径不建明细表」的代价）；**唯一剩余欠账是 `04_系统设计/02_数据库设计说明书.docx` 源文件**，需要走 `TempStore/docx-*.py` 工具链改 Word 交付物——属于对外交付文档，改坏成本高，待你点头再动。表数与触发器数无变化（本切片没建新表）。
 
 ## 三点五、独立审查结论与处置（2026-11-10，两个审查 agent）
 

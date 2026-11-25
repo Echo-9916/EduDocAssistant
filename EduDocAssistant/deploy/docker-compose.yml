@@ -30,8 +30,8 @@ services:
       EDUDOC_DB_USERNAME: ${EDUDOC_DB_USERNAME:-user_cidas}
       EDUDOC_DB_PASSWORD: ${EDUDOC_DB_PASSWORD:-cidas123}
     volumes:
-      - ./deploy/oracle/init.sh:/init.sh:ro
-      - ./05_系统设计/数据库脚本:/schema:ro
+      - ./oracle/init.sh:/init.sh:ro
+      - ../../04_系统设计/数据库脚本:/schema:ro
     command: ["/bin/bash", "/init.sh"]
     networks: [edudoc-net]
     restart: "no"
@@ -52,7 +52,7 @@ services:
 
   ai-service:
     build:
-      context: ./EduDocAssistant/ai-service
+      context: ../ai-service
       args:
         INSTALL_CONVERT: ${EDUDOC_INSTALL_CONVERT:-true}
     container_name: edudoc-ai
@@ -71,7 +71,7 @@ services:
 
   backend:
     build:
-      context: ./EduDocAssistant/backend
+      context: ../backend
     container_name: edudoc-backend
     depends_on:
       db-init:
@@ -100,7 +100,7 @@ services:
 
   web:
     build:
-      context: ./EduDocAssistant/web
+      context: ../web
     container_name: edudoc-web
     depends_on:
       backend:
